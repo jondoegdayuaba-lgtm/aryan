@@ -1,8 +1,67 @@
-# Missile Run
+# Browser games
+
+Two games that run in any modern browser, on desktop or phone. Both are plain HTML, CSS and JavaScript with no build step.
+
+| Game | File | What you do |
+| --- | --- | --- |
+| **Jelly Jar** | `jelly-jar/index.html` | Drop jellies into a jar and squish matching ones together into bigger ones. |
+| **Missile Run** | `index.html` | Steer a guided missile through a test range and a brick town. |
+
+## Jelly Jar
+
+A drop-and-merge physics puzzle. Jellies with faces fall from a dropper into a glass jar. When two of the same kind touch, they squish into the next size up, and chain reactions climb a musical scale. Keep the jar under the MAX line: if jellies rest above it for 3 seconds, the jar overflows and the game ends.
+
+There are 11 jellies to find, each with its own face:
+
+Pip → Bean → Gumdrop → Jujube → Pudding → Mochi → Wobbles → Blobert → Chonk → Opal → Jelly King
+
+The dropper only hands out the first five. Everything bigger has to be merged, and two Jelly Kings burst in a royal pop.
+
+### Controls
+
+| Desktop | Phone |
+| --- | --- |
+| Move the mouse, or use ← → (A / D), to aim | Drag left and right to aim |
+| Click, Space or ↓ to drop | Let go to drop (a quick tap works too) |
+| Esc or P to pause, M to mute | Pause button, top right |
+
+### Scoring
+
+| Action | Points |
+| --- | --- |
+| Make a Bean, Gumdrop, Jujube, Pudding, Mochi, Wobbles, Blobert, Chonk, Opal or Jelly King | 10, 30, 60, 100, 150, 210, 280, 360, 450, 550 |
+| Merge again within 0.8 s (a chain) | × the chain count |
+| Royal pop (two Jelly Kings) | 1,500 × the chain count |
+
+The game remembers your best score, which jellies you have found, the sound setting and a game in progress (in the browser's local storage), so a visitor can close the tab and come back to **Continue**.
+
+### Put it on your website
+
+`jelly-jar/index.html` is the whole game in one file: the physics, the drawing and the sounds are all built in, so there are no images or other files to copy. Upload that file (renamed however you like) to any static host, or open it straight from your desktop with a double-click. The rounded fonts come from Google Fonts and fall back to system fonts when offline.
+
+To embed it in a page you already have:
+
+```html
+<iframe src="/jelly-jar/index.html" style="width:100%;max-width:480px;aspect-ratio:9/16;border:0"
+        title="Jelly Jar"></iframe>
+```
+
+The game fits whatever box it is given: a tall box gets the phone layout, and a wide one moves the score and the jelly list to the sides of the jar.
+
+### Customise
+
+The settings are at the top of the script in `jelly-jar/index.html`:
+
+- `KINDS` lists the 11 jellies: name, size, colours, face and the line shown when you find one.
+- `SPAWN_WEIGHTS` sets how often the dropper hands out each of the first five jellies.
+- `GRAVITY`, `BOUNCE` and `FRICTION` change how the jellies fall and settle; `OVERFLOW_TIME` is how long jellies may sit above the MAX line.
+- `W` and `H` are the size of the jar, and `COOLDOWN` is the wait between drops.
+
+## Missile Run
 
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.
 
-## How the flying works
+### How the flying works
 
 - The camera orbits the missile, and your mouse (or finger) turns the camera, not the missile.
 - The missile always steers toward whatever the crosshair is pointing at, so swing the camera and the missile curves after it.
@@ -11,7 +70,7 @@ A browser game. You guide a missile out of a launch hangar, across a test range 
 
 Everything is plain HTML, CSS and JavaScript with [three.js](https://threejs.org) (bundled in `vendor/three`). There is no build step and no image or sound files: textures are drawn on canvases and sounds are synthesised with the Web Audio API.
 
-## Play it from your desktop
+### Play it from your desktop
 
 `desktop/missile-run.html` is the whole game in one file. Save it to your desktop and double-click it; it opens in your browser and runs without a web server. It works offline, except the title fonts, which fall back to system fonts without internet.
 
@@ -22,7 +81,7 @@ npm install
 npm run build:desktop
 ```
 
-## Run it locally
+### Run it locally
 
 ES modules don't load from `file://`, so serve the folder:
 
@@ -33,7 +92,7 @@ python3 -m http.server 8000
 
 (`npx http-server` or any other static server works too.)
 
-## Put it on your website
+### Put it on your website
 
 Upload the whole folder as-is (`index.html`, `css/`, `js/`, `vendor/`) to any static host: GitHub Pages, Netlify, Vercel, or your own server. To host it on GitHub Pages from this repo, go to **Settings → Pages**, choose the branch and the `/ (root)` folder, and save.
 
@@ -44,7 +103,7 @@ To embed it in a page you already have:
         allow="fullscreen; pointer-lock" title="Missile Run"></iframe>
 ```
 
-## Controls
+### Controls
 
 | Desktop | Phone |
 | --- | --- |
@@ -54,7 +113,7 @@ To embed it in a page you already have:
 | WASD / arrow keys also aim | |
 | Esc or P to pause, M to mute | Pause button, top right |
 
-## Scoring
+### Scoring
 
 | Action | Points |
 | --- | --- |
@@ -65,7 +124,7 @@ To embed it in a page you already have:
 
 Four extra missile skins unlock as your best score climbs.
 
-## Customise
+### Customise
 
 `js/config.js` holds the game's name, tagline, flight tuning, scoring, map bounds and skins. For example, change `GAME_TITLE` to rename the game; the second word is shown in the accent colour. In `FLIGHT`, `steer` and `maxTurnRate` set how sharply the missile chases the crosshair, and `cameraDistance` and `crosshairY` set the camera framing.
 

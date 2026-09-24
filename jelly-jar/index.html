@@ -1,0 +1,2595 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jelly Jar</title>
+<meta name="description" content="Drop jellies into the jar and squish matching ones together into bigger jellies. Keep the jar under the MAX line.">
+<meta name="theme-color" content="#1b1947">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231b1947'/%3E%3Cpath d='M32 13c13 0 22 10 22 22 0 11-9 17-22 17S10 46 10 35c0-12 9-22 22-22z' fill='%23ff8cc6' stroke='%23c4447f' stroke-width='3'/%3E%3Ccircle cx='25' cy='34' r='3.6' fill='%232a1836'/%3E%3Ccircle cx='39' cy='34' r='3.6' fill='%232a1836'/%3E%3Cellipse cx='23' cy='23' rx='6' ry='3.4' fill='%23fff' opacity='.65' transform='rotate(-30 23 23)'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DynaPuff:wght@500;700&family=Nunito:wght@600;700;800;900&display=swap">
+<style>
+/* One committed look: a candy jar on a shelf at night. Blueberry-ink walls,
+   candy-pink buttons, lemon highlights. The jellies bring the rest of the colour. */
+:root {
+  color-scheme: dark;
+  --bg: #1b1947;
+  --bg-deep: #120f33;
+  --card: #2b2870;
+  --card-top: #38348c;
+  --edge: rgba(255, 255, 255, 0.12);
+  --text: #fbf7ff;
+  --muted: #c0baf0;
+  --pink: #ff5d8f;
+  --pink-deep: #c2336a;
+  --violet: #544fb0;
+  --violet-deep: #2f2b78;
+  --sun: #ffd93d;
+  --paper: #fff0f6;
+  --ink: #2a1836;
+  --display: "DynaPuff", "Fredoka", ui-rounded, "Arial Rounded MT Bold", "Trebuchet MS", sans-serif;
+  --body: "Nunito", ui-rounded, "Arial Rounded MT Bold", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body { height: 100%; margin: 0; }
+html { background: var(--bg-deep); }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 600 16px/1.45 var(--body);
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+#app {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.stage { position: absolute; inset: 0; touch-action: none; outline: none; }
+#game { display: block; width: 100%; height: 100%; }
+
+.corner { position: absolute; z-index: 2; display: flex; gap: 8px; }
+.icon-btn {
+  width: var(--btn, 44px);
+  height: var(--btn, 44px);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: rgba(20, 16, 60, 0.55);
+  color: var(--text);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.icon-btn:hover { background: rgba(70, 64, 150, 0.85); }
+.icon-btn svg { width: 54%; height: 54%; fill: currentColor; }
+.icon-btn .off, .icon-btn.muted .on { display: none; }
+.icon-btn.muted .off { display: block; }
+
+:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; }
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  padding: 16px;
+  overflow-y: auto;
+  background: rgba(14, 11, 42, 0.62);
+  animation: fade 0.25s ease-out;
+}
+.card {
+  margin: auto;
+  width: 100%;
+  max-width: 420px;
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  text-align: center;
+  padding: 26px 22px 22px;
+  border-radius: 30px;
+  background: linear-gradient(180deg, var(--card-top), var(--card));
+  border: 2px solid var(--edge);
+  box-shadow: 0 24px 60px rgba(4, 2, 24, 0.55), inset 0 2px 0 rgba(255, 255, 255, 0.1);
+}
+.card-small { max-width: 360px; gap: 14px; }
+
+.logo {
+  margin: 0;
+  font: 700 clamp(50px, 16vw, 74px)/0.95 var(--display);
+  white-space: nowrap;
+}
+.logo span {
+  display: inline-block;
+  color: var(--c);
+  text-shadow: 0 5px 0 var(--d), 0 12px 20px rgba(0, 0, 0, 0.35);
+  transform-origin: 50% 90%;
+  animation: wob 2.8s ease-in-out infinite;
+  animation-delay: calc(var(--i) * -0.22s);
+}
+.logo .gap { width: 0.28em; }
+@keyframes wob {
+  0%, 100% { transform: scale(1, 1); }
+  30% { transform: scale(1.07, 0.93); }
+  55% { transform: translateY(-3px) scale(0.95, 1.06); }
+  75% { transform: scale(1.02, 0.98); }
+}
+
+.lede { margin: 0; max-width: 34ch; color: var(--muted); font-size: 15.5px; text-wrap: balance; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+.btn {
+  font: 700 21px/1 var(--display);
+  color: #fff;
+  padding: 15px 34px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--pink);
+  box-shadow: 0 6px 0 var(--pink-deep), 0 14px 24px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.08s, box-shadow 0.08s, filter 0.15s;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--pink-deep), 0 6px 12px rgba(0, 0, 0, 0.28); }
+.btn.alt { background: var(--violet); box-shadow: 0 6px 0 var(--violet-deep), 0 14px 24px rgba(0, 0, 0, 0.28); }
+.btn.alt:active { box-shadow: 0 2px 0 var(--violet-deep), 0 6px 12px rgba(0, 0, 0, 0.28); }
+
+.text-btn {
+  font: 800 15px var(--body);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  touch-action: manipulation;
+}
+.text-btn:hover { color: var(--text); }
+
+.label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.label b { color: var(--text); }
+.chain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+}
+.chain li { position: relative; display: grid; place-items: center; }
+.chain img { display: block; }
+.chain li.unknown img { filter: brightness(0); opacity: 0.3; }
+.chain li.unknown::after { content: "?"; position: absolute; font: 700 12px var(--display); color: var(--muted); }
+
+.how {
+  margin: 0;
+  width: 100%;
+  max-width: 320px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  text-align: left;
+  font-size: 14.5px;
+}
+.how div { display: contents; }
+.how dt { font-weight: 900; color: var(--sun); }
+.how dd { margin: 0; }
+.touch .k-mouse, html:not(.touch) .k-touch { display: none; }
+
+.menu-foot { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; justify-content: center; color: var(--muted); font-weight: 800; }
+.menu-foot b { color: var(--text); font: 700 17px var(--display); }
+.num { font-variant-numeric: tabular-nums; }
+
+.title { margin: 0; font: 700 32px/1.05 var(--display); text-wrap: balance; }
+.sub { margin: 0; color: var(--muted); font-weight: 800; }
+.sub b { color: var(--text); font: 700 20px var(--display); }
+.big-score { margin: 0; font: 700 64px/1 var(--display); color: var(--sun); text-shadow: 0 4px 0 #b08a08; }
+.badge {
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--sun);
+  color: var(--ink);
+  font: 900 13px var(--body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  animation: badge 0.9s ease-in-out infinite alternate;
+}
+.stats { margin: 0; width: 100%; max-width: 290px; display: grid; gap: 8px; }
+.stats div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.stats dt { color: var(--muted); font-weight: 800; }
+.stats dd { margin: 0; display: flex; align-items: center; gap: 8px; font-weight: 900; }
+.stats img { width: 30px; height: 30px; }
+.row { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 8px; }
+
+.toast {
+  position: absolute;
+  left: 50%;
+  z-index: 4;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 8px 18px 8px 8px;
+  border-radius: 20px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  animation: toast 0.45s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+.toast img { width: 46px; height: 46px; flex: none; }
+.toast strong { display: block; font: 700 17px/1.15 var(--display); }
+.toast span { display: block; font-size: 13.5px; font-weight: 700; color: #5d4f7a; }
+
+.hint {
+  position: absolute;
+  left: 50%;
+  z-index: 3;
+  margin: 0;
+  transform: translateX(-50%);
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: rgba(10, 8, 34, 0.66);
+  font-weight: 800;
+  font-size: 15px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: bob 1.4s ease-in-out infinite;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@keyframes fade { from { opacity: 0; } }
+@keyframes toast { from { opacity: 0; transform: translate(-50%, -12px) scale(0.7); } }
+@keyframes bob { 50% { transform: translate(-50%, -5px); } }
+@keyframes badge { to { transform: scale(1.08) rotate(-2deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage" class="stage" tabindex="-1">
+    <canvas id="game" role="img" aria-label="Jelly Jar: a glass jar that fills up with jellies"></canvas>
+
+    <div id="corner" class="corner" hidden>
+      <button id="btn-sound" class="icon-btn" type="button" aria-label="Sound" aria-pressed="true">
+        <svg class="on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg class="off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 9.5l5 5m0-5l-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.5"/><rect x="14" y="5" width="4" height="14" rx="1.5"/></svg>
+      </button>
+    </div>
+
+    <p id="hint" class="hint" hidden></p>
+
+    <div id="toast" class="toast" aria-hidden="true" hidden>
+      <img id="toast-img" alt="">
+      <div><strong id="toast-title"></strong><span id="toast-text"></span></div>
+    </div>
+  </div>
+
+  <section id="menu" class="overlay" aria-labelledby="logo">
+    <div class="card">
+      <h1 id="logo" class="logo" aria-label="Jelly Jar"><span style="--c:#ff8cc6;--d:#c4447f;--i:0" aria-hidden="true">J</span><span style="--c:#ff6f6f;--d:#b3303f;--i:1" aria-hidden="true">e</span><span style="--c:#ffa033;--d:#b85c0b;--i:2" aria-hidden="true">l</span><span style="--c:#ffd83d;--d:#b08a08;--i:3" aria-hidden="true">l</span><span style="--c:#9ddf57;--d:#4b9022;--i:4" aria-hidden="true">y</span><span class="gap" aria-hidden="true"></span><span style="--c:#36d3a3;--d:#11826a;--i:5" aria-hidden="true">J</span><span style="--c:#3dbfff;--d:#1471ad;--i:6" aria-hidden="true">a</span><span style="--c:#a368ff;--d:#6131ba;--i:7" aria-hidden="true">r</span></h1>
+      <p class="lede">Drop jellies into the jar. When two of the same kind touch, they squish into a bigger one. Don't let the jar fill past the MAX line.</p>
+      <div class="actions">
+        <button id="btn-continue" class="btn" type="button" hidden>Continue</button>
+        <button id="btn-play" class="btn" type="button">Play</button>
+      </div>
+      <div>
+        <p class="label">Jellies found: <b id="found-count">5</b> of 11</p>
+        <ol id="chain" class="chain" aria-label="The jellies, smallest to biggest"></ol>
+      </div>
+      <dl class="how">
+        <div class="k-mouse"><dt>Aim</dt><dd>Move the mouse, or use &larr; &rarr;</dd></div>
+        <div class="k-mouse"><dt>Drop</dt><dd>Click, or press Space</dd></div>
+        <div class="k-mouse"><dt>Pause</dt><dd>Esc</dd></div>
+        <div class="k-touch"><dt>Aim</dt><dd>Drag left and right</dd></div>
+        <div class="k-touch"><dt>Drop</dt><dd>Let go</dd></div>
+        <div><dt>Lose</dt><dd>Jellies stay above MAX for 3 seconds</dd></div>
+      </dl>
+      <div class="menu-foot">
+        <span>Best <b id="menu-best" class="num">0</b></span>
+        <button id="menu-sound" class="text-btn" type="button">Sound: on</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="pause" class="overlay" aria-labelledby="pause-title" hidden>
+    <div class="card card-small">
+      <h2 id="pause-title" class="title">Paused</h2>
+      <p class="sub">Score <b id="pause-score" class="num">0</b></p>
+      <button id="btn-resume" class="btn" type="button">Resume</button>
+      <div class="row">
+        <button id="btn-restart" class="text-btn" type="button">Restart</button>
+        <button id="btn-quit" class="text-btn" type="button">Main menu</button>
+        <button id="pause-sound" class="text-btn" type="button">Sound: on</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="over" class="overlay" aria-labelledby="over-title" hidden>
+    <div class="card card-small">
+      <h2 id="over-title" class="title">The jar overflowed</h2>
+      <p id="over-badge" class="badge" hidden>New best!</p>
+      <p id="over-score" class="big-score num">0</p>
+      <dl class="stats">
+        <div><dt>Best</dt><dd id="over-best" class="num">0</dd></div>
+        <div><dt>Biggest jelly</dt><dd><img id="over-top-img" alt=""><span id="over-top"></span></dd></div>
+        <div><dt>Merges</dt><dd id="over-merges" class="num">0</dd></div>
+      </dl>
+      <button id="btn-again" class="btn" type="button">Play again</button>
+      <button id="btn-over-menu" class="text-btn" type="button">Main menu</button>
+    </div>
+  </section>
+
+  <div id="sr" class="sr-only" aria-live="polite"></div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = (id) => document.getElementById(id);
+  const TAU = Math.PI * 2;
+  const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+  const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+  const easeOutBack = (t) => { const c = 1.9; t -= 1; return 1 + (c + 1) * t * t * t + c * t * t; };
+  const fmt = (n) => Math.round(n).toLocaleString('en-US');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  document.documentElement.classList.toggle('touch', coarse);
+
+  // localStorage can be missing or blocked (private windows, some embeds); the game works without it.
+  const store = {
+    get(key, fallback) {
+      try {
+        const v = localStorage.getItem('jelly-jar:' + key);
+        return v === null ? fallback : JSON.parse(v);
+      } catch { return fallback; }
+    },
+    set(key, value) {
+      try { localStorage.setItem('jelly-jar:' + key, JSON.stringify(value)); } catch { /* ignore */ }
+    },
+    del(key) {
+      try { localStorage.removeItem('jelly-jar:' + key); } catch { /* ignore */ }
+    },
+  };
+
+  // ---------- Tuning ----------
+  // World units. The inside of the jar runs from x 0 to W, and from y 0 (the MAX line) down to H (the floor).
+  const W = 400, H = 520;
+  const RIM = 34, GLASS = 12;       // glass above the MAX line, wall thickness
+  const RAIL_Y = -128;              // the dropper slides along this rail
+  const SPAWN_Y = -70;              // centre of the jelly waiting under the dropper
+  const GRAVITY = 2300;
+  const STEP = 1 / 120, SUBSTEPS = 10;
+  const VIS = 1.07;                 // jellies are drawn a bit bigger than they collide, so neighbours squish flat
+  const FRICTION = 0.24, WALL_FRICTION = 0.08, BOUNCE = 0.22, BOUNCE_MIN = 70, DRAG = 0.3, VMAX = 2600;
+  const MAX_CORR = 2.5;             // most a jelly can be pushed out of a neighbour per substep
+  const MAX_PUSH = 450;             // most speed a push can add, so squeezed jellies aren't launched
+  const GRACE = 1.1;                // seconds before a new jelly counts toward overflowing
+  const OVERFLOW_TIME = 3;          // seconds above the MAX line before the game ends
+  const COOLDOWN = 0.38;            // seconds between drops
+  const CHAIN_WINDOW = 0.8;         // merges this close together count as a chain
+  const MERGE_GAP = 1.5;            // same-size jellies this close count as touching
+  const SPAWN_WEIGHTS = [30, 25, 20, 15, 10];
+  const KING_POP_POINTS = 1500;
+
+  const KINDS = [
+    { name: 'Pip', r: 13, base: '#ff8cc6', light: '#ffd9ec', dark: '#c4447f', eyes: 'dot', mouth: 'none', blush: true, blurb: 'Tiny, but ready to grow.' },
+    { name: 'Bean', r: 18, base: '#ff6464', light: '#ffc9c0', dark: '#b3303f', eyes: 'dot', mouth: 'smile', blush: true, blurb: 'Bouncy and a little nervous.' },
+    { name: 'Gumdrop', r: 24, base: '#ffa033', light: '#ffdca6', dark: '#b85c0b', eyes: 'shiny', mouth: 'grin', blurb: 'Smells like orange soda.' },
+    { name: 'Jujube', r: 30, base: '#ffd83d', light: '#fff4b8', dark: '#b08a08', eyes: 'shiny', mouth: 'tongue', blurb: 'Always sticking its tongue out.' },
+    { name: 'Pudding', r: 36, base: '#9ddf57', light: '#ddf7bd', dark: '#4b9022', eyes: 'sleepy', mouth: 'smile', blush: true, blurb: 'Would rather be napping.' },
+    { name: 'Mochi', r: 44, base: '#36d3a3', light: '#b8f5e0', dark: '#11826a', eyes: 'shiny', mouth: 'cat', blush: true, blurb: 'Soft, sweet and extra squishy.' },
+    { name: 'Wobbles', r: 53, base: '#3dbfff', light: '#c2ebff', dark: '#1471ad', eyes: 'cyclops', mouth: 'smile', blurb: 'Sees everything with one big eye.' },
+    { name: 'Blobert', r: 63, base: '#6280ff', light: '#cad3ff', dark: '#2b3db0', eyes: 'shiny', mouth: 'teeth', brows: true, blurb: 'Grins at every merge.' },
+    { name: 'Chonk', r: 74, base: '#a368ff', light: '#e0ccff', dark: '#6131ba', eyes: 'shades', mouth: 'smirk', blurb: 'Too cool for the jar.' },
+    { name: 'Opal', r: 87, base: '#efe6ff', light: '#ffffff', dark: '#9580c4', eyes: 'shiny', mouth: 'smile', lashes: true, blush: true, fx: 'opal', blurb: 'Shimmers when the light hits.' },
+    { name: 'Jelly King', r: 102, base: '#3d2894', light: '#8d70ff', dark: '#1b104c', eyes: 'star', mouth: 'big', fx: 'galaxy', crown: true, blurb: 'Rules the jar. Two kings make a royal pop.' },
+  ];
+  const TOP = KINDS.length - 1;
+  const SPAWNABLE = SPAWN_WEIGHTS.length - 1;
+  for (const k of KINDS) {
+    k.shade = mixHex(k.base, k.dark, 0.45);
+    k.omega = TAU * 7.2 * Math.sqrt(24 / k.r);   // wobble speed: small jellies jiggle faster
+  }
+  // Points for making a jelly of each size (x10 so the numbers feel big).
+  const POINTS = KINDS.map((_, i) => (i * (i + 1)) / 2 * 10);
+
+  const LAYOUTS = {
+    tall: { x0: -18, y0: -212, x1: 418, y1: 616 },
+    wide: { x0: -216, y0: -178, x1: 616, y1: 562 },
+  };
+
+  const FONT_DISPLAY = '"DynaPuff", "Fredoka", ui-rounded, "Arial Rounded MT Bold", sans-serif';
+  const FONT_BODY = '"Nunito", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif';
+  const INK = '#2a1836', MOUTH = '#6e1c3d', TONGUE = '#ff7aa5';
+
+  function mixHex(a, b, t) {
+    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    const ch = (s) => Math.round(((pa >> s) & 255) * (1 - t) + ((pb >> s) & 255) * t);
+    return '#' + ((1 << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).slice(1);
+  }
+
+  // Twinkling stars inside the Jelly King (fixed positions in a unit circle).
+  const STARS = (() => {
+    const out = [];
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    while (out.length < 18 * 3) {
+      const x = rnd() * 2 - 1, y = rnd() * 2 - 1;
+      if (x * x + y * y < 0.72) out.push(x, y, 0.4 + rnd() * 0.8);
+    }
+    return out;
+  })();
+
+  // ---------- Sound (synthesised, no files) ----------
+  const sfx = (() => {
+    let ac = null, out = null, noise = null, lastLand = 0;
+    let muted = !!store.get('muted', false);
+    const SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+
+    function init() {
+      if (ac) {
+        if (ac.state === 'suspended') ac.resume();
+        return;
+      }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      try { ac = new AC(); } catch { return; }
+      out = ac.createGain();
+      out.gain.value = muted ? 0 : 0.9;
+      const comp = ac.createDynamicsCompressor();
+      comp.threshold.value = -14;
+      comp.ratio.value = 4;
+      out.connect(comp);
+      comp.connect(ac.destination);
+      noise = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.5), ac.sampleRate);
+      const d = noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const live = () => ac && !muted && ac.state === 'running';
+
+    function tone(type, f0, f1, dur, vol, delay = 0) {
+      const t = ac.currentTime + delay;
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(f0, t);
+      if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.012, dur * 0.3));
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g);
+      g.connect(out);
+      o.start(t);
+      o.stop(t + dur + 0.03);
+    }
+    function hiss(dur, vol, freq, q, delay = 0) {
+      const t = ac.currentTime + delay;
+      const src = ac.createBufferSource();
+      src.buffer = noise;
+      const f = ac.createBiquadFilter();
+      f.type = 'bandpass';
+      f.frequency.value = freq;
+      f.Q.value = q;
+      const g = ac.createGain();
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      src.connect(f);
+      f.connect(g);
+      g.connect(out);
+      src.start(t);
+      src.stop(t + dur + 0.02);
+    }
+
+    return {
+      init,
+      get muted() { return muted; },
+      setMuted(m) {
+        muted = m;
+        store.set('muted', m);
+        if (out) out.gain.value = m ? 0 : 0.9;
+      },
+      click() { if (live()) tone('triangle', 880, 660, 0.06, 0.08); },
+      drop() { if (live()) tone('sine', 620, 300, 0.13, 0.16); },
+      land(strength, level) {
+        if (!live() || ac.currentTime - lastLand < 0.07) return;
+        lastLand = ac.currentTime;
+        const f = 190 - level * 11;
+        tone('sine', f, f * 0.6, 0.1, 0.05 + 0.14 * strength);
+        hiss(0.05, 0.02 + 0.05 * strength, 700 - level * 30, 1.2);
+      },
+      merge(level, chain) {
+        if (!live()) return;
+        // Chains climb a pentatonic scale; bigger jellies sit lower.
+        const root = 220 * Math.pow(2, (6 - level) / 12);
+        const f = root * Math.pow(2, SCALE[Math.min(chain - 1, SCALE.length - 1)] / 12);
+        tone('sine', f * 0.7, f * 1.6, 0.18, 0.28);
+        tone('triangle', f * 1.5, f * 2.4, 0.12, 0.07, 0.03);
+        hiss(0.08, 0.06, 1800, 1.5);
+      },
+      pop(level) {
+        if (!live()) return;
+        const f = 520 - level * 26;
+        tone('sine', f, f * 1.8, 0.08, 0.07);
+      },
+      king() {
+        if (!live()) return;
+        [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => tone('triangle', 392 * Math.pow(2, s / 12), 0, 0.35, 0.12, i * 0.06));
+        hiss(0.5, 0.05, 4000, 0.7);
+      },
+      found() {
+        if (!live()) return;
+        [0, 7, 12].forEach((s, i) => tone('square', 523 * Math.pow(2, s / 12), 0, 0.16, 0.05, i * 0.1));
+      },
+      warn() { if (live()) tone('square', 330, 330, 0.12, 0.05); },
+      tick(n) { if (live()) tone('square', 440 + (3 - n) * 110, 0, 0.09, 0.05); },
+      over() {
+        if (!live()) return;
+        [0, -3, -7, -12].forEach((s, i) => tone('triangle', 330 * Math.pow(2, s / 12), 330 * Math.pow(2, (s - 1) / 12), 0.28, 0.13, i * 0.2));
+      },
+      best() {
+        if (!live()) return;
+        [0, 4, 7, 12].forEach((s, i) => tone('triangle', 523 * Math.pow(2, s / 12), 0, 0.2, 0.1, i * 0.09));
+      },
+    };
+  })();
+
+  // ---------- Game state ----------
+  const S = {
+    mode: 'menu',           // menu | playing | paused | over | clearing
+    demo: true,             // the menu drops jellies by itself
+    t: 0,
+    jellies: [],
+    parts: [],
+    texts: [],
+    score: 0, shown: 0, scoreBump: 0,
+    best: Number(store.get('best', 0)) || 0,
+    found: clamp(Number(store.get('found', SPAWNABLE)) || SPAWNABLE, SPAWNABLE, TOP),
+    merges: 0, drops: 0, top: 0, kings: 0,
+    chain: 0, lastMerge: -9,
+    held: 0, next: 0, heldX: W / 2, aimX: W / 2, heldVx: 0,
+    cool: 0, squeeze: 0, nextPop: 0,
+    danger: 0, tickN: 4,
+    shake: 0,
+    bump: 0, bumpLevel: 0,
+    demoT: 0.3,
+    clearT: 0, afterClear: null, wasOver: false,
+    overT: 0, overShown: false, newBest: false,
+    saveT: 0,
+    hintDrops: 0,
+    lookX: W / 2, lookY: -200,
+  };
+  let uid = 1;
+
+  function makeJelly(level, x, y) {
+    const k = KINDS[level];
+    return {
+      id: uid++, level, x, y, px: x, py: y, vx: 0, vy: 0, ux: 0, uy: 0,
+      r: k.r, tr: k.r, gr: 0, w: 1 / (k.r * k.r),
+      birth: S.t, merging: false, gone: false, scared: false,
+      da: 0, dav: 0, db: 0, dbv: 0, pop: 0, popv: 0,          // wobble springs
+      mood: '', moodT: 0, face: '', blink: 0, blinkT: rand(0.5, 4), lx: 0, ly: -1,
+      pl: new Float32Array(3 * 20), np: 0,                      // squish planes for drawing
+    };
+  }
+  const held = makeJelly(0, W / 2, SPAWN_Y);   // the jelly waiting under the dropper (display only)
+
+  function pickSpawn() {
+    const weights = S.drops < 3 ? [45, 35, 20] : SPAWN_WEIGHTS;
+    let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < weights.length; i++) {
+      r -= weights[i];
+      if (r < 0) return i;
+    }
+    return 0;
+  }
+
+  // ---------- Physics ----------
+  // Position-based circles with many small substeps: sturdy stacks, no tunnelling,
+  // and heavy jellies push light ones around.
+  const pairs = [];
+  let npairs = 0;
+  const walls = [];
+  let nwalls = 0;
+  const mergeQueue = [];
+
+  function addPair(a, b, nx, ny, pen) {
+    const c = pairs[npairs] || (pairs[npairs] = { a: null, b: null, nx: 0, ny: 0, pen: 0 });
+    c.a = a; c.b = b; c.nx = nx; c.ny = ny; c.pen = pen;
+    npairs++;
+  }
+  function addWall(b, nx, ny, pen, mu) {
+    const c = walls[nwalls] || (walls[nwalls] = { b: null, nx: 0, ny: 0, pen: 0, mu: 0 });
+    c.b = b; c.nx = nx; c.ny = ny; c.pen = pen; c.mu = mu;
+    nwalls++;
+  }
+
+  function kick(j, nx, ny, s) {
+    // Squash along the contact normal: the jelly flattens there and bulges sideways.
+    const w = KINDS[j.level].omega;
+    j.dav -= s * (nx * nx - ny * ny) * w;
+    j.dbv -= s * (2 * nx * ny) * w;
+  }
+
+  function impact(a, b, nx, ny, speed) {
+    const s = Math.min(0.17, (speed - 180) / 3000);
+    if (s <= 0) return;
+    const sa = b ? s * clamp(b.r / a.r, 0.3, 1) : s;
+    kick(a, nx, ny, sa);
+    if (sa > 0.075 && !(a.moodT > 0 && a.mood === 'happy')) { a.mood = 'squish'; a.moodT = 0.3; }
+    if (b) {
+      const sb = s * clamp(a.r / b.r, 0.3, 1);
+      kick(b, nx, ny, sb);
+      if (sb > 0.075 && !(b.moodT > 0 && b.mood === 'happy')) { b.mood = 'squish'; b.moodT = 0.3; }
+    }
+    if (speed > S.bump) {
+      S.bump = speed;
+      S.bumpLevel = b ? Math.max(a.level, b.level) : a.level;
+    }
+  }
+
+  function substep(h) {
+    const js = S.jellies, n = js.length;
+    const drag = 1 / (1 + DRAG * h);
+    for (let i = 0; i < n; i++) {
+      const b = js[i];
+      if (b.r < b.tr) {
+        b.r = Math.min(b.tr, b.r + b.gr * h);
+        b.w = 1 / (b.r * b.r);
+      }
+      b.px = b.x; b.py = b.y;
+      b.vx *= drag;
+      b.vy = (b.vy + GRAVITY * h) * drag;
+      b.ux = b.vx; b.uy = b.vy;
+      b.x += b.vx * h;
+      b.y += b.vy * h;
+    }
+
+    npairs = 0;
+    nwalls = 0;
+    const canMerge = S.mode === 'playing' || S.mode === 'menu';
+    for (let i = 0; i < n; i++) {
+      const a = js[i];
+      for (let q = i + 1; q < n; q++) {
+        const b = js[q];
+        const rs = a.r + b.r;
+        const same = canMerge && a.level === b.level && !a.merging && !b.merging;
+        const reach = same ? rs + MERGE_GAP : rs;
+        let dx = b.x - a.x;
+        if (dx > reach || dx < -reach) continue;
+        let dy = b.y - a.y;
+        if (dy > reach || dy < -reach) continue;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= reach * reach) continue;
+        if (same) {
+          a.merging = b.merging = true;
+          mergeQueue.push(a, b);
+        }
+        if (d2 >= rs * rs) continue;
+        let d = Math.sqrt(d2);
+        if (d < 1e-4) { dx = Math.random() - 0.5; dy = -1; d = Math.hypot(dx, dy); }
+        const nx = dx / d, ny = dy / d, pen = Math.min(rs - d, MAX_CORR);
+        const ws = a.w + b.w, ka = (pen * a.w) / ws, kb = (pen * b.w) / ws;
+        a.x -= nx * ka; a.y -= ny * ka;
+        b.x += nx * kb; b.y += ny * kb;
+        addPair(a, b, nx, ny, pen);
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const b = js[i];
+      if (b.x < b.r) { addWall(b, 1, 0, b.r - b.x, WALL_FRICTION); b.x = b.r; }
+      else if (b.x > W - b.r) { addWall(b, -1, 0, b.x - (W - b.r), WALL_FRICTION); b.x = W - b.r; }
+      if (b.y > H - b.r) { addWall(b, 0, -1, b.y - (H - b.r), FRICTION); b.y = H - b.r; }
+    }
+
+    const ih = 1 / h;
+    for (let i = 0; i < n; i++) {
+      const b = js[i];
+      let vx = (b.x - b.px) * ih, vy = (b.y - b.py) * ih;
+      // Pushes can turn a jelly but only speed it up to MAX_PUSH.
+      const v2 = vx * vx + vy * vy, cap = Math.max(MAX_PUSH * MAX_PUSH, b.ux * b.ux + b.uy * b.uy);
+      if (v2 > cap) {
+        const f = Math.sqrt(cap / v2);
+        vx *= f;
+        vy *= f;
+      }
+      b.vx = vx;
+      b.vy = vy;
+    }
+
+    // Velocity pass: friction from how hard the contact pushed, plus a little bounce.
+    for (let i = 0; i < npairs; i++) {
+      const c = pairs[i], a = c.a, b = c.b, nx = c.nx, ny = c.ny;
+      const ws = a.w + b.w, fa = a.w / ws, fb = b.w / ws;
+      const rvx = b.vx - a.vx, rvy = b.vy - a.vy;
+      const vn = rvx * nx + rvy * ny;
+      const tx = rvx - vn * nx, ty = rvy - vn * ny;
+      const vt = Math.sqrt(tx * tx + ty * ty);
+      if (vt > 1e-6) {
+        const k = Math.min(FRICTION * c.pen * ih, vt) / vt;
+        a.vx += tx * k * fa; a.vy += ty * k * fa;
+        b.vx -= tx * k * fb; b.vy -= ty * k * fb;
+      }
+      const pre = (b.ux - a.ux) * nx + (b.uy - a.uy) * ny;
+      if (pre < -BOUNCE_MIN) {
+        const now = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+        const dv = -BOUNCE * pre - now;
+        if (dv > 0) {
+          a.vx -= nx * dv * fa; a.vy -= ny * dv * fa;
+          b.vx += nx * dv * fb; b.vy += ny * dv * fb;
+        }
+        impact(a, b, nx, ny, -pre);
+      }
+    }
+    for (let i = 0; i < nwalls; i++) {
+      const c = walls[i], b = c.b, nx = c.nx, ny = c.ny;
+      const vn = b.vx * nx + b.vy * ny;
+      const tx = b.vx - vn * nx, ty = b.vy - vn * ny;
+      const vt = Math.sqrt(tx * tx + ty * ty);
+      if (vt > 1e-6) {
+        const k = Math.min(c.mu * c.pen * ih, vt) / vt;
+        b.vx -= tx * k;
+        b.vy -= ty * k;
+      }
+      const pre = b.ux * nx + b.uy * ny;
+      if (pre < -BOUNCE_MIN) {
+        const now = b.vx * nx + b.vy * ny;
+        const dv = -BOUNCE * pre - now;
+        if (dv > 0) { b.vx += nx * dv; b.vy += ny * dv; }
+        impact(b, null, -nx, -ny, -pre);
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const b = js[i];
+      const v2 = b.vx * b.vx + b.vy * b.vy;
+      if (v2 > VMAX * VMAX) {
+        const f = VMAX / Math.sqrt(v2);
+        b.vx *= f;
+        b.vy *= f;
+      }
+    }
+  }
+
+  function processMerges() {
+    for (let i = 0; i < mergeQueue.length; i += 2) mergeJellies(mergeQueue[i], mergeQueue[i + 1]);
+    mergeQueue.length = 0;
+    S.jellies = S.jellies.filter((j) => !j.gone);
+  }
+
+  function mergeJellies(a, b) {
+    if (a.gone || b.gone) return;
+    a.gone = b.gone = true;
+    const level = a.level;
+    const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
+    S.chain = S.t - S.lastMerge < CHAIN_WINDOW ? S.chain + 1 : 1;
+    S.lastMerge = S.t;
+
+    if (level === TOP) {
+      kingPop(x, y);
+      return;
+    }
+    const L = level + 1, k = KINDS[L];
+    const c = makeJelly(L, x, y);
+    c.r = Math.max(a.r, b.r) * 0.8;
+    c.w = 1 / (c.r * c.r);
+    c.gr = (c.tr - c.r) / 0.18;          // grow into place so neighbours get pushed, not launched
+    c.vx = (a.vx + b.vx) / 2;
+    c.vy = (a.vy + b.vy) / 2;
+    c.pop = -0.12;
+    c.popv = 2.4;
+    c.mood = 'happy';
+    c.moodT = 0.9;
+    S.jellies.push(c);
+    for (const o of S.jellies) {
+      if (o === c || o.gone) continue;
+      const dx = o.x - x, dy = o.y - y, d = Math.hypot(dx, dy);
+      if (d > 1e-3 && d < (c.tr + o.r) * 1.3) kick(o, dx / d, dy / d, 0.07);
+    }
+
+    const count = reduceMotion ? 6 : 8 + L * 2;
+    burst(x, y, k, count, 220 + L * 26, k.r * 0.2);
+    S.parts.push({ t: 'ring', x, y, r0: k.r * 0.8, r1: k.r * 1.6, life: 0.4, max: 0.4, c: k.light });
+    if (L >= 6) S.shake = Math.max(S.shake, (L - 5) * 1.8);
+
+    if (!S.demo) {
+      const pts = POINTS[L] * S.chain;
+      S.score += pts;
+      S.scoreBump = 1;
+      S.merges++;
+      S.top = Math.max(S.top, L);
+      addText(x, y - k.r * 0.3, '+' + fmt(pts), 20 + L * 1.6, '#ffffff', k.dark);
+      if (S.chain >= 2) addText(x, y - k.r * 0.3 - 26 - L, 'Chain x' + S.chain, 15 + L, '#ffd93d', '#2a1836', 0.12);
+      sfx.merge(L, S.chain);
+      if (L > S.found) discover(L);
+      if (L >= 8 && navigator.vibrate) { try { navigator.vibrate(15); } catch { /* ignore */ } }
+    }
+  }
+
+  function kingPop(x, y) {
+    const colors = KINDS.map((k) => k.base);
+    for (let i = 0; i < (reduceMotion ? 20 : 70); i++) {
+      const a = rand(0, TAU), v = rand(150, 700);
+      S.parts.push({
+        t: Math.random() < 0.5 ? 'conf' : 'star', x, y,
+        vx: Math.cos(a) * v, vy: Math.sin(a) * v - 250, g: 900,
+        r: rand(4, 9), rot: rand(0, TAU), vr: rand(-8, 8),
+        life: rand(0.9, 1.6), max: 1.6, c: colors[i % colors.length],
+      });
+    }
+    S.parts.push({ t: 'ring', x, y, r0: 60, r1: 260, life: 0.6, max: 0.6, c: '#ffd93d' });
+    S.shake = Math.max(S.shake, 12);
+    if (!S.demo) {
+      const pts = KING_POP_POINTS * S.chain;
+      S.score += pts;
+      S.scoreBump = 1;
+      S.merges++;
+      S.kings++;
+      addText(x, y - 30, 'Royal pop! +' + fmt(pts), 30, '#ffd93d', '#2a1836');
+      sfx.king();
+      showToast(TOP, 'Royal pop!', 'Two Jelly Kings burst into sparkles.');
+    }
+  }
+
+  function burst(x, y, k, n, speed, size) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, TAU), v = speed * rand(0.35, 1);
+      S.parts.push({
+        t: 'drop', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - speed * 0.3, g: 1400,
+        r: size * rand(0.5, 1), life: rand(0.4, 0.75), max: 0.75, c: Math.random() < 0.7 ? k.base : k.light,
+      });
+    }
+  }
+
+  function addText(x, y, text, size, color, stroke, delay = 0) {
+    S.texts.push({ x, y, vy: -70, text, size, color, stroke, life: 1.1 + delay, max: 1.1, delay });
+  }
+
+  function popJelly(j, withSound) {
+    const k = KINDS[j.level];
+    burst(j.x, j.y, k, reduceMotion ? 4 : 6 + j.level, 160 + j.level * 15, j.r * 0.22);
+    if (withSound) sfx.pop(j.level);
+  }
+
+  // ---------- Game flow ----------
+  function fixedStep(dt) {
+    S.t += dt;
+    S.jellies.sort((a, b) => b.y - a.y);   // solve from the bottom up, so stacks settle firmly
+    for (let i = 0; i < SUBSTEPS; i++) substep(dt / SUBSTEPS);
+    if (mergeQueue.length) processMerges();
+    if (S.bump > 0) {
+      if (S.mode === 'playing' && S.bump > 320) sfx.land(Math.min(1, (S.bump - 300) / 1500), S.bumpLevel);
+      S.bump = 0;
+    }
+    if (S.mode === 'playing') playingStep(dt);
+    else if (S.mode === 'menu') demoStep(dt);
+    else if (S.mode === 'clearing') clearingStep(dt);
+  }
+
+  function playingStep(dt) {
+    if (S.cool > 0) S.cool = Math.max(0, S.cool - dt);
+    // Only jellies resting above the MAX line count; one flying past just pauses the countdown.
+    let over = false, flying = false;
+    for (const j of S.jellies) {
+      j.scared = S.t - j.birth > GRACE && j.y - j.r < 0;
+      if (!j.scared) continue;
+      if (j.vx * j.vx + j.vy * j.vy < 350 * 350) over = true;
+      else flying = true;
+    }
+    if (over) {
+      if (S.danger === 0) {
+        sfx.warn();
+        announce('Careful! Jellies are above the MAX line.');
+      }
+      S.danger += dt;
+      const left = Math.ceil(OVERFLOW_TIME - S.danger);
+      if (left > 0 && left < S.tickN) {
+        S.tickN = left;
+        sfx.tick(left);
+      }
+      if (S.danger >= OVERFLOW_TIME) gameOver();
+    } else if (S.danger > 0 && !flying) {
+      S.danger = Math.max(0, S.danger - dt * 2);
+      if (S.danger === 0) S.tickN = 4;
+    }
+    S.saveT += dt;
+    if (S.saveT > 2) {
+      S.saveT = 0;
+      saveGame();
+    }
+  }
+
+  function demoStep(dt) {
+    S.demoT -= dt;
+    if (S.demoT <= 0) {
+      S.demoT = rand(0.5, 1.05);
+      const level = pickSpawn(), k = KINDS[level];
+      const j = makeJelly(level, rand(k.r, W - k.r), SPAWN_Y - 30);
+      j.vy = 80;
+      S.jellies.push(j);
+    }
+    for (const j of S.jellies) {
+      if (S.t - j.birth > GRACE && j.y - j.r < H * 0.32) {
+        clearJar(() => { S.mode = 'menu'; S.demoT = 0.4; });
+        break;
+      }
+    }
+  }
+
+  function clearJar(then) {
+    S.mode = 'clearing';
+    S.clearT = 0.05;
+    S.afterClear = then;
+    S.danger = 0;
+  }
+
+  function clearingStep(dt) {
+    S.clearT -= dt;
+    if (S.clearT > 0) return;
+    if (!S.jellies.length) {
+      const then = S.afterClear;
+      S.afterClear = null;
+      S.wasOver = false;
+      if (then) then();
+      return;
+    }
+    const per = Math.max(1, Math.ceil(S.jellies.length / 12));
+    for (let n = 0; n < per && S.jellies.length; n++) {
+      let top = 0;
+      for (let i = 1; i < S.jellies.length; i++) {
+        if (S.jellies[i].y - S.jellies[i].r < S.jellies[top].y - S.jellies[top].r) top = i;
+      }
+      popJelly(S.jellies[top], !S.demo && n === 0);
+      S.jellies.splice(top, 1);
+    }
+    S.clearT = 0.04;
+  }
+
+  function resetRound() {
+    S.jellies = [];
+    S.score = S.shown = 0;
+    S.merges = S.drops = S.top = S.kings = 0;
+    S.chain = 0;
+    S.lastMerge = -9;
+    S.danger = 0;
+    S.tickN = 4;
+    S.cool = 0;
+    S.saveT = 0;
+    S.heldX = S.aimX = W / 2;
+  }
+
+  function startGame() {
+    resetRound();
+    S.demo = false;
+    S.wasOver = false;
+    S.mode = 'playing';
+    S.held = pickSpawn();
+    S.next = pickSpawn();
+    S.cool = COOLDOWN;
+    showOnly(null);
+    if (!S.best && !store.get('played', false)) {
+      S.hintDrops = 2;
+      showHint(coarse ? 'Drag to aim, let go to drop' : 'Move to aim, click to drop');
+    }
+    store.set('played', true);
+    focusStage();
+    saveGame();
+  }
+
+  function drop() {
+    if (S.mode !== 'playing' || S.cool > 0) return;
+    const k = KINDS[S.held];
+    const x = clamp(S.heldX, k.r, W - k.r);
+    const j = makeJelly(S.held, x, SPAWN_Y);
+    j.vy = 80;
+    j.vx = clamp(S.heldVx * 0.15, -120, 120);
+    j.da = held.da - 0.1;
+    j.dav = held.dav;
+    j.db = held.db;
+    j.dbv = held.dbv;
+    j.lx = 0;
+    j.ly = 1;
+    S.jellies.push(j);
+    S.drops++;
+    S.held = S.next;
+    S.next = pickSpawn();
+    S.cool = COOLDOWN;
+    S.squeeze = 1;
+    S.nextPop = 1;
+    sfx.drop();
+    if (S.hintDrops > 0 && --S.hintDrops === 0) hideHint();
+  }
+
+  function discover(level) {
+    S.found = level;
+    store.set('found', level);
+    const k = KINDS[level];
+    showToast(level, 'You found ' + k.name + '!', k.blurb);
+    sfx.found();
+    announce('New jelly found: ' + k.name + '.');
+  }
+
+  function gameOver() {
+    S.mode = 'over';
+    S.wasOver = true;
+    S.overT = 0;
+    S.overShown = false;
+    S.newBest = S.score > S.best;
+    if (S.newBest) {
+      S.best = S.score;
+      store.set('best', S.best);
+    }
+    store.del('save');
+    $('corner').hidden = true;
+    hideHint();
+    sfx.over();
+    announce('The jar overflowed. Final score ' + fmt(S.score) + '.');
+  }
+
+  function showGameOver() {
+    S.overShown = true;
+    $('over-score').textContent = fmt(S.score);
+    $('over-best').textContent = fmt(S.best);
+    $('over-badge').hidden = !(S.newBest && S.score > 0);
+    $('over-merges').textContent = fmt(S.merges);
+    $('over-top').textContent = KINDS[S.top].name;
+    $('over-top-img').src = iconURLs[S.top];
+    showOnly('over');
+    $('btn-again').focus({ preventScroll: true });
+    if (S.newBest && S.score > 0) sfx.best();
+  }
+
+  function pause() {
+    if (S.mode !== 'playing') return;
+    S.mode = 'paused';
+    saveGame();
+    $('pause-score').textContent = fmt(S.score);
+    resetRestart();
+    showOnly('pause');
+    $('btn-resume').focus({ preventScroll: true });
+  }
+
+  function resume() {
+    if (S.mode !== 'paused') return;
+    S.mode = 'playing';
+    showOnly(null);
+    focusStage();
+  }
+
+  function toMenu() {
+    S.demo = true;
+    S.demoT = 0.6;
+    hideHint();
+    refreshMenu();
+    showOnly('menu');
+    clearJar(() => { S.mode = 'menu'; });
+    $('btn-play').focus({ preventScroll: true });
+  }
+
+  function serialize() {
+    const r = (v) => Math.round(v * 100) / 100;
+    return {
+      v: 1,
+      score: S.score, merges: S.merges, drops: S.drops, top: S.top, kings: S.kings,
+      held: S.held, next: S.next, heldX: r(S.heldX),
+      jellies: S.jellies.filter((j) => !j.gone).map((j) => [j.level, r(j.x), r(j.y), r(j.vx), r(j.vy)]),
+    };
+  }
+
+  function saveGame() {
+    if (S.mode === 'playing' || S.mode === 'paused') store.set('save', serialize());
+  }
+
+  function validSave(d) {
+    const lvl = (v, max) => Number.isInteger(v) && v >= 0 && v <= max;
+    return !!d && d.v === 1 && Array.isArray(d.jellies) && lvl(d.held, SPAWNABLE) && lvl(d.next, SPAWNABLE) &&
+      d.jellies.every((a) => Array.isArray(a) && lvl(a[0], TOP) && a.slice(1, 5).every(Number.isFinite));
+  }
+
+  function restore(d) {
+    resetRound();
+    S.demo = false;
+    S.wasOver = false;
+    S.score = S.shown = Number(d.score) || 0;
+    S.merges = Number(d.merges) || 0;
+    S.drops = Number(d.drops) || 0;
+    S.top = clamp(Number(d.top) || 0, 0, TOP);
+    S.kings = Number(d.kings) || 0;
+    S.held = d.held;
+    S.next = d.next;
+    S.heldX = S.aimX = clamp(Number(d.heldX) || W / 2, 0, W);
+    for (const [level, x, y, vx, vy] of d.jellies) {
+      const r = KINDS[level].r;
+      const j = makeJelly(level, clamp(x, r, W - r), Math.min(y, H - r));
+      j.vx = vx;
+      j.vy = vy;
+      j.birth = S.t - GRACE;
+      S.jellies.push(j);
+    }
+    S.mode = 'playing';
+    S.cool = COOLDOWN;
+    showOnly(null);
+    focusStage();
+  }
+
+  // ---------- Per-frame animation ----------
+  const keys = { left: false, right: false };
+
+  function animJelly(j, dt, tx, ty) {
+    const w = KINDS[j.level].omega, w2 = w * w, c = 0.4 * w;
+    for (let t = dt; t > 0; t -= 1 / 120) {
+      const h = Math.min(t, 1 / 120);
+      j.dav += (-w2 * j.da - c * j.dav) * h;
+      j.da += j.dav * h;
+      j.dbv += (-w2 * j.db - c * j.dbv) * h;
+      j.db += j.dbv * h;
+      j.popv += (-w2 * j.pop - c * 1.2 * j.popv) * h;
+      j.pop += j.popv * h;
+    }
+    j.da = clamp(j.da, -0.3, 0.3);
+    j.db = clamp(j.db, -0.3, 0.3);
+    j.pop = clamp(j.pop, -0.5, 0.35);
+    if (j.moodT > 0) j.moodT -= dt;
+    j.blinkT -= dt;
+    if (j.blinkT <= 0) {
+      j.blink = 0.12;
+      j.blinkT = rand(1.8, 5.5);
+    }
+    if (j.blink > 0) j.blink -= dt;
+    const dx = tx - j.x, dy = ty - j.y, d = Math.hypot(dx, dy) || 1;
+    const f = Math.min(1, dt * 7);
+    j.lx += (dx / d - j.lx) * f;
+    j.ly += (dy / d - j.ly) * f;
+    j.face = faceOf(j);
+  }
+
+  function faceOf(j) {
+    if (S.mode === 'over' || S.wasOver) return 'dead';
+    if (j.moodT > 0) return j.mood;
+    if (j.scared && S.danger > 0) return 'scared';
+    if (j.vy > 450 && S.t - j.birth < 2) return 'wee';
+    return '';
+  }
+
+  function update(dt) {
+    const inRound = S.mode === 'playing' || S.mode === 'paused';
+    if (S.mode === 'playing') {
+      if (keys.left) S.aimX -= 430 * dt;
+      if (keys.right) S.aimX += 430 * dt;
+      const r = KINDS[S.held].r;
+      S.aimX = clamp(S.aimX, r, W - r);
+      const prev = S.heldX;
+      S.heldX = clamp(S.heldX + (S.aimX - S.heldX) * Math.min(1, dt * 22), r, W - r);
+      const vx = (S.heldX - prev) / Math.max(dt, 1e-3);
+      held.dbv += clamp((vx - S.heldVx) * 0.004, -3, 3);   // the hanging jelly sways when the dropper moves
+      S.heldVx = vx;
+    }
+    if (S.mode !== 'paused') {
+      S.squeeze = Math.max(0, S.squeeze - dt * 4);
+      S.nextPop = Math.max(0, S.nextPop - dt * 3);
+      S.shake *= Math.exp(-dt * 10);
+      S.scoreBump *= Math.exp(-dt * 8);
+    }
+    S.shown += (S.score - S.shown) * Math.min(1, dt * 9);
+    if (Math.abs(S.score - S.shown) < 0.5) S.shown = S.score;
+
+    if (S.mode !== 'paused') {
+      const tx = inRound ? S.heldX : S.lookX, ty = inRound ? SPAWN_Y : S.lookY;
+      for (const j of S.jellies) animJelly(j, dt, tx, ty);
+      held.level = S.held;
+      held.x = S.heldX;
+      held.y = SPAWN_Y;
+      animJelly(held, dt, S.heldX, H);
+
+      let n = 0;
+      for (const p of S.parts) {
+        p.life -= dt;
+        if (p.life <= 0) continue;
+        if (p.t !== 'ring') {
+          p.vy += p.g * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          if (p.vr) p.rot += p.vr * dt;
+        }
+        S.parts[n++] = p;
+      }
+      S.parts.length = Math.min(n, 500);
+      n = 0;
+      for (const t of S.texts) {
+        t.life -= dt;
+        if (t.life <= 0) continue;
+        if (t.life < t.max) t.y += t.vy * dt;
+        S.texts[n++] = t;
+      }
+      S.texts.length = n;
+    }
+
+    if (S.mode === 'over') {
+      S.overT += dt;
+      if (!S.overShown && S.overT > 1.3) showGameOver();
+    }
+  }
+
+  // ---------- Drawing ----------
+  const canvas = $('game');
+  const ctx = canvas.getContext('2d');
+  const bg = document.createElement('canvas');
+  const stage = $('stage');
+  const view = { s: 1, offX: 0, offY: 0, dpr: 1, cw: 1, ch: 1, name: 'tall', L: LAYOUTS.tall };
+
+  function circle(c, x, y, r) {
+    c.beginPath();
+    c.arc(x, y, Math.max(0, r), 0, TAU);
+  }
+  function ellipse(c, x, y, rx, ry, rot = 0) {
+    c.beginPath();
+    c.ellipse(x, y, Math.max(0, rx), Math.max(0, ry), rot, 0, TAU);
+  }
+  function rrect(c, x, y, w, h, r) {
+    // r: one radius, or [top-left, top-right, bottom-right, bottom-left]
+    const [a, b, d, e] = Array.isArray(r) ? r : [r, r, r, r];
+    c.moveTo(x + a, y);
+    c.lineTo(x + w - b, y);
+    c.quadraticCurveTo(x + w, y, x + w, y + b);
+    c.lineTo(x + w, y + h - d);
+    c.quadraticCurveTo(x + w, y + h, x + w - d, y + h);
+    c.lineTo(x + e, y + h);
+    c.quadraticCurveTo(x, y + h, x, y + h - e);
+    c.lineTo(x, y + a);
+    c.quadraticCurveTo(x, y, x + a, y);
+    c.closePath();
+  }
+  function line(c, x0, y0, x1, y1) {
+    c.beginPath();
+    c.moveTo(x0, y0);
+    c.lineTo(x1, y1);
+    c.stroke();
+  }
+  function starPath(c, x, y, R, r, points, rot = -Math.PI / 2) {
+    c.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const a = rot + (i * Math.PI) / points, rad = i % 2 ? r : R;
+      const px = x + Math.cos(a) * rad, py = y + Math.sin(a) * rad;
+      if (i) c.lineTo(px, py); else c.moveTo(px, py);
+    }
+    c.closePath();
+  }
+
+  const PT = new Float32Array(96), RAD = new Float32Array(48), TMP = new Float32Array(48);
+
+  // A jelly: a wobbly outline that flattens wherever it presses on a neighbour or the glass.
+  function drawJelly(c, j, pxs, t) {
+    const k = KINDS[j.level];
+    const rv = j.r * VIS;
+    const onScreen = rv * pxs;
+    const n = onScreen > 34 ? 44 : onScreen > 15 ? 32 : 20;
+    const base = 1 + j.pop + 0.012 * Math.sin(t * 2.2 + j.id * 1.7);
+    const pl = j.pl, np = j.np;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU, ca = Math.cos(a), sa = Math.sin(a);
+      let rad = rv * (base + j.da * (ca * ca - sa * sa) + j.db * 2 * sa * ca);
+      for (let p = 0; p < np; p++) {
+        const dot = ca * pl[p * 3] + sa * pl[p * 3 + 1];
+        if (dot > 0.02) {
+          const lim = pl[p * 3 + 2] / dot;
+          if (lim < rad) rad = lim;
+        }
+      }
+      RAD[i] = rad;
+    }
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < n; i++) TMP[i] = RAD[i];
+      for (let i = 0; i < n; i++) {
+        const avg = 0.25 * TMP[(i + n - 1) % n] + 0.5 * TMP[i] + 0.25 * TMP[(i + 1) % n];
+        if (avg < RAD[i]) RAD[i] = avg;
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU;
+      PT[i * 2] = Math.cos(a) * RAD[i];
+      PT[i * 2 + 1] = Math.sin(a) * RAD[i];
+    }
+
+    c.save();
+    c.translate(j.x, j.y);
+    c.beginPath();
+    c.moveTo((PT[(n - 1) * 2] + PT[0]) / 2, (PT[(n - 1) * 2 + 1] + PT[1]) / 2);
+    for (let i = 0; i < n; i++) {
+      const q = ((i + 1) % n) * 2;
+      c.quadraticCurveTo(PT[i * 2], PT[i * 2 + 1], (PT[i * 2] + PT[q]) / 2, (PT[i * 2 + 1] + PT[q + 1]) / 2);
+    }
+    c.closePath();
+    const g = c.createRadialGradient(-rv * 0.32, -rv * 0.42, rv * 0.08, 0, 0, rv * 1.08);
+    g.addColorStop(0, k.light);
+    g.addColorStop(0.5, k.base);
+    g.addColorStop(1, k.shade);
+    c.fillStyle = g;
+    c.fill();
+    c.lineWidth = clamp(rv * 0.055, 1.3, 4.2);
+    c.strokeStyle = k.fx === 'galaxy' ? '#9d86ff' : k.dark;
+    c.stroke();
+    c.clip();
+
+    if (k.fx === 'opal') {
+      const a = t * 0.6;
+      const og = c.createLinearGradient(-Math.cos(a) * rv, -Math.sin(a) * rv, Math.cos(a) * rv, Math.sin(a) * rv);
+      og.addColorStop(0, 'rgba(255, 150, 200, 0.45)');
+      og.addColorStop(0.28, 'rgba(255, 230, 140, 0.4)');
+      og.addColorStop(0.52, 'rgba(140, 240, 210, 0.4)');
+      og.addColorStop(0.76, 'rgba(140, 200, 255, 0.45)');
+      og.addColorStop(1, 'rgba(210, 160, 255, 0.45)');
+      c.fillStyle = og;
+      c.fillRect(-rv * 1.3, -rv * 1.3, rv * 2.6, rv * 2.6);
+    } else if (k.fx === 'galaxy') {
+      for (const [cx, cy, col] of [[0.3, 0.25, '255, 93, 143'], [-0.35, 0.3, '61, 191, 255']]) {
+        const ng = c.createRadialGradient(cx * rv, cy * rv, 0, cx * rv, cy * rv, rv * 0.75);
+        ng.addColorStop(0, `rgba(${col}, 0.42)`);
+        ng.addColorStop(1, `rgba(${col}, 0)`);
+        c.fillStyle = ng;
+        c.fillRect(-rv * 1.3, -rv * 1.3, rv * 2.6, rv * 2.6);
+      }
+      for (let i = 0; i < STARS.length; i += 3) {
+        const tw = 0.45 + 0.55 * Math.sin(t * 2.6 + i * 1.3);
+        c.globalAlpha = clamp(tw, 0, 1);
+        c.fillStyle = '#fff8d6';
+        starPath(c, STARS[i] * rv, STARS[i + 1] * rv, rv * 0.05 * STARS[i + 2], rv * 0.016 * STARS[i + 2], 4, 0);
+        c.fill();
+      }
+      c.globalAlpha = 1;
+    }
+
+    // Shine
+    c.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ellipse(c, -rv * 0.36, -rv * 0.46, rv * 0.26, rv * 0.14, -0.6);
+    c.fill();
+    c.fillStyle = 'rgba(255, 255, 255, 0.75)';
+    circle(c, -rv * 0.08, -rv * 0.64, rv * 0.055);
+    c.fill();
+
+    drawFace(c, k, j, rv, pxs);
+    c.restore();
+
+    if (k.crown) {
+      c.save();
+      c.translate(j.x, j.y);
+      drawCrown(c, rv, PT[(n * 3 / 4) * 2 + 1], j.db * 1.2);
+      c.restore();
+    }
+  }
+
+  function drawFace(c, k, j, rv, pxs) {
+    const m = j.face;
+    let eyes = k.eyes, mouth = k.mouth;
+    const cyc = eyes === 'cyclops', shades = eyes === 'shades';
+    if (m === 'happy') { eyes = cyc ? 'cyc-happy' : shades ? eyes : 'happy'; mouth = 'grin'; }
+    else if (m === 'wee') { if (!cyc && !shades) eyes = 'wide'; mouth = 'o'; }
+    else if (m === 'squish') { eyes = cyc ? 'cyc-squint' : shades ? eyes : 'squint'; mouth = 'wavy'; }
+    else if (m === 'scared') { if (!cyc && !shades) eyes = 'wide'; mouth = 'wavy'; }
+    else if (m === 'dead') { eyes = cyc ? 'cyc-x' : 'x'; mouth = 'wavy'; }
+
+    const lx = j.lx * rv * 0.06, ly = j.ly * rv * 0.05;
+    const ex = rv * 0.32, ey = -rv * 0.05 + ly * 0.4, es = rv * 0.12;
+    const lw = Math.max(rv * 0.055, 1.1);
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+
+    if (rv * pxs < 9) {
+      // Too small for details: two dots (or the mood's line eyes).
+      c.fillStyle = INK;
+      c.strokeStyle = INK;
+      c.lineWidth = lw;
+      for (const s of [-1, 1]) {
+        if (eyes === 'x' || eyes === 'happy' || eyes === 'squint') drawEye(c, eyes, s * ex + lx, ey, es, s, false, lw, j);
+        else { circle(c, s * ex + lx, ey, es * 0.95); c.fill(); }
+      }
+      return;
+    }
+
+    if (k.blush) {
+      c.fillStyle = 'rgba(255, 86, 140, 0.3)';
+      ellipse(c, -rv * 0.5, rv * 0.13, rv * 0.13, rv * 0.08);
+      c.fill();
+      ellipse(c, rv * 0.5, rv * 0.13, rv * 0.13, rv * 0.08);
+      c.fill();
+    }
+
+    const blink = j.blink > 0 && (m === '' || m === 'wee' || m === 'scared');
+    if (eyes.startsWith('cyc')) drawCyclops(c, eyes, k, j, rv, lx, ly, blink, lw);
+    else if (eyes === 'shades') drawShades(c, rv, lx, ly, lw);
+    else for (const s of [-1, 1]) drawEye(c, eyes, s * ex + lx, ey, es, s, blink, lw, j);
+
+    if (eyes !== 'shades' && !eyes.startsWith('cyc') && (k.brows || m === 'scared')) {
+      c.strokeStyle = INK;
+      c.lineWidth = lw * 1.2;
+      for (const s of [-1, 1]) {
+        const x = s * ex + lx, y = ey - es * 1.8, inner = x - s * es, outer = x + s * es * 1.1;
+        c.beginPath();
+        if (m === 'scared') {
+          c.moveTo(outer, y + es * 0.2);
+          c.lineTo(inner, y - es * 0.45);
+        } else {
+          c.moveTo(outer, y + es * 0.1);
+          c.quadraticCurveTo(x, y - es * 0.55, inner, y);
+        }
+        c.stroke();
+      }
+    }
+    if (k.lashes && eyes === 'shiny' && !blink) {
+      c.strokeStyle = INK;
+      c.lineWidth = lw * 0.8;
+      for (const s of [-1, 1]) {
+        const x = s * ex + lx;
+        for (let i = 0; i < 3; i++) {
+          const a = -Math.PI / 2 + s * (0.45 + i * 0.38);
+          line(c, x + Math.cos(a) * es * 0.9, ey + Math.sin(a) * es * 1.1, x + Math.cos(a) * es * 1.55, ey + Math.sin(a) * es * 1.75);
+        }
+      }
+    }
+
+    drawMouth(c, mouth, lx * 0.5, rv * 0.2 + ly * 0.4, rv * (mouth === 'big' ? 0.26 : 0.2), lw);
+
+    if (m === 'scared') {
+      const sx = rv * 0.6, sy = -rv * 0.38, sr = rv * 0.1;
+      c.beginPath();
+      c.moveTo(sx, sy - sr * 1.9);
+      c.bezierCurveTo(sx + sr * 1.2, sy - sr * 0.4, sx + sr, sy + sr, sx, sy + sr);
+      c.bezierCurveTo(sx - sr, sy + sr, sx - sr * 1.2, sy - sr * 0.4, sx, sy - sr * 1.9);
+      c.fillStyle = '#c4ecff';
+      c.fill();
+      c.lineWidth = lw * 0.6;
+      c.strokeStyle = '#4c9fd1';
+      c.stroke();
+    }
+  }
+
+  function drawEye(c, type, x, y, es, side, blink, lw, j) {
+    c.fillStyle = INK;
+    c.strokeStyle = INK;
+    c.lineWidth = lw;
+    if (blink && type !== 'happy' && type !== 'x' && type !== 'squint') {
+      c.beginPath();
+      c.moveTo(x - es, y);
+      c.quadraticCurveTo(x, y + es * 0.6, x + es, y);
+      c.stroke();
+      return;
+    }
+    switch (type) {
+      case 'dot':
+        circle(c, x, y, es * 0.8);
+        c.fill();
+        c.fillStyle = '#fff';
+        circle(c, x - es * 0.25, y - es * 0.28, es * 0.26);
+        c.fill();
+        break;
+      case 'shiny':
+        ellipse(c, x, y, es * 0.88, es * 1.1);
+        c.fill();
+        c.fillStyle = '#fff';
+        circle(c, x - es * 0.28, y - es * 0.4, es * 0.36);
+        c.fill();
+        circle(c, x + es * 0.3, y + es * 0.42, es * 0.15);
+        c.fill();
+        break;
+      case 'sleepy':
+        c.beginPath();
+        c.arc(x, y - es * 0.1, es * 0.9, 0.12, Math.PI - 0.12);
+        c.closePath();
+        c.fill();
+        line(c, x - es * 1.15, y - es * 0.15, x + es * 1.15, y - es * 0.15);
+        break;
+      case 'happy':
+        c.beginPath();
+        c.arc(x, y + es * 0.45, es * 0.95, Math.PI * 1.15, Math.PI * 1.85);
+        c.stroke();
+        break;
+      case 'wide':
+        c.fillStyle = '#fff';
+        circle(c, x, y, es * 1.25);
+        c.fill();
+        c.lineWidth = lw * 0.6;
+        c.stroke();
+        c.fillStyle = INK;
+        circle(c, x + j.lx * es * 0.4, y + j.ly * es * 0.4, es * 0.55);
+        c.fill();
+        break;
+      case 'squint':
+        c.beginPath();
+        c.moveTo(x + side * es * 0.9, y - es * 0.8);
+        c.lineTo(x - side * es * 0.7, y);
+        c.lineTo(x + side * es * 0.9, y + es * 0.8);
+        c.stroke();
+        break;
+      case 'x':
+        c.beginPath();
+        c.moveTo(x - es * 0.8, y - es * 0.8);
+        c.lineTo(x + es * 0.8, y + es * 0.8);
+        c.moveTo(x + es * 0.8, y - es * 0.8);
+        c.lineTo(x - es * 0.8, y + es * 0.8);
+        c.stroke();
+        break;
+      case 'star':
+        c.fillStyle = '#fff';
+        circle(c, x, y, es * 1.3);
+        c.fill();
+        c.lineWidth = lw * 0.6;
+        c.stroke();
+        starPath(c, x + j.lx * es * 0.3, y + j.ly * es * 0.3, es * 0.95, es * 0.42, 5);
+        c.fillStyle = '#ffcf33';
+        c.fill();
+        c.lineWidth = lw * 0.5;
+        c.strokeStyle = '#a0700a';
+        c.stroke();
+        break;
+    }
+  }
+
+  function drawCyclops(c, type, k, j, rv, lx, ly, blink, lw) {
+    const x = lx * 1.2, y = -rv * 0.12 + ly * 0.5, R = rv * 0.3;
+    c.strokeStyle = INK;
+    c.fillStyle = INK;
+    c.lineWidth = lw * 1.3;
+    if (type === 'cyc-happy') {
+      c.beginPath();
+      c.arc(x, y + R * 0.45, R * 0.8, Math.PI * 1.15, Math.PI * 1.85);
+      c.stroke();
+      return;
+    }
+    if (type === 'cyc-squint' || blink) {
+      c.beginPath();
+      c.moveTo(x - R * 0.85, y - R * 0.1);
+      c.quadraticCurveTo(x, y + R * 0.4, x + R * 0.85, y - R * 0.1);
+      c.stroke();
+      return;
+    }
+    if (type === 'cyc-x') {
+      c.beginPath();
+      c.moveTo(x - R * 0.6, y - R * 0.6);
+      c.lineTo(x + R * 0.6, y + R * 0.6);
+      c.moveTo(x + R * 0.6, y - R * 0.6);
+      c.lineTo(x - R * 0.6, y + R * 0.6);
+      c.stroke();
+      return;
+    }
+    c.fillStyle = '#fff';
+    circle(c, x, y, R);
+    c.fill();
+    c.lineWidth = lw * 0.8;
+    c.strokeStyle = k.dark;
+    c.stroke();
+    const ix = x + j.lx * R * 0.35, iy = y + j.ly * R * 0.35;
+    c.fillStyle = k.dark;
+    circle(c, ix, iy, R * 0.58);
+    c.fill();
+    c.fillStyle = INK;
+    circle(c, ix, iy, R * (j.face === 'scared' || j.face === 'wee' ? 0.2 : 0.3));
+    c.fill();
+    c.fillStyle = '#fff';
+    circle(c, ix - R * 0.2, iy - R * 0.22, R * 0.14);
+    c.fill();
+  }
+
+  function drawShades(c, rv, lx, ly, lw) {
+    const y = -rv * 0.07 + ly * 0.4, x = lx * 0.6;
+    const w = rv * 0.4, h = rv * 0.26;
+    c.fillStyle = '#1a1030';
+    c.strokeStyle = '#1a1030';
+    c.lineWidth = lw;
+    for (const s of [-1, 1]) {
+      c.beginPath();
+      rrect(c, x + s * rv * 0.25 - w / 2, y - h / 2, w, h, [h * 0.2, h * 0.2, h * 0.5, h * 0.5]);
+      c.fill();
+      line(c, x + s * rv * 0.45, y - h * 0.3, x + s * rv * 0.62, y - h * 0.55);
+    }
+    line(c, x - rv * 0.06, y - h * 0.25, x + rv * 0.06, y - h * 0.25);
+    c.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    c.lineWidth = lw * 0.7;
+    line(c, x - rv * 0.36, y - h * 0.05, x - rv * 0.3, y - h * 0.3);
+    line(c, x + rv * 0.14, y - h * 0.05, x + rv * 0.2, y - h * 0.3);
+  }
+
+  function drawMouth(c, type, x, y, mw, lw) {
+    c.strokeStyle = INK;
+    c.lineWidth = lw;
+    switch (type) {
+      case 'smile':
+        c.beginPath();
+        c.arc(x, y - mw * 0.55, mw * 0.75, Math.PI * 0.2, Math.PI * 0.8);
+        c.stroke();
+        break;
+      case 'grin':
+      case 'big': {
+        const wide = type === 'big' ? 1.15 : 1;
+        const shape = () => {
+          c.beginPath();
+          c.moveTo(x - mw * wide, y - mw * 0.2);
+          c.quadraticCurveTo(x, y + mw * 1.35, x + mw * wide, y - mw * 0.2);
+          c.closePath();
+        };
+        shape();
+        c.fillStyle = MOUTH;
+        c.fill();
+        c.save();
+        c.clip();
+        c.fillStyle = TONGUE;
+        ellipse(c, x, y + mw * 0.78, mw * 0.5, mw * 0.32);
+        c.fill();
+        if (type === 'big') {
+          c.fillStyle = '#fff';
+          c.fillRect(x - mw * wide, y - mw * 0.25, mw * 2 * wide, mw * 0.28);
+        }
+        c.restore();
+        shape();
+        c.lineWidth = lw * 0.8;
+        c.stroke();
+        break;
+      }
+      case 'tongue':
+        c.beginPath();
+        c.arc(x, y - mw * 0.55, mw * 0.75, Math.PI * 0.2, Math.PI * 0.8);
+        c.stroke();
+        c.beginPath();
+        c.ellipse(x + mw * 0.25, y + mw * 0.12, mw * 0.3, mw * 0.4, 0, 0, Math.PI);
+        c.closePath();
+        c.fillStyle = TONGUE;
+        c.fill();
+        c.lineWidth = lw * 0.7;
+        c.stroke();
+        break;
+      case 'cat':
+        c.beginPath();
+        c.arc(x - mw * 0.36, y - mw * 0.05, mw * 0.36, 0.1, Math.PI - 0.1);
+        c.stroke();
+        c.beginPath();
+        c.arc(x + mw * 0.36, y - mw * 0.05, mw * 0.36, 0.1, Math.PI - 0.1);
+        c.stroke();
+        break;
+      case 'o':
+        c.fillStyle = MOUTH;
+        ellipse(c, x, y + mw * 0.1, mw * 0.3, mw * 0.38);
+        c.fill();
+        break;
+      case 'wavy':
+        c.beginPath();
+        c.moveTo(x - mw * 0.8, y);
+        for (let i = 0; i < 4; i++) {
+          c.quadraticCurveTo(x - mw * 0.8 + mw * 0.4 * (i + 0.5), y + (i % 2 ? mw * 0.22 : -mw * 0.22), x - mw * 0.8 + mw * 0.4 * (i + 1), y);
+        }
+        c.stroke();
+        break;
+      case 'teeth': {
+        const shape = () => {
+          c.beginPath();
+          c.moveTo(x - mw * 1.05, y - mw * 0.3);
+          c.lineTo(x + mw * 1.05, y - mw * 0.3);
+          c.quadraticCurveTo(x + mw, y + mw * 0.75, x, y + mw * 0.8);
+          c.quadraticCurveTo(x - mw, y + mw * 0.75, x - mw * 1.05, y - mw * 0.3);
+          c.closePath();
+        };
+        shape();
+        c.fillStyle = MOUTH;
+        c.fill();
+        c.save();
+        c.clip();
+        c.fillStyle = '#fff';
+        c.fillRect(x - mw * 1.1, y - mw * 0.35, mw * 2.2, mw * 0.5);
+        c.lineWidth = lw * 0.45;
+        for (const tx of [-0.5, 0, 0.5]) line(c, x + tx * mw, y - mw * 0.35, x + tx * mw, y + mw * 0.15);
+        c.restore();
+        shape();
+        c.lineWidth = lw * 0.8;
+        c.stroke();
+        break;
+      }
+      case 'smirk':
+        c.beginPath();
+        c.moveTo(x - mw * 0.75, y + mw * 0.05);
+        c.quadraticCurveTo(x + mw * 0.1, y + mw * 0.45, x + mw * 0.85, y - mw * 0.3);
+        c.stroke();
+        break;
+    }
+  }
+
+  function drawCrown(c, rv, topY, tilt) {
+    c.translate(0, topY + rv * 0.08);
+    c.rotate(tilt);
+    const w = rv * 0.66, h = rv * 0.38;
+    c.beginPath();
+    c.moveTo(-w / 2, 0);
+    c.lineTo(-w * 0.54, -h);
+    c.lineTo(-w / 4, -h * 0.45);
+    c.lineTo(0, -h * 1.12);
+    c.lineTo(w / 4, -h * 0.45);
+    c.lineTo(w * 0.54, -h);
+    c.lineTo(w / 2, 0);
+    c.closePath();
+    const g = c.createLinearGradient(0, -h, 0, 0);
+    g.addColorStop(0, '#fff09a');
+    g.addColorStop(1, '#ffb52e');
+    c.fillStyle = g;
+    c.fill();
+    c.lineJoin = 'round';
+    c.lineWidth = Math.max(1.2, rv * 0.03);
+    c.strokeStyle = '#9a5b00';
+    c.stroke();
+    c.fillStyle = '#ff5d8f';
+    circle(c, 0, -h * 0.24, rv * 0.045);
+    c.fill();
+    c.fillStyle = '#3dbfff';
+    circle(c, -w * 0.28, -h * 0.2, rv * 0.035);
+    c.fill();
+    circle(c, w * 0.28, -h * 0.2, rv * 0.035);
+    c.fill();
+    c.fillStyle = '#fff6c2';
+    for (const [px, py] of [[-w * 0.54, -h], [0, -h * 1.12], [w * 0.54, -h]]) {
+      circle(c, px, py, rv * 0.03);
+      c.fill();
+    }
+  }
+
+  // Each jelly clips its outline against the glass and a plane between it and every neighbour.
+  function computePlanes() {
+    const js = S.jellies, n = js.length;
+    for (let i = 0; i < n; i++) {
+      const j = js[i], p = j.pl;
+      p[0] = -1; p[1] = 0; p[2] = j.x;
+      p[3] = 1; p[4] = 0; p[5] = W - j.x;
+      p[6] = 0; p[7] = 1; p[8] = H - j.y;
+      j.np = 3;
+    }
+    const maxPlanes = 20;
+    for (let a = 0; a < n; a++) {
+      const A = js[a];
+      for (let b = a + 1; b < n; b++) {
+        const B = js[b];
+        const rs = (A.r + B.r) * VIS * 1.35;
+        const dx = B.x - A.x, dy = B.y - A.y;
+        if (dx > rs || dx < -rs || dy > rs || dy < -rs) continue;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= rs * rs) continue;
+        const d = Math.sqrt(d2) || 1e-3, nx = dx / d, ny = dy / d;
+        const da = Math.max((d * A.r) / (A.r + B.r), A.r * 0.3);
+        const db = Math.max(d - da, B.r * 0.3);
+        if (A.np < maxPlanes) {
+          const q = A.np++ * 3;
+          A.pl[q] = nx; A.pl[q + 1] = ny; A.pl[q + 2] = da;
+        }
+        if (B.np < maxPlanes) {
+          const q = B.np++ * 3;
+          B.pl[q] = -nx; B.pl[q + 1] = -ny; B.pl[q + 2] = db;
+        }
+      }
+    }
+  }
+
+  function landingY(x, r) {
+    let y = H - r;
+    for (const j of S.jellies) {
+      const dx = Math.abs(j.x - x), rs = r + j.r;
+      if (dx < rs) {
+        const cy = j.y - Math.sqrt(rs * rs - dx * dx);
+        if (cy < y) y = cy;
+      }
+    }
+    return Math.max(y, SPAWN_Y);
+  }
+
+  function buildBackground() {
+    bg.width = canvas.width;
+    bg.height = canvas.height;
+    const b = bg.getContext('2d');
+    const w = bg.width, h = bg.height;
+    const g = b.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#27215f');
+    g.addColorStop(0.6, '#1b1947');
+    g.addColorStop(1, '#120f33');
+    b.fillStyle = g;
+    b.fillRect(0, 0, w, h);
+    const cx = (view.offX + (W / 2) * view.s) * view.dpr, cy = (view.offY + H * 0.35 * view.s) * view.dpr;
+    const glow = b.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) * 0.6);
+    glow.addColorStop(0, 'rgba(120, 110, 255, 0.24)');
+    glow.addColorStop(1, 'rgba(120, 110, 255, 0)');
+    b.fillStyle = glow;
+    b.fillRect(0, 0, w, h);
+    const step = 34 * view.dpr * Math.max(0.7, view.s);
+    b.fillStyle = 'rgba(255, 255, 255, 0.035)';
+    for (let y = 0, row = 0; y < h + step; y += step * 0.866, row++) {
+      for (let x = (row % 2) * step * 0.5; x < w + step; x += step) {
+        b.beginPath();
+        b.arc(x, y, step * 0.09, 0, TAU);
+        b.fill();
+      }
+    }
+  }
+
+  function drawShelf(c) {
+    const y = H + GLASS;
+    const x0 = -view.offX / view.s - 10, x1 = (view.cw - view.offX) / view.s + 10;
+    c.fillStyle = 'rgba(8, 6, 30, 0.35)';
+    ellipse(c, W / 2, y + 2, W / 2 + 34, 9);
+    c.fill();
+    const g = c.createLinearGradient(0, y, 0, y + 20);
+    g.addColorStop(0, '#d39457');
+    g.addColorStop(0.35, '#b87540');
+    g.addColorStop(1, '#7d4722');
+    c.fillStyle = g;
+    c.fillRect(x0, y, x1 - x0, 20);
+    c.fillStyle = '#ebb27a';
+    c.fillRect(x0, y, x1 - x0, 2.5);
+    const sh = c.createLinearGradient(0, y + 20, 0, y + 36);
+    sh.addColorStop(0, 'rgba(5, 3, 20, 0.35)');
+    sh.addColorStop(1, 'rgba(5, 3, 20, 0)');
+    c.fillStyle = sh;
+    c.fillRect(x0, y + 20, x1 - x0, 16);
+  }
+
+  function drawJarBack(c) {
+    const g = c.createLinearGradient(0, -RIM, 0, H);
+    g.addColorStop(0, 'rgba(150, 190, 255, 0.05)');
+    g.addColorStop(1, 'rgba(150, 190, 255, 0.13)');
+    c.fillStyle = g;
+    c.beginPath();
+    rrect(c, 0, -RIM, W, H + RIM, [0, 0, 14, 14]);
+    c.fill();
+
+    // Measuring marks on the glass, 100 ml apart, with MAX at 500 ml.
+    c.strokeStyle = 'rgba(220, 235, 255, 0.3)';
+    c.fillStyle = 'rgba(220, 235, 255, 0.36)';
+    c.lineWidth = 2;
+    c.font = `800 11px ${FONT_BODY}`;
+    c.textAlign = 'right';
+    c.textBaseline = 'middle';
+    for (let i = 1; i <= 9; i++) {
+      const y = H - i * (H / 10);
+      line(c, W - (i % 2 ? 9 : 16), y, W - 3, y);
+      if (i % 2 === 0) c.fillText(String(i * 50), W - 21, y);
+    }
+
+    const d = S.danger / OVERFLOW_TIME;
+    const pulse = d > 0 ? 0.5 + 0.5 * Math.sin(S.t * (8 + d * 14)) : 0;
+    c.setLineDash([10, 8]);
+    c.lineDashOffset = d > 0 ? -S.t * 30 : 0;
+    c.strokeStyle = d > 0 ? `rgba(255, 77, 94, ${0.65 + 0.35 * pulse})` : 'rgba(255, 255, 255, 0.34)';
+    c.lineWidth = d > 0 ? 3 + pulse * 2 : 2;
+    line(c, 0, 0, W, 0);
+    c.setLineDash([]);
+    c.fillStyle = d > 0 ? '#ff6b7a' : 'rgba(255, 255, 255, 0.5)';
+    c.font = `900 12px ${FONT_BODY}`;
+    c.textAlign = 'right';
+    c.textBaseline = 'bottom';
+    c.fillText('MAX', W - 6, -5);
+  }
+
+  function drawJarFront(c) {
+    const x0 = -GLASS, x1 = W + GLASS, y0 = -RIM, y1 = H + GLASS;
+    c.beginPath();
+    rrect(c, x0, y0, x1 - x0, y1 - y0, [4, 4, 28, 28]);
+    rrect(c, 0, y0, W, H - y0, [0, 0, 14, 14]);
+    c.fillStyle = 'rgba(200, 228, 255, 0.16)';
+    c.fill('evenodd');
+    c.beginPath();
+    rrect(c, x0, y0, x1 - x0, y1 - y0, [4, 4, 28, 28]);
+    c.lineWidth = 2.5;
+    c.strokeStyle = 'rgba(225, 242, 255, 0.75)';
+    c.stroke();
+    c.beginPath();
+    rrect(c, 0, y0, W, H - y0, [0, 0, 14, 14]);
+    c.lineWidth = 1.5;
+    c.strokeStyle = 'rgba(225, 242, 255, 0.35)';
+    c.stroke();
+
+    c.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    c.beginPath();
+    rrect(c, 8, y0 + 18, 9, H * 0.72, 4.5);
+    c.fill();
+    c.fillStyle = 'rgba(255, 255, 255, 0.09)';
+    c.beginPath();
+    rrect(c, 22, y0 + 18, 4, H * 0.3, 2);
+    c.fill();
+    c.beginPath();
+    rrect(c, W - 14, 40, 5, H * 0.45, 2.5);
+    c.fill();
+
+    c.beginPath();
+    rrect(c, x0 - 6, y0 - 10, x1 - x0 + 12, 16, 8);
+    c.fillStyle = 'rgba(210, 234, 255, 0.3)';
+    c.fill();
+    c.lineWidth = 2.5;
+    c.strokeStyle = 'rgba(235, 247, 255, 0.8)';
+    c.stroke();
+  }
+
+  function drawRail(c) {
+    c.fillStyle = '#4b4596';
+    c.beginPath();
+    rrect(c, -GLASS - 10, RAIL_Y - 5, W + 2 * GLASS + 20, 10, 5);
+    c.fill();
+    c.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    c.beginPath();
+    rrect(c, -GLASS - 7, RAIL_Y - 4, W + 2 * GLASS + 14, 3, 1.5);
+    c.fill();
+    c.fillStyle = '#7b73d6';
+    for (const x of [-GLASS - 10, W + GLASS + 10]) {
+      circle(c, x, RAIL_Y, 8);
+      c.fill();
+    }
+  }
+
+  function drawDropper(c, pxs, t) {
+    const k = KINDS[S.held];
+    const grow = S.mode === 'playing' || S.mode === 'paused' ? 1 - S.cool / COOLDOWN : 1;
+    const e = clamp(easeOutBack(clamp(grow, 0, 1)), 0, 1.2);
+    const rv = k.r * VIS;
+    const x = S.heldX;
+    const tipY = SPAWN_Y - rv - 3;
+    const sq = S.squeeze;
+
+    // Guide line and a ghost where the jelly will land.
+    if (grow >= 1 && S.mode === 'playing') {
+      const ly = landingY(x, k.r);
+      if (ly - k.r > SPAWN_Y + rv + 8) {
+        c.strokeStyle = 'rgba(255, 255, 255, 0.24)';
+        c.lineWidth = 2;
+        c.setLineDash([2, 8]);
+        line(c, x, SPAWN_Y + rv + 6, x, ly - rv);
+        c.setLineDash([6, 7]);
+        c.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        circle(c, x, ly, rv);
+        c.stroke();
+        c.setLineDash([]);
+      }
+    }
+
+    // Carriage and nozzle
+    const top = RAIL_Y + 6;
+    const w0 = 12 + sq * 4, w1 = 7 + sq * 3;
+    c.beginPath();
+    c.moveTo(x - w0, top);
+    c.lineTo(x + w0, top);
+    c.lineTo(x + w1, tipY);
+    c.lineTo(x - w1, tipY);
+    c.closePath();
+    c.fillStyle = 'rgba(210, 236, 255, 0.3)';
+    c.fill();
+    c.save();
+    c.clip();
+    c.fillStyle = k.base;
+    c.globalAlpha = 0.85;
+    c.fillRect(x - w0, top + (tipY - top) * 0.35, w0 * 2, tipY - top);
+    c.restore();
+    c.lineWidth = 2;
+    c.strokeStyle = 'rgba(235, 247, 255, 0.8)';
+    c.stroke();
+    c.fillStyle = '#8a82e0';
+    c.beginPath();
+    rrect(c, x - 20, RAIL_Y - 9, 40, 18, 9);
+    c.fill();
+    c.lineWidth = 2;
+    c.strokeStyle = '#2e2970';
+    c.stroke();
+    c.fillStyle = 'rgba(255, 255, 255, 0.35)';
+    c.beginPath();
+    rrect(c, x - 14, RAIL_Y - 6, 28, 4, 2);
+    c.fill();
+
+    if (grow > 0.02) {
+      held.r = k.r * Math.max(0.05, e);
+      held.y = tipY + 3 + held.r * VIS;
+      held.np = 0;
+      drawJelly(c, held, pxs, t);
+      held.y = SPAWN_Y;
+    }
+  }
+
+  function drawParticles(c) {
+    for (const p of S.parts) {
+      const f = clamp(p.life / p.max, 0, 1);
+      if (p.t === 'drop') {
+        c.globalAlpha = Math.min(1, f * 1.8);
+        c.fillStyle = p.c;
+        circle(c, p.x, p.y, p.r * (0.55 + 0.45 * f));
+        c.fill();
+      } else if (p.t === 'ring') {
+        const e = 1 - f;
+        c.globalAlpha = f * 0.8;
+        c.strokeStyle = p.c;
+        c.lineWidth = 2 + 5 * f;
+        circle(c, p.x, p.y, p.r0 + (p.r1 - p.r0) * (1 - (1 - e) * (1 - e)));
+        c.stroke();
+      } else if (p.t === 'star') {
+        c.globalAlpha = Math.min(1, f * 2);
+        c.fillStyle = p.c;
+        starPath(c, p.x, p.y, p.r * 1.3, p.r * 0.45, 4, p.rot);
+        c.fill();
+      } else {
+        c.globalAlpha = Math.min(1, f * 2);
+        c.fillStyle = p.c;
+        c.save();
+        c.translate(p.x, p.y);
+        c.rotate(p.rot);
+        c.fillRect(-p.r, -p.r * 0.45, p.r * 2, p.r * 0.9);
+        c.restore();
+      }
+    }
+    c.globalAlpha = 1;
+  }
+
+  function drawTexts(c) {
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.lineJoin = 'round';
+    for (const t of S.texts) {
+      if (t.life > t.max) continue;
+      const f = t.life / t.max, age = 1 - f;
+      const s = age < 0.15 ? easeOutBack(age / 0.15) : 1;
+      c.globalAlpha = Math.min(1, f * 2.5);
+      c.font = `700 ${Math.max(1, t.size * s).toFixed(1)}px ${FONT_DISPLAY}`;
+      c.lineWidth = t.size * 0.2;
+      c.strokeStyle = t.stroke;
+      c.strokeText(t.text, t.x, t.y);
+      c.fillStyle = t.color;
+      c.fillText(t.text, t.x, t.y);
+    }
+    c.globalAlpha = 1;
+  }
+
+  function drawCountdown(c) {
+    if (S.mode !== 'playing' || S.danger <= 0.15) return;
+    const left = Math.max(1, Math.ceil(OVERFLOW_TIME - S.danger));
+    const frac = OVERFLOW_TIME - S.danger - (left - 1);
+    const s = 1 + 0.25 * frac;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.font = `700 ${(64 * s).toFixed(1)}px ${FONT_DISPLAY}`;
+    c.lineJoin = 'round';
+    c.lineWidth = 10;
+    c.globalAlpha = 0.9;
+    c.strokeStyle = '#2a1836';
+    c.strokeText(String(left), W / 2, 80);
+    c.fillStyle = '#ff5d6e';
+    c.fillText(String(left), W / 2, 80);
+    c.globalAlpha = 1;
+  }
+
+  function hudText(c, text, x, y, font, color, align = 'left', spacing = '0px') {
+    c.font = font;
+    c.fillStyle = color;
+    c.textAlign = align;
+    if ('letterSpacing' in c) c.letterSpacing = spacing;
+    c.fillText(text, x, y);
+    if ('letterSpacing' in c) c.letterSpacing = '0px';
+  }
+
+  function drawScoreTag(c, x, y, w, h) {
+    c.save();
+    const s = 1 + S.scoreBump * 0.07;
+    c.translate(x + w / 2, y + h / 2);
+    c.rotate(-0.035);
+    c.scale(s, s);
+    const l = -w / 2, t = -h / 2;
+    c.strokeStyle = 'rgba(255, 240, 246, 0.45)';
+    c.lineWidth = 1.5;
+    line(c, l + 13, t + 17, l - 6, t - 12);
+    const tag = () => {
+      c.beginPath();
+      c.moveTo(l + 16, t);
+      c.lineTo(l + w - 10, t);
+      c.quadraticCurveTo(l + w, t, l + w, t + 10);
+      c.lineTo(l + w, t + h - 10);
+      c.quadraticCurveTo(l + w, t + h, l + w - 10, t + h);
+      c.lineTo(l + 16, t + h);
+      c.lineTo(l, t + h - 16);
+      c.lineTo(l, t + 16);
+      c.closePath();
+    };
+    c.fillStyle = 'rgba(6, 4, 26, 0.35)';
+    c.save();
+    c.translate(2, 4);
+    tag();
+    c.fill();
+    c.restore();
+    tag();
+    c.fillStyle = '#fff0f6';
+    c.fill();
+    c.fillStyle = '#1f1c4f';
+    circle(c, l + 13, t + 17, 4.5);
+    c.fill();
+    c.textBaseline = 'alphabetic';
+    hudText(c, 'SCORE', l + 26, t + 19, `900 11px ${FONT_BODY}`, '#7a6a9c', 'left', '1.5px');
+    const str = fmt(S.shown);
+    c.font = `700 27px ${FONT_DISPLAY}`;
+    const fit = Math.min(27, (27 * (w - 36)) / Math.max(1, c.measureText(str).width));
+    hudText(c, str, l + 25, t + 45, `700 ${fit.toFixed(1)}px ${FONT_DISPLAY}`, INK);
+    hudText(c, 'BEST ' + fmt(Math.max(S.best, S.score)), l + 26, t + h - 9, `800 11px ${FONT_BODY}`, '#8a7aa8', 'left', '1px');
+    c.restore();
+  }
+
+  function drawNext(c, x, y, w, h) {
+    c.fillStyle = 'rgba(255, 255, 255, 0.07)';
+    c.beginPath();
+    rrect(c, x, y, w, h, 18);
+    c.fill();
+    c.lineWidth = 2;
+    c.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    c.stroke();
+    c.textBaseline = 'alphabetic';
+    hudText(c, 'NEXT', x + w / 2, y + 17, `900 11px ${FONT_BODY}`, '#c0baf0', 'center', '1.5px');
+    const size = (h - 30) * (0.5 + (0.5 * KINDS[S.next].r) / KINDS[SPAWNABLE].r) * (1 + 0.25 * Math.sin(S.nextPop * Math.PI));
+    const cy = y + 17 + (h - 17) / 2;
+    c.drawImage(icons[S.next], x + w / 2 - size / 2, cy - size / 2, size, size);
+  }
+
+  function jarTopLevel() {
+    let m = -1;
+    for (const j of S.jellies) if (j.level > m) m = j.level;
+    return m;
+  }
+
+  function drawChainRow(c, x0, x1, y) {
+    const n = KINDS.length, slot = (x1 - x0) / n, hot = jarTopLevel();
+    for (let i = 0; i < n; i++) {
+      const cx = x0 + slot * (i + 0.5), size = 15 + i * 2.2;
+      drawChainIcon(c, i, cx, y, size, i === hot);
+    }
+  }
+
+  function drawChainColumn(c, x, y0, y1) {
+    c.textBaseline = 'alphabetic';
+    hudText(c, 'JELLIES', x, y0 - 14, `900 11px ${FONT_BODY}`, '#c0baf0', 'left', '1.5px');
+    hudText(c, `${S.found + 1}/${KINDS.length}`, x + 150, y0 - 14, `900 11px ${FONT_BODY}`, '#c0baf0', 'right');
+    const n = KINDS.length, row = (y1 - y0) / n, hot = jarTopLevel();
+    for (let i = 0; i < n; i++) {
+      const cy = y0 + row * (i + 0.5), size = 20 + i * 2.5;
+      drawChainIcon(c, i, x + 24, cy, size, i === hot);
+      c.textBaseline = 'middle';
+      if (i <= S.found) hudText(c, KINDS[i].name, x + 56, cy, `800 14px ${FONT_BODY}`, i === hot ? '#ffd93d' : '#fbf7ff');
+      else hudText(c, '???', x + 56, cy, `800 14px ${FONT_BODY}`, 'rgba(192, 186, 240, 0.55)');
+    }
+  }
+
+  function drawChainIcon(c, i, cx, cy, size, hot) {
+    if (i <= S.found) {
+      if (hot) {
+        const g = c.createRadialGradient(cx, cy, 0, cx, cy, size * 0.8);
+        g.addColorStop(0, 'rgba(255, 217, 61, 0.5)');
+        g.addColorStop(1, 'rgba(255, 217, 61, 0)');
+        c.fillStyle = g;
+        circle(c, cx, cy, size * 0.8);
+        c.fill();
+      }
+      c.drawImage(icons[i], cx - size / 2, cy - size / 2, size, size);
+    } else {
+      c.fillStyle = 'rgba(255, 255, 255, 0.07)';
+      circle(c, cx, cy, size * 0.38);
+      c.fill();
+      c.textBaseline = 'middle';
+      hudText(c, '?', cx, cy + 1, `700 ${(size * 0.42).toFixed(1)}px ${FONT_DISPLAY}`, 'rgba(192, 186, 240, 0.6)', 'center');
+    }
+  }
+
+  function drawHUD(c) {
+    const inRound = S.mode === 'playing' || S.mode === 'paused' || S.mode === 'over' || (S.mode === 'clearing' && !S.demo);
+    if (view.name === 'tall') {
+      if (inRound) {
+        drawScoreTag(c, -8, -208, 160, 72);
+        if (S.mode !== 'over') drawNext(c, 176, -208, 92, 72);
+      }
+      drawChainRow(c, -12, 412, H + GLASS + 56);
+    } else {
+      if (inRound) {
+        drawScoreTag(c, -196, -150, 164, 76);
+        if (S.mode !== 'over') drawNext(c, -176, -40, 124, 100);
+      }
+      drawChainColumn(c, 438, -86, 500);
+    }
+  }
+
+  function render() {
+    const { s, offX, offY, dpr } = view;
+    const t = S.t;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(bg, 0, 0);
+
+    let sx = 0, sy = 0;
+    if (S.shake > 0.2 && !reduceMotion) {
+      sx = (Math.random() * 2 - 1) * S.shake;
+      sy = (Math.random() * 2 - 1) * S.shake;
+    }
+    ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * (offX + sx * s), dpr * (offY + sy * s));
+    const pxs = s;
+    drawShelf(ctx);
+    drawJarBack(ctx);
+    drawRail(ctx);
+    computePlanes();
+    for (const j of S.jellies) drawJelly(ctx, j, pxs, t);
+    drawJarFront(ctx);
+    if (S.mode === 'playing' || S.mode === 'paused') drawDropper(ctx, pxs, t);
+    drawParticles(ctx);
+    drawTexts(ctx);
+    drawCountdown(ctx);
+
+    ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * offX, dpr * offY);
+    drawHUD(ctx);
+
+    if (S.danger > 0 && S.mode === 'playing') {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const w = canvas.width, h = canvas.height;
+      const a = Math.min(1, S.danger / OVERFLOW_TIME) * (0.3 + (reduceMotion ? 0 : 0.15 * Math.sin(S.t * 10)));
+      const g = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.75);
+      g.addColorStop(0, 'rgba(255, 40, 70, 0)');
+      g.addColorStop(1, `rgba(255, 40, 70, ${a.toFixed(3)})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    }
+  }
+
+  // ---------- Icons (drawn once, used by the HUD and the menus) ----------
+  const icons = [];
+  const iconURLs = [];
+  function makeIcons() {
+    for (let i = 0; i < KINDS.length; i++) {
+      const k = KINDS[i];
+      const size = 128;
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = size;
+      const c = cv.getContext('2d');
+      const extra = k.crown ? 0.42 : 0;
+      const scale = (size - 8) / (k.r * VIS * (2.12 + extra));
+      c.translate(size / 2, size / 2 + (extra * k.r * VIS * scale) / 2);
+      c.scale(scale, scale);
+      const j = makeJelly(i, 0, 0);
+      j.lx = 0;
+      j.ly = 0.3;
+      j.np = 0;
+      drawJelly(c, j, scale, 0.4);
+      icons.push(cv);
+      let url = '';
+      try { url = cv.toDataURL('image/png'); } catch { /* ignore */ }
+      iconURLs.push(url);
+    }
+  }
+
+  // ---------- Layout ----------
+  function resize() {
+    const rect = stage.getBoundingClientRect();
+    const cw = Math.max(1, rect.width), ch = Math.max(1, rect.height);
+    let pick = null;
+    for (const name of ['tall', 'wide']) {
+      const L = LAYOUTS[name];
+      const s = Math.min((cw - 32) / (L.x1 - L.x0), (ch - 12) / (L.y1 - L.y0));
+      if (!pick || s > pick.s * 1.04) pick = { name, L, s };
+    }
+    const L = pick.L, s = Math.max(0.05, pick.s);
+    view.name = pick.name;
+    view.L = L;
+    view.s = s;
+    view.cw = cw;
+    view.ch = ch;
+    view.offX = (cw - (L.x1 - L.x0) * s) / 2 - L.x0 * s;
+    view.offY = (ch - (L.y1 - L.y0) * s) / 2 - L.y0 * s;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.max(1, Math.round(cw * dpr));
+    canvas.height = Math.max(1, Math.round(ch * dpr));
+    view.dpr = canvas.width / cw;
+    buildBackground();
+
+    const btn = clamp(Math.round(46 * s), 34, 48);
+    const corner = $('corner');
+    corner.style.setProperty('--btn', btn + 'px');
+    corner.style.right = Math.max(12, cw - (view.offX + L.x1 * s)) + 'px';
+    corner.style.top = Math.max(12, view.offY + L.y0 * s) + 'px';
+    $('toast').style.top = Math.round(Math.max(10, view.offY + (L.y0 + 4) * s)) + 'px';
+    $('hint').style.top = Math.round(view.offY + H * 0.38 * s) + 'px';
+    render();
+  }
+
+  // ---------- DOM screens ----------
+  function showOnly(id) {
+    for (const name of ['menu', 'pause', 'over']) $(name).hidden = name !== id;
+    $('corner').hidden = id !== null || !(S.mode === 'playing' || S.mode === 'paused');
+  }
+
+  function focusStage() {
+    if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
+    stage.focus({ preventScroll: true });
+  }
+
+  function refreshMenu() {
+    const save = store.get('save', null);
+    const canContinue = validSave(save) && save.jellies.length > 0;
+    $('btn-continue').hidden = !canContinue;
+    const play = $('btn-play');
+    play.textContent = canContinue ? 'New game' : 'Play';
+    play.classList.toggle('alt', canContinue);
+    $('menu-best').textContent = fmt(S.best);
+    $('found-count').textContent = S.found + 1;
+    const list = $('chain');
+    list.textContent = '';
+    KINDS.forEach((k, i) => {
+      const li = document.createElement('li');
+      const img = document.createElement('img');
+      const size = 15 + i * 1.8;
+      img.width = img.height = Math.round(size);
+      img.src = iconURLs[i];
+      if (i <= S.found) {
+        img.alt = k.name;
+        li.title = k.name;
+      } else {
+        img.alt = 'Not found yet';
+        li.className = 'unknown';
+      }
+      li.appendChild(img);
+      list.appendChild(li);
+    });
+    syncSoundLabels();
+  }
+
+  function syncSoundLabels() {
+    const on = !sfx.muted;
+    for (const id of ['menu-sound', 'pause-sound']) $(id).textContent = on ? 'Sound: on' : 'Sound: off';
+    const b = $('btn-sound');
+    b.classList.toggle('muted', !on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+
+  function toggleSound() {
+    sfx.init();
+    sfx.setMuted(!sfx.muted);
+    syncSoundLabels();
+    sfx.click();
+  }
+
+  let toastTimer = 0;
+  function showToast(level, title, text) {
+    const el = $('toast');
+    $('toast-img').src = iconURLs[level];
+    $('toast-title').textContent = title;
+    $('toast-text').textContent = text;
+    el.hidden = true;
+    void el.offsetWidth;   // restart the pop-in animation
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 3000);
+  }
+
+  function showHint(text) {
+    const el = $('hint');
+    el.textContent = text;
+    el.hidden = false;
+  }
+  function hideHint() {
+    S.hintDrops = 0;
+    $('hint').hidden = true;
+  }
+
+  let announceTimer = 0;
+  function announce(text) {
+    const el = $('sr');
+    el.textContent = '';
+    clearTimeout(announceTimer);
+    announceTimer = setTimeout(() => { el.textContent = text; }, 60);
+  }
+
+  let restartArmed = false, restartTimer = 0;
+  function resetRestart() {
+    restartArmed = false;
+    clearTimeout(restartTimer);
+    $('btn-restart').textContent = 'Restart';
+  }
+
+  // ---------- Input ----------
+  function toWorld(e) {
+    const r = stage.getBoundingClientRect();
+    return { x: (e.clientX - r.left - view.offX) / view.s, y: (e.clientY - r.top - view.offY) / view.s };
+  }
+
+  let aimingId = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    if (S.mode !== 'playing' || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    sfx.init();
+    aimingId = e.pointerId;
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    S.aimX = toWorld(e).x;
+    e.preventDefault();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (S.mode === 'playing' && (e.pointerType === 'mouse' || aimingId === e.pointerId)) S.aimX = toWorld(e).x;
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    if (aimingId !== e.pointerId) return;
+    aimingId = null;
+    if (S.mode !== 'playing') return;
+    const r = KINDS[S.held].r;
+    S.aimX = clamp(toWorld(e).x, r, W - r);
+    S.heldX = S.aimX;   // drop exactly where the finger or pointer let go
+    drop();
+  });
+  canvas.addEventListener('pointercancel', () => { aimingId = null; });
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  $('app').addEventListener('pointermove', (e) => {
+    const p = toWorld(e);
+    S.lookX = p.x;
+    S.lookY = p.y;
+  });
+
+  addEventListener('keydown', (e) => {
+    const k = e.key;
+    const onButton = e.target instanceof HTMLElement && e.target.closest('button');
+    if (k === 'm' || k === 'M') { toggleSound(); return; }
+    if (S.mode === 'playing') {
+      if (k === 'ArrowLeft' || k === 'a' || k === 'A') { keys.left = true; e.preventDefault(); }
+      else if (k === 'ArrowRight' || k === 'd' || k === 'D') { keys.right = true; e.preventDefault(); }
+      else if ((k === ' ' || k === 'Enter' || k === 'ArrowDown' || k === 's' || k === 'S') && !onButton) {
+        e.preventDefault();
+        if (!e.repeat) {
+          sfx.init();
+          drop();
+        }
+      } else if (k === 'Escape' || k === 'p' || k === 'P') { e.preventDefault(); pause(); }
+    } else if (S.mode === 'paused' && (k === 'Escape' || k === 'p' || k === 'P')) {
+      e.preventDefault();
+      resume();
+    }
+  });
+  addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
+  });
+  addEventListener('blur', () => { keys.left = keys.right = false; });
+
+  $('btn-play').addEventListener('click', () => {
+    sfx.init();
+    sfx.click();
+    store.del('save');
+    showOnly(null);
+    S.demo = true;
+    clearJar(startGame);
+  });
+  $('btn-continue').addEventListener('click', () => {
+    sfx.init();
+    sfx.click();
+    const save = store.get('save', null);
+    if (validSave(save)) restore(save);
+    else { showOnly(null); clearJar(startGame); }
+  });
+  $('btn-resume').addEventListener('click', () => { sfx.click(); resume(); });
+  $('btn-restart').addEventListener('click', () => {
+    sfx.click();
+    if (!restartArmed) {
+      restartArmed = true;
+      $('btn-restart').textContent = 'Tap again to restart';
+      restartTimer = setTimeout(resetRestart, 3000);
+      return;
+    }
+    resetRestart();
+    store.del('save');
+    showOnly(null);
+    S.demo = false;
+    clearJar(startGame);
+  });
+  $('btn-quit').addEventListener('click', () => { sfx.click(); saveGame(); toMenu(); });
+  $('btn-again').addEventListener('click', () => {
+    sfx.click();
+    showOnly(null);
+    S.demo = false;
+    clearJar(startGame);
+  });
+  $('btn-over-menu').addEventListener('click', () => { sfx.click(); toMenu(); });
+  $('btn-pause').addEventListener('click', () => pause());
+  $('btn-sound').addEventListener('click', () => { toggleSound(); focusStage(); });
+  $('menu-sound').addEventListener('click', toggleSound);
+  $('pause-sound').addEventListener('click', toggleSound);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      saveGame();
+      pause();
+    }
+  });
+  addEventListener('pagehide', saveGame);
+
+  // ---------- Main loop ----------
+  let last = performance.now(), acc = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
+    last = now;
+    if (S.mode !== 'paused') {
+      acc += dt;
+      let steps = 0;
+      while (acc >= STEP && steps < 8) {
+        fixedStep(STEP);
+        acc -= STEP;
+        steps++;
+      }
+      if (steps === 8) acc = 0;
+    }
+    update(dt);
+    render();
+  }
+
+  function boot(data) {
+    makeIcons();
+    if ('ResizeObserver' in window) new ResizeObserver(resize).observe(stage);
+    else addEventListener('resize', resize);
+    resize();
+    refreshMenu();
+    const snap = data && data.game;
+    if (validSave(snap)) restore(snap);
+    else showOnly('menu');
+    if (document.fonts && document.fonts.load) {
+      document.fonts.load(`700 30px ${FONT_DISPLAY}`).catch(() => {});
+      document.fonts.load(`800 14px ${FONT_BODY}`).catch(() => {});
+    }
+    requestAnimationFrame((now) => {
+      last = now;
+      frame(now);
+    });
+  }
+
+  // A small hook for tinkering from the browser console.
+  window.__jellyJar = {
+    state: S, kinds: KINDS, W, H,
+    drop(x) { if (typeof x === 'number') S.heldX = S.aimX = x; S.cool = 0; drop(); },
+    simulate(seconds) { for (let t = 0; t < seconds; t += STEP) { fixedStep(STEP); update(STEP); } },
+    start() { startGame(); },
+  };
+
+  // When this page is republished inside a Claude artifact, carry a game in progress over.
+  const hot = window.claude && window.claude.hot;
+  if (hot && typeof hot.snapshot === 'function') {
+    try { hot.snapshot(() => ({ game: S.mode === 'playing' || S.mode === 'paused' ? serialize() : null })); } catch { /* ignore */ }
+  }
+  if (hot && typeof hot.ready === 'function') hot.ready(boot);
+  else boot((hot && hot.data) || {});
+})();
+</script>
+</body>
+</html>
