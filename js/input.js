@@ -31,7 +31,10 @@ export class Input {
     });
 
     addEventListener('mousemove', (e) => {
-      if (this.pointerLocked) {
+      // Browsers often send one huge bogus movement right as the pointer locks
+      // (and occasionally afterwards), so ignore those jumps.
+      const settled = performance.now() - this.lockTime > 150;
+      if (this.pointerLocked && settled && Math.abs(e.movementX) < 300 && Math.abs(e.movementY) < 300) {
         this.lookX += e.movementX;
         this.lookY += e.movementY;
       }
@@ -48,8 +51,10 @@ export class Input {
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
+    this.lockTime = 0;
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === canvas;
+      this.lockTime = performance.now();
       this.onLockChange?.(this.pointerLocked);
     });
 

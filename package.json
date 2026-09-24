@@ -1,0 +1,11 @@
+{
+  "name": "missile-run",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:desktop": "node tools/build-desktop.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

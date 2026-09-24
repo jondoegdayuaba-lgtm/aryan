@@ -11,6 +11,17 @@ A browser game. You guide a missile out of a launch hangar, across a test range 
 
 Everything is plain HTML, CSS and JavaScript with [three.js](https://threejs.org) (bundled in `vendor/three`). There is no build step and no image or sound files: textures are drawn on canvases and sounds are synthesised with the Web Audio API.
 
+## Play it from your desktop
+
+`desktop/missile-run.html` is the whole game in one file. Save it to your desktop and double-click it; it opens in your browser and runs without a web server. It works offline, except the title fonts, which fall back to system fonts without internet.
+
+After changing the code, rebuild that file with:
+
+```sh
+npm install
+npm run build:desktop
+```
+
 ## Run it locally
 
 ES modules don't load from `file://`, so serve the folder:
