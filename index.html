@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Missile Run</title>
+  <meta name="description" content="A browser game: steer a guided missile through a test range and a brick town, thread lattice towers and take out tanks.">
+  <meta name="theme-color" content="#14173a">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2314173a'/%3E%3Cpath d='M44 8c6 0 12 6 12 12L30 46l-12-12z' fill='%23d8262e'/%3E%3Cpath d='M18 34l-8 2 4 4zm12 12l-2 8-4-4z' fill='%23dcd8f4'/%3E%3Cpath d='M20 44l-10 10' stroke='%23ff7a1a' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Chakra+Petch:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js" } }</script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+
+  <div id="hud" hidden>
+    <div class="hud-score">
+      <span class="label">Score</span>
+      <span id="score" class="num">0</span>
+      <span id="combo" class="combo" hidden></span>
+    </div>
+    <div class="hud-right">
+      <span id="hud-missile" class="label"></span>
+      <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+    </div>
+    <div id="crosshair" aria-hidden="true"></div>
+    <div id="lock" aria-hidden="true"><span id="lock-dist"></span></div>
+    <div id="popups" aria-live="polite"></div>
+    <div id="warning" hidden></div>
+    <div class="hud-bottom">
+      <div class="gauge">
+        <span class="label">Fuel</span>
+        <div class="fuel-bar"><div id="fuel-fill"></div></div>
+      </div>
+      <div class="speed"><span id="speed" class="num">0</span><span class="label">km/h</span></div>
+    </div>
+    <button id="btn-boost" type="button">Boost</button>
+  </div>
+
+  <section id="menu" class="screen" aria-labelledby="title">
+    <h1 id="title" class="title"><span id="title-a"></span> <span id="title-b" class="accent"></span></h1>
+    <p id="tagline" class="tagline"></p>
+
+    <div class="skin-picker">
+      <button id="skin-prev" class="arrow-btn" type="button" aria-label="Previous skin">&#8249;</button>
+      <div class="skin-info">
+        <span class="label">Missile skin</span>
+        <span id="skin-name" class="skin-name"></span>
+        <span id="skin-lock" class="skin-lock"></span>
+      </div>
+      <button id="skin-next" class="arrow-btn" type="button" aria-label="Next skin">&#8250;</button>
+    </div>
+
+    <button id="btn-launch" class="big-btn" type="button">Launch</button>
+
+    <dl class="controls controls-desktop">
+      <div><dt>Mouse</dt><dd>Steer</dd></div>
+      <div><dt>Click / Shift</dt><dd>Boost</dd></div>
+      <div><dt>WASD / Arrows</dt><dd>Steer (keys)</dd></div>
+      <div><dt>Esc</dt><dd>Pause</dd></div>
+    </dl>
+    <dl class="controls controls-touch">
+      <div><dt>Drag</dt><dd>Steer</dd></div>
+      <div><dt>Hold Boost</dt><dd>Go faster</dd></div>
+    </dl>
+
+    <div class="menu-foot">
+      <span>Best <strong id="best-menu" class="num">0</strong></span>
+      <button id="btn-sound" class="text-btn" type="button">Sound on</button>
+    </div>
+  </section>
+
+  <section id="paused" class="screen screen-center" hidden>
+    <h2 class="title small">Paused</h2>
+    <button id="btn-resume" class="big-btn" type="button">Resume</button>
+    <button id="btn-quit" class="text-btn" type="button">Back to hangar</button>
+  </section>
+
+  <section id="results" class="screen screen-center" hidden>
+    <h2 id="result-title" class="title small">Missile down</h2>
+    <div id="result-score" class="result-score num">0</div>
+    <dl id="result-stats" class="result-stats"></dl>
+    <p id="result-unlock" class="unlock" hidden></p>
+    <button id="btn-again" class="big-btn" type="button">Launch again</button>
+    <button id="btn-menu" class="text-btn" type="button">Change skin</button>
+  </section>
+
+  <div id="loading" class="loading">Fuelling up…</div>
+  <noscript><p class="loading">This game needs JavaScript turned on.</p></noscript>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
