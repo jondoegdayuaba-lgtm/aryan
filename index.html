@@ -33,13 +33,20 @@
     <div id="popups" aria-live="polite"></div>
     <div id="warning" hidden></div>
     <div class="hud-bottom">
-      <div class="gauge">
-        <span class="label">Fuel</span>
-        <div class="fuel-bar"><div id="fuel-fill"></div></div>
+      <div class="gauges">
+        <div class="gauge">
+          <span class="label">Fuel</span>
+          <div class="fuel-bar"><div id="fuel-fill"></div></div>
+        </div>
+        <div class="gauge gauge-float">
+          <span class="label">Life jacket</span>
+          <div class="fuel-bar"><div id="float-fill"></div></div>
+        </div>
       </div>
       <div class="speed"><span id="speed" class="num">0</span><span class="label">km/h</span></div>
     </div>
-    <button id="btn-boost" type="button">Boost</button>
+    <button id="btn-float" class="hold-btn" type="button">Float</button>
+    <button id="btn-boost" class="hold-btn" type="button">Boost</button>
   </div>
 
   <section id="menu" class="screen" aria-labelledby="title">
@@ -59,14 +66,17 @@
     <button id="btn-launch" class="big-btn" type="button">Launch</button>
 
     <dl class="controls controls-desktop">
-      <div><dt>Mouse</dt><dd>Steer</dd></div>
+      <div><dt>Mouse</dt><dd>Aim, the missile follows</dd></div>
+      <div><dt>WASD / Arrows</dt><dd>Aim with keys</dd></div>
       <div><dt>Click / Shift</dt><dd>Boost</dd></div>
-      <div><dt>WASD / Arrows</dt><dd>Steer (keys)</dd></div>
+      <div><dt>Right-click / F</dt><dd>Life jacket: hover</dd></div>
       <div><dt>Esc</dt><dd>Pause</dd></div>
+      <div><dt>M</dt><dd>Mute</dd></div>
     </dl>
     <dl class="controls controls-touch">
-      <div><dt>Drag</dt><dd>Steer</dd></div>
+      <div><dt>Drag</dt><dd>Aim</dd></div>
       <div><dt>Hold Boost</dt><dd>Go faster</dd></div>
+      <div><dt>Hold Float</dt><dd>Hover</dd></div>
     </dl>
 
     <div class="menu-foot">

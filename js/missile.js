@@ -1,4 +1,4 @@
-// The player's missile: model, skins, exhaust flame and inflatable float pods (shield).
+// The player's missile: model, skins, exhaust flame and the inflatable life jacket.
 import * as THREE from 'three';
 
 const lambert = (o) => new THREE.MeshLambertMaterial(o);
@@ -91,10 +91,10 @@ export class Missile {
     this.flame = new THREE.Group();
     this.flame.position.z = 1.95;
     this.bank.add(this.flame);
-    const outer = new THREE.Mesh(new THREE.ConeGeometry(0.34, 3.2, 14, 1, true).rotateX(Math.PI / 2).translate(0, 0, 1.6), additive('#ff6a1a', 0.85));
-    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.8, 12, 1, true).rotateX(Math.PI / 2).translate(0, 0, 0.9), additive('#fff0a0', 1));
+    const outer = new THREE.Mesh(new THREE.ConeGeometry(0.4, 4.6, 14, 1, true).rotateX(Math.PI / 2).translate(0, 0, 2.3), additive('#ff6a1a', 0.85));
+    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.24, 2.6, 12, 1, true).rotateX(Math.PI / 2).translate(0, 0, 1.3), additive('#fff0a0', 1));
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.T.glow, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
-    glow.scale.set(2.6, 2.6, 1);
+    glow.scale.set(3.2, 3.2, 1);
     glow.position.z = 0.3;
     this.flameOuter = outer;
     this.flameInner = inner;
@@ -105,7 +105,7 @@ export class Missile {
     this.bank.add(this.light);
   }
 
-  // Orange float pods that inflate around the missile when you pick up a shield.
+  // Life jacket: orange floats that inflate around the missile while it hovers.
   _buildFloats() {
     this.floats = new THREE.Group();
     const mat = lambert({ color: '#ff7a1a' });
@@ -150,7 +150,7 @@ export class Missile {
     const flick = 0.85 + Math.sin(time * 61) * 0.08 + Math.random() * 0.12;
     this.flame.visible = th > 0.03;
     this.flame.scale.set(0.6 + th * 0.4, 0.6 + th * 0.4, th * flick);
-    this.flameGlow.scale.setScalar((1.6 + th * 1.2) * flick);
+    this.flameGlow.scale.setScalar((2 + th * 1.6) * flick);
     this.light.intensity = th * 26 * flick;
 
     // Float pods: springy inflate / deflate instead of popping in.

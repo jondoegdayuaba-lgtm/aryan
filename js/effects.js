@@ -91,7 +91,7 @@ export class Effects {
     this._acc = 0;
   }
 
-  // Called every frame while the engine burns.
+  // Called every frame while the engine burns. Just sparks off the flame, no smoke trail.
   exhaust(pos, backDir, speed, throttle, dt) {
     this._acc += dt * (60 + throttle * 80);
     while (this._acc > 1) {
@@ -103,14 +103,6 @@ export class Effects {
         life: 0.07 + Math.random() * 0.08, size: 0.45 + throttle * 0.3, curve: 'shrink',
         color: new THREE.Color().setHSL(0.07 + Math.random() * 0.06, 1, 0.55 + Math.random() * 0.15),
       });
-      if (speed > 15 && Math.random() < 0.45) {
-        const g = 0.82 + Math.random() * 0.14;
-        this.smoke.spawn({
-          pos: p.clone().addScaledVector(backDir, 0.8), vel: new THREE.Vector3(jitter() * 3, 0.8 + Math.random(), jitter() * 3),
-          life: 1.1 + Math.random() * 0.9, size: 0.5 + Math.random() * 0.5 + speed * 0.005, curve: 'puff', drag: 1.5,
-          color: new THREE.Color(g, g, g * 1.02),
-        });
-      }
     }
   }
 
@@ -175,7 +167,7 @@ export class Effects {
     const show = speedFactor > 0.05;
     this.streaks.visible = show;
     if (!show) return;
-    this.streaks.material.opacity = 0.45 * speedFactor;
+    this.streaks.material.opacity = 0.5 * speedFactor;
     _q.setFromUnitVectors(new THREE.Vector3(0, 0, -1), fwd);
     for (let i = 0; i < this.streakCount; i++) {
       const d = this.streakData[i];

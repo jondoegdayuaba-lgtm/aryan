@@ -1,4 +1,4 @@
-// Tanks that drive around their patrol areas, plus the shield float-ring pickups.
+// Tanks that drive around their patrol areas, plus the float-ring pickups.
 import * as THREE from 'three';
 
 const lambert = (color) => new THREE.MeshLambertMaterial({ color });
@@ -86,6 +86,20 @@ export class Tanks {
     return null;
   }
 
+  // Distance along a ray to the nearest live tank, or Infinity.
+  raycast(origin, dir) {
+    let best = Infinity;
+    for (const t of this.list) {
+      if (!t.alive) continue;
+      const c = t.group.position;
+      const ox = c.x - origin.x, oy = c.y + 1.6 - origin.y, oz = c.z - origin.z;
+      const tc = ox * dir.x + oy * dir.y + oz * dir.z;
+      const d2 = ox * ox + oy * oy + oz * oz - tc * tc;
+      if (tc > 0 && d2 < 4.3 * 4.3) best = Math.min(best, tc - Math.sqrt(4.3 * 4.3 - d2));
+    }
+    return best;
+  }
+
   destroy(t) {
     t.alive = false;
     t.wreckT = 0;
@@ -137,7 +151,7 @@ export class Tanks {
   }
 }
 
-// Orange-and-white float rings that give the missile its inflatable shield.
+// Orange-and-white float rings that refill the life jacket.
 export class ShieldPickups {
   constructor(scene, spots) {
     this.items = spots.map((p) => {

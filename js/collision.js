@@ -5,6 +5,8 @@ import * as THREE from 'three';
 const _d = new THREE.Vector3();
 const _l = new THREE.Vector3();
 const _n = new THREE.Vector3();
+const _o = new THREE.Vector3();
+const _r = new THREE.Vector3();
 
 export class Colliders {
   constructor() {
@@ -90,5 +92,61 @@ export class Colliders {
       }
     }
     return null;
+  }
+
+  // Distance along a unit-length ray to the first solid thing (ground included),
+  // or maxDist if nothing is hit. Gates are ignored so you can aim through them.
+  raycast(origin, dir, maxDist) {
+    let best = maxDist;
+    if (dir.y < -1e-6) {
+      const t = -origin.y / dir.y;
+      if (t >= 0 && t < best) best = t;
+    }
+    for (const s of this.shapes) {
+      if (s.type === 'torus') continue;
+      _d.subVectors(s.center, origin);
+      const tc = _d.dot(dir);
+      if (tc < -s.bound || tc - s.bound > best) continue;
+      const d2 = _d.lengthSq() - tc * tc;
+      if (d2 > s.bound * s.bound) continue;
+      let t = Infinity;
+      if (s.type === 'sphere') {
+        t = tc - Math.sqrt(s.radius * s.radius - d2);
+      } else if (s.type === 'box') {
+        _o.subVectors(origin, s.center).applyQuaternion(s.invQ);
+        _r.copy(dir).applyQuaternion(s.invQ);
+        let tmin = -Infinity, tmax = Infinity;
+        for (const a of ['x', 'y', 'z']) {
+          const h = s.half[a];
+          if (Math.abs(_r[a]) < 1e-9) {
+            if (Math.abs(_o[a]) > h) { tmin = Infinity; break; }
+          } else {
+            const t1 = (-h - _o[a]) / _r[a], t2 = (h - _o[a]) / _r[a];
+            tmin = Math.max(tmin, Math.min(t1, t2));
+            tmax = Math.min(tmax, Math.max(t1, t2));
+          }
+        }
+        if (tmin <= tmax && tmin >= 0) t = tmin;
+      } else if (s.type === 'cyl') {
+        const ox = origin.x - s.center.x, oz = origin.z - s.center.z;
+        const a = dir.x * dir.x + dir.z * dir.z;
+        if (a > 1e-9) {
+          const b = ox * dir.x + oz * dir.z, c = ox * ox + oz * oz - s.radius * s.radius;
+          const disc = b * b - a * c;
+          if (disc >= 0) {
+            const t1 = (-b - Math.sqrt(disc)) / a;
+            const y = origin.y + dir.y * t1;
+            if (t1 >= 0 && y >= s.yMin && y <= s.yMax) t = t1;
+          }
+        }
+        for (const capY of [s.yMax, s.yMin]) {
+          if (Math.abs(dir.y) < 1e-9) break;
+          const tp = (capY - origin.y) / dir.y;
+          if (tp >= 0 && tp < t && Math.hypot(ox + dir.x * tp, oz + dir.z * tp) <= s.radius) t = tp;
+        }
+      }
+      if (t >= 0 && t < best) best = t;
+    }
+    return best;
   }
 }

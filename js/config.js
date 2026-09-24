@@ -3,18 +3,23 @@
 export const GAME_TITLE = ['MISSILE', 'RUN'];            // second word gets the accent colour
 export const TAGLINE = 'Steer a guided missile. Blow up tanks. Don\'t hit the walls.';
 
+// Flight model: the camera orbits the missile and the missile always steers
+// toward whatever the crosshair is pointing at.
 export const FLIGHT = {
-  cruiseSpeed: 55,        // units / second
-  boostSpeed: 95,
-  turnRate: 2.4,          // radians / second the missile can turn
-  boostTurnRate: 1.7,
+  cruiseSpeed: 45,        // units / second
+  boostSpeed: 80,
+  steer: 5,               // how eagerly the missile turns toward the crosshair (higher = snappier)
+  maxTurnRate: 3.2,       // radians / second cap
+  boostMaxTurnRate: 2.4,
   fuelSeconds: 25,        // full tank
   boostDrain: 2.6,        // fuel burns this much faster while boosting
+  floatSeconds: 3,        // life jacket: how long you can hover per missile
+  cameraDistance: 16,     // how far the camera sits from the missile
+  crosshairY: 0.355,      // crosshair height as a fraction of the screen from the top
   mouseSensitivity: 0.0022,
   touchSensitivity: 0.006,
-  keyTurnSpeed: 1.9,      // radians / second when steering with the keyboard
-  maxPitch: 1.4,          // ~80 degrees
-  radius: 0.6,            // collision radius
+  keyTurnSpeed: 1.9,      // radians / second when turning the camera with the keyboard
+  maxPitch: 1.4,          // camera pitch limit, ~80 degrees
 };
 
 export const SCORING = {

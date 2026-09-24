@@ -1,6 +1,6 @@
 // Mouse (pointer lock or cursor-offset fallback), keyboard and touch input.
 export class Input {
-  constructor(canvas, boostButton) {
+  constructor(canvas, boostButton, floatButton) {
     this.canvas = canvas;
     this.keys = new Set();
     this.lookX = 0;               // accumulated look deltas (pixels)
@@ -8,8 +8,10 @@ export class Input {
     this.touchLookX = 0;
     this.touchLookY = 0;
     this.cursor = { x: 0, y: 0 }; // -1..1 from screen centre (fallback steering)
-    this.mouseDown = false;
+    this.mouseLeft = false;
+    this.mouseRight = false;
     this.touchBoost = false;
+    this.touchFloat = false;
     this.pointerLocked = false;
     this.usingTouch = false;
     this.steerTouch = null;
@@ -23,7 +25,10 @@ export class Input {
       this.onKey?.(e.code, e);
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
-    addEventListener('blur', () => { this.keys.clear(); this.mouseDown = false; this.touchBoost = false; });
+    addEventListener('blur', () => {
+      this.keys.clear();
+      this.mouseLeft = this.mouseRight = this.touchBoost = this.touchFloat = false;
+    });
 
     addEventListener('mousemove', (e) => {
       if (this.pointerLocked) {
@@ -33,8 +38,14 @@ export class Input {
       this.cursor.x = (e.clientX / innerWidth) * 2 - 1;
       this.cursor.y = (e.clientY / innerHeight) * 2 - 1;
     });
-    canvas.addEventListener('mousedown', (e) => { if (e.button === 0 || e.button === 2) this.mouseDown = true; });
-    addEventListener('mouseup', () => { this.mouseDown = false; });
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) this.mouseLeft = true;
+      if (e.button === 2) this.mouseRight = true;
+    });
+    addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.mouseLeft = false;
+      if (e.button === 2) this.mouseRight = false;
+    });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
     document.addEventListener('pointerlockchange', () => {
@@ -69,21 +80,31 @@ export class Input {
     canvas.addEventListener('touchend', endTouch);
     canvas.addEventListener('touchcancel', endTouch);
 
-    const boostOn = (e) => { e.preventDefault(); this.touchBoost = true; boostButton.classList.add('on'); };
-    const boostOff = () => { this.touchBoost = false; boostButton.classList.remove('on'); };
-    boostButton.addEventListener('touchstart', boostOn, { passive: false });
-    boostButton.addEventListener('touchend', boostOff);
-    boostButton.addEventListener('touchcancel', boostOff);
-    boostButton.addEventListener('mousedown', boostOn);
-    boostButton.addEventListener('mouseup', boostOff);
-    boostButton.addEventListener('mouseleave', boostOff);
+    // Hold-to-use touch buttons.
+    const hold = (button, key) => {
+      const on = (e) => { e.preventDefault(); this[key] = true; button.classList.add('on'); };
+      const off = () => { this[key] = false; button.classList.remove('on'); };
+      button.addEventListener('touchstart', on, { passive: false });
+      button.addEventListener('touchend', off);
+      button.addEventListener('touchcancel', off);
+      button.addEventListener('mousedown', on);
+      button.addEventListener('mouseup', off);
+      button.addEventListener('mouseleave', off);
+    };
+    hold(boostButton, 'touchBoost');
+    hold(floatButton, 'touchFloat');
   }
 
   get boost() {
-    return this.touchBoost || this.mouseDown || this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.keys.has('Space');
+    return this.touchBoost || this.mouseLeft || this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.keys.has('Space');
   }
 
-  // Keyboard steering axes (-1..1).
+  // Life jacket: hold to inflate the floats and hover.
+  get float() {
+    return this.touchFloat || this.mouseRight || this.keys.has('KeyF') || this.keys.has('KeyE');
+  }
+
+  // Keyboard camera axes (-1..1).
   get keyAxes() {
     const k = this.keys;
     const x = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);

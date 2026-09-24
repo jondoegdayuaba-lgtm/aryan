@@ -190,7 +190,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .controls-touch { display: none; }
 @media (hover: none) and (pointer: coarse) {
   .controls-desktop { display: none; }
-  .controls-touch { display: grid; }
+  .controls-touch { display: grid; grid-template-columns: repeat(3, 1fr); }
 }
 
 .menu-foot {
@@ -275,7 +275,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 
 #crosshair {
   position: absolute;
-  left: 50%; top: 50%;
+  left: 50%; top: var(--cross-y, 35.5%);
   width: 22px; height: 22px;
   margin: -11px 0 0 -11px;
   border: 2px solid rgba(255, 255, 255, 0.85);
@@ -364,7 +364,15 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
   gap: 18px;
   width: min(460px, calc(100% - 2 * var(--gutter)));
 }
-.gauge { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.gauges { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.gauge { display: flex; flex-direction: column; gap: 4px; }
+.gauge-float .fuel-bar { height: 10px; }
+#float-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--exhaust);
+  transform-origin: left center;
+}
 .fuel-bar {
   height: 14px;
   padding: 2px;
@@ -383,7 +391,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .speed { display: flex; flex-direction: column; align-items: flex-end; min-width: 76px; }
 #speed { font-family: var(--display); font-size: 2rem; line-height: 1; color: #fff; text-shadow: 2px 2px 0 var(--ink); }
 
-#btn-boost {
+.hold-btn {
   display: none;
   pointer-events: auto;
   position: absolute;
@@ -400,8 +408,15 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
   text-shadow: 1px 1px 0 var(--ink);
   touch-action: none;
 }
-#btn-boost.on { background: rgba(255, 154, 61, 0.95); transform: scale(0.94); }
-.touch #btn-boost { display: block; }
+#btn-float {
+  bottom: calc(var(--safe-bottom) + 180px);
+  width: 72px; height: 72px;
+  font-size: 1.15rem;
+  background: rgba(20, 23, 58, 0.55);
+  border-color: var(--exhaust);
+}
+.hold-btn.on { background: rgba(255, 154, 61, 0.95); transform: scale(0.94); }
+.touch .hold-btn { display: block; }
 
 .loading {
   position: fixed;
@@ -434,6 +449,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
   .big-btn { font-size: 1.6rem; padding: 11px 16px 9px; }
   .hud-bottom { bottom: calc(var(--safe-bottom) + 14px); width: calc(100% - 2 * var(--gutter) - 110px); left: var(--gutter); transform: none; }
   #btn-boost { bottom: calc(var(--safe-bottom) + 14px); width: 84px; height: 84px; }
+  #btn-float { bottom: calc(var(--safe-bottom) + 110px); right: calc(var(--gutter) + 6px); }
 }
 @media (max-height: 520px) and (min-width: 641px) {
   .screen:not(.screen-center) { top: calc(var(--safe-top) + 12px); gap: 10px; padding: 18px 20px 14px; }
