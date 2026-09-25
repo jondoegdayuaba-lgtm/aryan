@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Ridge Rally</title>
+  <meta name="description" content="A realistic 3D rally game in your browser: gravel stages through lake forests, real car physics, jumps, pace notes and ghost cars.">
+  <meta name="theme-color" content="#0a0c0f">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0c0f'/%3E%3Cpath d='M10 44l10-18h14l6-8h10l4 8v14l-4 4H14z' fill='%23ffc629'/%3E%3Ccircle cx='21' cy='46' r='6' fill='%230a0c0f' stroke='%23f2f4f7' stroke-width='3'/%3E%3Ccircle cx='45' cy='46' r='6' fill='%230a0c0f' stroke='%23f2f4f7' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;1,600;1,700;1,800&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js" } }</script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+
+  <!-- In-race HUD -->
+  <div id="hud" hidden>
+    <div class="hud-stage">
+      <span id="hud-stage-name" class="label"></span>
+      <div class="progress" aria-hidden="true">
+        <div id="hud-progress" class="progress-fill"></div>
+        <div id="hud-ghost-pos" class="progress-ghost"></div>
+        <div class="progress-split" style="left: 33.333%"></div>
+        <div class="progress-split" style="left: 66.666%"></div>
+      </div>
+    </div>
+    <div class="hud-timer">
+      <span id="hud-time" class="time num">0:00.00</span>
+      <span id="hud-delta" class="delta num" hidden></span>
+    </div>
+    <div class="hud-corner">
+      <button id="btn-cam" class="icon-btn" type="button" aria-label="Change camera" title="Camera (C)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-2h6l2 2h3v11H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      </button>
+      <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause" title="Pause (Esc)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+    </div>
+    <div id="pacenotes" class="pacenotes" aria-live="off"></div>
+    <div id="popups" class="popups" aria-live="polite"></div>
+    <div id="countdown" class="countdown" hidden></div>
+    <div id="warning" class="warning" hidden></div>
+    <canvas id="minimap" class="minimap" width="170" height="170" aria-hidden="true"></canvas>
+    <div class="dash">
+      <svg class="tacho" viewBox="0 0 200 200" aria-hidden="true">
+        <path id="tacho-bg" class="tacho-bg" d=""/>
+        <path id="tacho-red" class="tacho-red" d=""/>
+        <path id="tacho-fill" class="tacho-fill" d=""/>
+      </svg>
+      <div class="dash-read">
+        <span id="hud-speed" class="speed num">0</span>
+        <span id="hud-unit" class="unit">km/h</span>
+      </div>
+      <span id="hud-gear" class="gear">1</span>
+    </div>
+    <div id="touch" class="touch" hidden>
+      <div class="touch-steer">
+        <button id="t-left" class="t-btn" type="button" aria-label="Steer left"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button id="t-right" class="t-btn" type="button" aria-label="Steer right"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="touch-pedals">
+        <button id="t-hand" class="t-btn t-small" type="button">Hand<br>brake</button>
+        <button id="t-brake" class="t-btn t-brake" type="button">Brake</button>
+        <button id="t-gas" class="t-btn t-gas" type="button">Gas</button>
+      </div>
+      <button id="t-recover" class="t-btn t-recover" type="button" aria-label="Recover car">Reset</button>
+    </div>
+  </div>
+
+  <!-- Title screen -->
+  <section id="menu-main" class="screen" hidden aria-labelledby="title">
+    <h1 id="title" class="title"><span id="title-a">RIDGE</span> <span id="title-b" class="accent">RALLY</span></h1>
+    <p id="tagline" class="tagline"></p>
+    <nav class="menu-list">
+      <button id="btn-rally" class="menu-btn primary" type="button"><span>Rally stages</span><small>Timed stages with a co-driver</small></button>
+      <button id="btn-free" class="menu-btn" type="button"><span>Free roam</span><small>Explore the island, find the stars</small></button>
+      <button id="btn-garage" class="menu-btn" type="button"><span>Garage</span><small id="garage-sub">Car and paint</small></button>
+      <button id="btn-settings" class="menu-btn" type="button"><span>Settings</span><small>Graphics, controls, sound</small></button>
+    </nav>
+    <div class="menu-foot">
+      <span id="foot-stars"></span>
+      <button id="btn-sound" class="text-btn" type="button">Sound on</button>
+    </div>
+  </section>
+
+  <!-- Stage select -->
+  <section id="menu-stages" class="screen wide" hidden aria-labelledby="stages-title">
+    <h2 id="stages-title" class="title small">Choose a stage</h2>
+    <div id="stage-list" class="stage-list"></div>
+    <div class="menu-row">
+      <button id="stages-back" class="text-btn" type="button">Back</button>
+    </div>
+  </section>
+
+  <!-- Garage -->
+  <section id="menu-garage" class="screen" hidden aria-labelledby="garage-title">
+    <h2 id="garage-title" class="title small">Garage</h2>
+    <div class="picker">
+      <button id="car-prev" class="arrow-btn" type="button" aria-label="Previous car">&#8249;</button>
+      <div class="picker-info">
+        <span class="label">Car</span>
+        <span id="car-name" class="picker-name"></span>
+        <span id="car-blurb" class="picker-sub"></span>
+      </div>
+      <button id="car-next" class="arrow-btn" type="button" aria-label="Next car">&#8250;</button>
+    </div>
+    <dl id="car-stats" class="stats"></dl>
+    <div class="picker">
+      <button id="liv-prev" class="arrow-btn" type="button" aria-label="Previous paint">&#8249;</button>
+      <div class="picker-info">
+        <span class="label">Paint</span>
+        <span id="liv-name" class="picker-name"></span>
+        <span id="liv-swatch" class="swatch"></span>
+      </div>
+      <button id="liv-next" class="arrow-btn" type="button" aria-label="Next paint">&#8250;</button>
+    </div>
+    <div class="menu-row">
+      <button id="garage-done" class="big-btn" type="button">Done</button>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section id="menu-settings" class="screen" hidden aria-labelledby="settings-title">
+    <h2 id="settings-title" class="title small">Settings</h2>
+    <div id="settings-list" class="settings"></div>
+    <p class="hint">Graphics changes apply after a reload.</p>
+    <div class="menu-row">
+      <button id="settings-back" class="big-btn" type="button">Done</button>
+    </div>
+  </section>
+
+  <!-- Pause -->
+  <section id="menu-pause" class="screen screen-center" hidden aria-labelledby="pause-title">
+    <h2 id="pause-title" class="title small">Paused</h2>
+    <button id="btn-resume" class="big-btn" type="button">Resume</button>
+    <div class="menu-row">
+      <button id="btn-restart" class="text-btn" type="button">Restart stage</button>
+      <button id="btn-recover" class="text-btn" type="button">Reset car to road</button>
+    </div>
+    <div class="menu-row">
+      <button id="btn-quit" class="text-btn" type="button">Quit to menu</button>
+    </div>
+    <dl class="controls controls-desktop">
+      <div><dt>W / Up</dt><dd>Throttle</dd></div>
+      <div><dt>S / Down</dt><dd>Brake, reverse</dd></div>
+      <div><dt>A D / Left Right</dt><dd>Steer</dd></div>
+      <div><dt>Space</dt><dd>Handbrake</dd></div>
+      <div><dt>C</dt><dd>Camera</dd></div>
+      <div><dt>R</dt><dd>Reset to road</dd></div>
+      <div><dt>E / Q</dt><dd>Gear up / down</dd></div>
+      <div><dt>L</dt><dd>Lights</dd></div>
+    </dl>
+  </section>
+
+  <!-- Results -->
+  <section id="menu-results" class="screen screen-center" hidden aria-labelledby="result-title">
+    <span id="result-stage" class="label"></span>
+    <h2 id="result-title" class="title small">Stage complete</h2>
+    <div id="result-time" class="result-time num"></div>
+    <div id="result-medal" class="medal" hidden></div>
+    <dl id="result-stats" class="stats"></dl>
+    <button id="btn-again" class="big-btn" type="button">Run it again</button>
+    <div class="menu-row">
+      <button id="btn-next" class="text-btn" type="button">Next stage</button>
+      <button id="btn-menu" class="text-btn" type="button">Menu</button>
+    </div>
+  </section>
+
+  <div id="loading" class="loading" role="status">
+    <div class="loading-title"><span>RIDGE</span> <span class="accent">RALLY</span></div>
+    <div class="loading-bar"><div id="loading-fill"></div></div>
+    <span id="loading-text" class="loading-text">Loading</span>
+  </div>
+  <noscript><p class="loading">This game needs JavaScript turned on.</p></noscript>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
