@@ -95,4 +95,5 @@ export const STAGES = [
   { id: 'lake', name: 'Lakeside Sprint', start: 1540, end: 3100, time: 'sunset', tint: '#7a4b2e', medals: [62, 70, 81] },
   { id: 'night', name: 'Midnight Ridge', start: 3100, end: 4780, time: 'night', tint: '#1b2447', medals: [72, 81, 94] },
   { id: 'loop', name: 'Grand Loop', start: 20, end: 20, full: true, time: 'noon', tint: '#3f5b2c', medals: [202, 226, 262] },
+  { id: 'rain', name: 'Lakeside Downpour', start: 1540, end: 3100, time: 'rain', tint: '#3b4a56', medals: [68, 77, 89] },
 ];

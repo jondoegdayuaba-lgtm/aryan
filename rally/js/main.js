@@ -312,6 +312,10 @@ function applyTime(name) {
   S.lights = !!t.night;
   const ambient = new THREE.Color(t.fogColor).multiplyScalar(t.night ? 0.3 : 0.6);
   fx.setLighting(G.uSunCol.value, ambient);
+  // rain: spray off the wheels, a slippery road, and the sound of it
+  fx.rain = t.rain ? 1 : 0;
+  sound.setRain(t.rain ? 1 : 0);
+  vehicle.gripScale = t.rain ? 0.87 : 1;
   // grading: cool nights, warm evenings
   const gr = post.comp.uniforms;
   gr.uSaturation.value = t.night ? 0.9 : name === 'sunset' ? 1.1 : 1.05;
@@ -321,7 +325,8 @@ function applyTime(name) {
 function setLights(on) {
   S.lights = on;
   const night = TIMES[S.preset]?.night;
-  heads.forEach((h) => { h.intensity = on && !h.userData.broken ? (night ? (h.userData.pod ? 1000 : 1600) : 400) : 0; });
+  const dim = TIMES[S.preset]?.rain ? 520 : 400;   // gloomy rain: the lamps do a little more work
+  heads.forEach((h) => { h.intensity = on && !h.userData.broken ? (night ? (h.userData.pod ? 1000 : 1600) : dim) : 0; });
   visual.paint.userData.u.uLights.value = on ? 1 : 0;
 }
 
@@ -519,7 +524,8 @@ function startStage(stage) {
   S.stage = stage;
   S.demo = false;
   applyTime(stage.time);
-  setLights(!!TIMES[stage.time].night);
+  vehicle.gripScale = TIMES[stage.time].rain ? 0.87 : 1;
+  setLights(!!TIMES[stage.time].night || !!TIMES[stage.time].lights);
   props.setStarsVisible(false);
   props.resetBales();
   fx.clear();
@@ -780,7 +786,7 @@ function update(dt) {
     visual.interior.visible = inside;
     // the tops of the flaps reach into the footwells; you can't see them from inside anyway
     if (visual.flaps) for (const f of visual.flaps) f.visible = !inside && !f.userData.torn;
-    visual.syncInterior(vehicle, S.lights);
+    visual.syncInterior(vehicle, S.lights, TIMES[S.preset]?.rain ? 1 : 0, S.time, _skyCol.set(TIMES[S.preset]?.fogColor || '#888'));
   }
   if (S.run && live) runUpdate(dt);
   // a couple of seconds to cross the line and slow down, then the results
@@ -805,6 +811,7 @@ function update(dt) {
   }
   crowdUpdate(dt);
   dirtUpdate(dt);
+  view.cameraInside = rig.view === 'cockpit' && !replay.on && !['menu', 'stages', 'garage', 'settings', 'results'].includes(S.mode);
   fx.update(dt, camera, view.scene);
   view.update(camera, vehicle.pos, dt);
   if (ghostPlayer && S.run && !S.run.free) {
@@ -948,6 +955,7 @@ function carHit(e) {
   if (live && D.engine > 0.25 && !said.engine) { said.engine = true; hud.popup('Radiator <em>damaged</em>', 2000); }
 }
 const _hit = new THREE.Vector3(), _hitL = new THREE.Vector3();
+const _skyCol = new THREE.Color();
 
 function exhaustPos() {
   const ex = visual.exhaust;

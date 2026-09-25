@@ -32,6 +32,16 @@ export const TIMES = {
     clouds: 0.42, cloudLit: '#ffc88f', cloudShade: '#6d5f72', cloudDark: 0.8,
     groundColor: '#1d1712', envIntensity: 1.0, exposure: 1.05,
   },
+  rain: {
+    name: 'Heavy rain',
+    rain: 1, wet: 1, overcast: 1, lights: true,
+    sunElevation: 38, sunAzimuth: 170,
+    turbidity: 8, rayleigh: 1.2, mie: 0.02, mieG: 0.75, skyExposure: 0.7,
+    sunColor: '#d4dbe2', sunIntensity: 0.55,
+    fogColor: '#7e878f', fogSunColor: '#8c959d', fogDensity: 0.0075, fogFalloff: 0.012, haze: 0.0005,
+    clouds: 0, cloudLit: '#aab2ba', cloudShade: '#5d656d',
+    groundColor: '#1c2022', envIntensity: 1.25, exposure: 1.25,
+  },
   night: {
     name: 'Night stage',
     night: true,

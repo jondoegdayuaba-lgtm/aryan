@@ -32,6 +32,7 @@ export class Vehicle {
     this.vel = new THREE.Vector3();
     this.angVel = new THREE.Vector3();
     this.invMass = 1 / spec.mass;
+    this.gripScale = 1;       // < 1 on wet roads
     this.invI = new THREE.Vector3(1 / spec.inertia[0], 1 / spec.inertia[1], 1 / spec.inertia[2]);
     this.R = new THREE.Matrix4();
     this.L = new THREE.Vector3(); this.U = new THREE.Vector3(); this.F = new THREE.Vector3();
@@ -441,7 +442,7 @@ export class Vehicle {
       const nominal = this.cornerLoad[w.axle];
       // grip falls off a little as load rises, but a heavy landing (twenty
       // times the normal load) must never push the friction below zero
-      const mu = T.mu * surf.mu * Math.max(0.6, 1 - T.loadSens * (Math.min(fz / nominal, 4) - 1));
+      const mu = T.mu * surf.mu * this.gripScale * Math.max(0.6, 1 - T.loadSens * (Math.min(fz / nominal, 4) - 1));
       w.mu = mu;
       const fmax = mu * fz;
       const vRef = Math.max(Math.abs(vLong), V_MIN);

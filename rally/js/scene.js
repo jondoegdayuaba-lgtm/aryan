@@ -8,6 +8,7 @@ import { bakeGroundTextures, bakeNoiseTexture } from './bake.js';
 import { buildTerrainData, Terrain } from './terrain.js';
 import { Sky } from './sky.js';
 import { Water } from './water.js';
+import { Rain } from './rain.js';
 import { Forest } from './trees.js';
 import { Rocks } from './rocks.js';
 import { Grass } from './grass.js';
@@ -46,6 +47,9 @@ export class WorldView {
     this.water = new Water(renderer, world);
     scene.add(this.water.mesh);
 
+    this.rain = new Rain(quality.grass > 20000 ? 7000 : quality.grass > 0 ? 5000 : 3000);
+    scene.add(this.rain.mesh);
+
     this.forest = new Forest(renderer, world, {
       nearRange: quality.treeRange * 0.34, farRange: quality.treeRange,
       maxNear: quality.treeRange > 600 ? 3200 : 2000,
@@ -69,6 +73,8 @@ export class WorldView {
     this.lightDir.copy(this.sky.apply(preset, this.scene, this.sun));
     this._bakeShadows(this.lightDir);
     this.terrain.uniforms.uWet.value = preset.wet || 0;
+    this.rain.amount = preset.rain || 0;
+    this.rain.uniforms.uColor.value.set(preset.fogColor).lerp(new THREE.Color(1, 1, 1), 0.35);
   }
 
   // Terrain horizon shadows (ray-marched through the heightfield) and tree
@@ -144,6 +150,7 @@ export class WorldView {
     G.uTime.value += dt;
     this.sky.follow(camera);
     this.water.follow(camera);
+    this.rain.update(camera, dt, this.cameraInside);
     this.terrain.update(camera);
     this.forest.update(camera);
     this.rocks.update(camera);

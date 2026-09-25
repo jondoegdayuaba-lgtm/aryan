@@ -348,6 +348,7 @@ const TERRAIN_FS_MAP = /* glsl */`
 
   // The road surface itself with two compacted wheel tracks along the racing line.
   float onRoad = 1.0 - smoothstep( uRoadW - 0.25, uRoadW + 0.25, ad + edgeN * 0.6 );
+  float puddle = 0.0;
   if ( onRoad > 0.002 ) {
     vec2 ruv = wxz / 2.4;
     vec4 ga = texture( uAlb, vec3( ruv, ${LAYER.GRAVEL}.0 ) );
@@ -363,6 +364,8 @@ const TERRAIN_FS_MAP = /* glsl */`
     ga.a = mix( ga.a, 0.8, track );
     // dust between and outside the tracks
     ga.rgb *= mix( 1.0, 1.1, ( 1.0 - track ) * smoothstep( 0.4, 0.8, n3.b ) );
+    // rain: standing water in the ruts and the dips
+    if ( uWet > 0.5 ) puddle = smoothstep( 0.6, 0.7, n2.g * 0.5 + n3.b * 0.25 + track * 0.35 ) * onRoad;
     aa.rgb *= mix( 1.0, 0.85, track );
     vec4 roadA = mix( ga, aa, tarmac );
     vec4 roadN = mix( gn, an, tarmac );
@@ -376,10 +379,18 @@ const TERRAIN_FS_MAP = /* glsl */`
   float wet = smoothstep( 1.0, 0.1, above ) + uWet * 0.6;
   tA.rgb *= mix( 1.0, 0.62, clamp( wet, 0.0, 1.0 ) );
   tA.a = mix( tA.a, 0.35, clamp( wet, 0.0, 1.0 ) );
+  // puddles: dark mirrors of the sky
+  tA.rgb *= 1.0 - puddle * 0.55;
+  tA.a = mix( tA.a, 0.03, puddle );
 
   diffuseColor.rgb = tA.rgb;
   float detailStrength = mix( 1.0, 0.25, smoothstep( 25.0, 140.0, vCamDist ) );
-  vec3 dn = vec3( tN.r * 2.0 - 1.0, 0.0, tN.g * 2.0 - 1.0 ) * detailStrength;
+  vec3 dn = vec3( tN.r * 2.0 - 1.0, 0.0, tN.g * 2.0 - 1.0 ) * detailStrength * ( 1.0 - puddle );
+  // raindrops stirring the puddles
+  if ( puddle > 0.0 ) {
+    vec2 rp = ( texture2D( uNoiseTex, wxz * 1.9 + uTime * vec2( 0.31, -0.23 ) ).rg + texture2D( uNoiseTex, wxz * 3.7 - uTime * vec2( 0.27, 0.35 ) ).rg - 1.0 );
+    dn.xz += rp * 0.07 * puddle;
+  }
   vec3 terrainNormalW = normalize( vec3( macroN.x + dn.x, macroN.y, macroN.z + dn.z ) );
   float terrainAO = nt.b * mix( 1.0, tN.b, detailStrength );
 `;

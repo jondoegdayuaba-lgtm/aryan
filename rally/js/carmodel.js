@@ -497,6 +497,62 @@ const COCKPITS = {
   truck: { eye: [0.42, 1.8, -0.2], dash: [0.45, 1.02, 1.44], ws: [1.05, 1.46, 0.4, 2.02], roof: 2.0, halfW: 0.86, bPillar: -0.1, rear: -0.7 },
 };
 
+// Rain on the windscreen: drops land at random and build up until one of the
+// two tandem wiper blades sweeps past. Coordinates are metres on the glass:
+// x across (left positive), y up the slope from the bottom edge.
+const SCREEN_VS = /* glsl */`
+attribute vec2 aWs;
+varying vec2 vWs;
+void main() {
+  vWs = aWs;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+}`;
+const SCREEN_FS = /* glsl */`
+uniform float uTime, uRain, uLen, uAmp, uW;
+uniform vec4 uPivots;
+uniform vec3 uSky;
+varying vec2 vWs;
+float hash( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
+// seconds since the blade on this pivot last passed over p (large if it never does)
+float sinceWiped( vec2 p, vec2 pivot, out float blade ) {
+  vec2 q = p - pivot;
+  float rho = length( q );
+  float th = atan( q.y, -q.x );
+  float phi = uAmp * ( 1.0 - cos( uW * uTime ) ) * 0.5;
+  vec2 bd = vec2( -cos( phi ), sin( phi ) );
+  float along = clamp( dot( q, bd ), 0.0, uLen );
+  blade = 1.0 - smoothstep( 0.006, 0.011, length( q - bd * along ) );
+  if ( rho > uLen || th < 0.0 || th > uAmp ) return 1e3;
+  float c = clamp( 1.0 - 2.0 * th / uAmp, -1.0, 1.0 );
+  float a1 = acos( c ), a2 = 6.2831853 - a1;
+  float ph = mod( uW * uTime, 6.2831853 );
+  float d1 = mod( ph - a1, 6.2831853 ), d2 = mod( ph - a2, 6.2831853 );
+  return min( d1, d2 ) / uW;
+}
+void main() {
+  float b1, b2;
+  float since = min( sinceWiped( vWs, uPivots.xy, b1 ), sinceWiped( vWs, uPivots.zw, b2 ) );
+  float blade = max( b1, b2 );
+  // one possible drop per 2.5 cm cell
+  vec2 cell = floor( vWs / 0.025 );
+  float h1 = hash( cell ), h2 = hash( cell + 17.3 ), h3 = hash( cell + 41.7 );
+  vec2 c = ( cell + 0.2 + 0.6 * vec2( h1, h2 ) ) * 0.025;
+  float r = 0.0025 + 0.0045 * h3 * h3;
+  float arrive = h2 * 2.2 / max( uRain, 0.05 );
+  float present = step( arrive, since ) * step( 0.25, h1 + uRain * 0.6 );
+  float d = length( vWs - c );
+  float drop = ( 1.0 - smoothstep( r * 0.75, r, d ) ) * present;
+  vec2 o = ( vWs - c ) / r;
+  float glint = smoothstep( 0.45, 0.0, length( o - vec2( 0.35, 0.35 ) ) );
+  vec3 col = mix( uSky * 0.55, uSky * 1.25, 0.5 - o.y * 0.5 ) + glint * 0.8;
+  float a = drop * mix( 0.45, 0.8, glint );
+  // the wiper blade itself, dark rubber on a thin arm
+  col = mix( col, vec3( 0.02 ), blade );
+  a = max( a, blade );
+  if ( a < 0.01 ) discard;
+  gl_FragColor = vec4( col, a );
+}`;
+
 // Rev counter face: dark dial, white ticks, red line from 7000.
 function dialTexture(maxK, redK) {
   if (typeof document === 'undefined') return null;
@@ -805,6 +861,27 @@ export class CarVisual {
     bar(V(-W * 0.8, C.roof - 0.07, hz), V(W * 0.8, C.roof - 0.07, hz), cage, r);
     bar(V(W * 0.85, C.roof - 0.1, hz), V(-W * 0.88, 0.45, hz), cage, r);
 
+    // the windscreen glass: only the rain on it (and the wipers) are drawn
+    {
+      const H = Math.hypot(wz0 - wz1, wy1 - wy0);
+      const pos = [W * 0.95, wy0 + 0.01, wz0 - 0.02, -W * 0.95, wy0 + 0.01, wz0 - 0.02, W * 0.86, wy1 - 0.02, wz1 + 0.02, -W * 0.86, wy1 - 0.02, wz1 + 0.02];
+      const ws = [W * 0.95, 0, -W * 0.95, 0, W * 0.86, H, -W * 0.86, H];
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('aWs', new THREE.Float32BufferAttribute(ws, 2));
+      g.setIndex([0, 2, 1, 1, 2, 3]);
+      const scale = W / 0.75;
+      this.screenU = {
+        uTime: { value: 0 }, uRain: { value: 0 }, uLen: { value: 0.56 * scale }, uAmp: { value: Math.PI * 0.82 }, uW: { value: (Math.PI * 2) / 1.35 },
+        uPivots: { value: new THREE.Vector4(W * 0.28, 0.03, -W * 0.52, 0.03) }, uSky: { value: new THREE.Color(0.6, 0.64, 0.68) },
+      };
+      const screen = new THREE.Mesh(g, new THREE.ShaderMaterial({ vertexShader: SCREEN_VS, fragmentShader: SCREEN_FS, uniforms: this.screenU, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+      screen.visible = false;
+      screen.renderOrder = 10;
+      cab.add(screen);
+      this.windscreen = screen;
+    }
+
     // the co-driver's seat back, over on the right
     add(new THREE.BoxGeometry(0.46, 0.62, 0.1), fabric, -ex, top - 0.18, ez - 0.12);
     // light through the windows: the dash, wheel and cage catch the sun; the
@@ -881,8 +958,14 @@ export class CarVisual {
   }
 
   // Needle, shift lights, steering wheel and gauge lights for the cockpit view.
-  syncInterior(vehicle, lights) {
+  syncInterior(vehicle, lights, rain = 0, time = 0, sky = null) {
     if (!this.interior || !this.interior.visible) return;
+    if (this.windscreen) {
+      this.windscreen.visible = rain > 0;
+      this.screenU.uRain.value = rain;
+      this.screenU.uTime.value = time;
+      if (sky) this.screenU.uSky.value.copy(sky);
+    }
     const E = this.spec.engine;
     const f = Math.min(1, vehicle.rpm / (Math.ceil(E.limiter / 1000) * 1000));
     this.needle.rotation.z = Math.PI * (1.5 * f - 0.75);

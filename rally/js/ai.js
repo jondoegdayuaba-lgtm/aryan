@@ -48,7 +48,7 @@ export class Driver {
     // Speed plan: the slowest corner within braking range sets the target.
     // Braking is weaker downhill, and crests leading into corners are taken
     // slowly enough to stay on the ground.
-    const g = 9.81 * (this.gripOverride ?? this.car.spec.aiGrip ?? 0.85) * this.skill;
+    const g = 9.81 * (this.gripOverride ?? this.car.spec.aiGrip ?? 0.85) * this.skill * (this.car.gripScale ?? 1);
     const y = road.y;
     let vt = 60;
     for (let k = 0; k < 180; k += 2) {

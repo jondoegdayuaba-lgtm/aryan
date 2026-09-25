@@ -32,7 +32,7 @@ void main() {
 
 const SKY_FS = /* glsl */`
 uniform vec3 uSun;
-uniform float uMieG, uExposure, uNight, uClouds, uCloudDark, uGround, uStars, uTime, uDisk;
+uniform float uMieG, uExposure, uNight, uClouds, uCloudDark, uGround, uStars, uTime, uDisk, uOvercast;
 uniform vec3 uCloudLit, uCloudShade, uNightTint, uMoon, uGroundColor;
 uniform sampler2D uNoise;
 varying vec3 vDir;
@@ -98,6 +98,16 @@ void main() {
     col = mix( col, cc, cover * fade * 0.92 );
   }
 
+  // Overcast: a low grey ceiling, brighter overhead than at the horizon,
+  // with darker rain-heavy patches drifting across it.
+  if ( uOvercast > 0.0 ) {
+    float up = max( dir.y, 0.0 );
+    vec2 q = dir.xz / ( dir.y + 0.12 ) * 0.35 + uTime * vec2( 0.004, 0.002 );
+    float m = texture2D( uNoise, q ).r * 0.6 + texture2D( uNoise, q * 3.1 + 0.4 ).g * 0.4;
+    vec3 grey = mix( uCloudShade, uCloudLit, ( 1.0 + 2.0 * up ) / 3.0 ) * mix( 0.72, 1.08, m );
+    col = mix( col, grey, uOvercast );
+  }
+
   // Below the horizon (only used for the environment map): the ground.
   if ( uGround > 0.5 && dir.y < 0.0 ) col = mix( col, uGroundColor, smoothstep( 0.0, -0.08, dir.y ) );
   gl_FragColor = vec4( col, 1.0 );
@@ -128,6 +138,7 @@ export class Sky {
       uNoise: { value: noiseTexture },
       uTime: G.uTime,
       uDisk: { value: 1 },
+      uOvercast: { value: 0 },
     };
     const mat = new THREE.ShaderMaterial({
       vertexShader: SKY_VS,
@@ -172,6 +183,7 @@ export class Sky {
     u.uCloudLit.value.set(t.cloudLit);
     u.uCloudShade.value.set(t.cloudShade);
     u.uCloudDark.value = t.cloudDark ?? 0.75;
+    u.uOvercast.value = t.overcast ?? 0;
     u.uGroundColor.value.set(t.groundColor);
     if (t.night) {
       const mel = THREE.MathUtils.degToRad(t.moonElevation), maz = THREE.MathUtils.degToRad(t.moonAzimuth);
@@ -202,7 +214,7 @@ export class Sky {
     this.envTarget = this.pmrem.fromScene(this.envScene, 0, 0.1, 200);
     G.uTime.value = prevTime;
     u.uGround.value = 0;
-    u.uDisk.value = t.night ? 0 : 1;
+    u.uDisk.value = t.night || t.overcast ? 0 : 1;
     scene.environment = this.envTarget.texture;
     scene.environmentIntensity = t.envIntensity;
     return lightDir;

@@ -153,6 +153,9 @@ export class Sound {
     this.crunch = loop(this.gravel, 'bandpass', 1500, 0.6);
     this.slideN = loop(this.gravel, 'highpass', 900, 0.5);
     this.water = loop(this.white, 'lowpass', 900, 0.6);
+    // rain: a hiss outside, drumming on the roof from inside the car
+    this.rainHiss = loop(this.white, 'bandpass', 2600, 0.4);
+    this.rainDrum = loop(this.gravel, 'lowpass', 1100, 0.6);
     // tarmac squeal: a wobbly tone
     this.squealOsc = ctx.createOscillator();
     this.squealOsc.type = 'sawtooth';
@@ -216,6 +219,8 @@ export class Sound {
     await this._makeEngine(carId);
   }
 
+  setRain(level) { this.rainLevel = level; }
+
   setMuted(m) {
     this.muted = m;
     if (this.master) this.master.gain.setTargetAtTime(m ? 0 : this.volume, this.ctx.currentTime, 0.05);
@@ -229,7 +234,7 @@ export class Sound {
     const on = car && active;
     const tc = 0.04;
     if (!on) {
-      for (const n of [this.wind, this.roll, this.crunch, this.slideN, this.water]) n.g.gain.setTargetAtTime(0, t, 0.1);
+      for (const n of [this.wind, this.roll, this.crunch, this.slideN, this.water, this.rainHiss, this.rainDrum]) n.g.gain.setTargetAtTime(0, t, 0.1);
       this.squealG.gain.setTargetAtTime(0, t, 0.1);
       this.whineG.gain.setTargetAtTime(0, t, 0.1);
       this.turboG.gain.setTargetAtTime(0, t, 0.1);
@@ -238,6 +243,9 @@ export class Sound {
       return;
     }
     const sp = car.speed;
+    const rain = this.rainLevel || 0;
+    this.rainHiss.g.gain.setTargetAtTime(rain * (cameraInside ? 0.04 : 0.12) * (trackside ? 1.3 : 1), t, 0.3);
+    this.rainDrum.g.gain.setTargetAtTime(rain * (cameraInside ? 0.3 : 0.05), t, 0.3);
     // engine
     let load = car.throttle;
     if (car.limiter) load = Math.random() < 0.5 ? 0 : load;     // limiter cut: brrap

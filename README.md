@@ -7,7 +7,7 @@ Two 3D games that run in any modern browser. Both are plain HTML, CSS and JavaSc
 
 ## Ridge Rally
 
-Flat out on gravel through lake forests. Four timed stages on a 4.8 km loop, each at a different time of day, with jumps, crests, hairpins and a water splash. A co-driver reads the pace notes, your best run comes back as a ghost, and every stage ends with a TV-style replay and your place against eleven rival drivers.
+Flat out on gravel through lake forests. Five timed stages on a 4.8 km loop, at different times of day and one in heavy rain, with jumps, crests, hairpins and a water splash. A co-driver reads the pace notes, your best run comes back as a ghost, and every stage ends with a TV-style replay and your place against eleven rival drivers.
 
 What makes it feel real:
 
@@ -43,6 +43,7 @@ What makes it feel real:
 | SS2 Lakeside Sprint | 1.56 km | Golden hour | 1:02.00 |
 | SS3 Midnight Ridge | 1.68 km | Night | 1:12.00 |
 | SS4 Grand Loop | 4.81 km | Midday sun | 3:22.00 |
+| SS5 Lakeside Downpour | 1.56 km | Heavy rain | 1:08.00 |
 
 Three cars: the Kestrel R5 (four-wheel-drive turbo hatchback, the easiest to drive fast), the Vantor RS (rear-drive coupe that loves to slide) and the Brute TT (a trophy truck with huge suspension travel). Each has six paint schemes in the garage. Free roam lets you explore the whole island and hunt for 20 hidden stars.
 
@@ -66,7 +67,8 @@ Settings cover graphics quality, driving help (full, some or none), automatic or
 | `rally/js/pacenotes.js` | Pace notes and the co-driver's voice |
 | `rally/js/replay.js`, `ghost.js` | Replays and ghost cars |
 | `rally/js/rivals.js` | The rival drivers' stage times |
-| `rally/js/sound.js`, `fx.js` | Synthesised engine and effects, dust, skids |
+| `rally/js/sound.js`, `fx.js` | Synthesised engine and effects, dust, spray, skids |
+| `rally/js/rain.js` | Falling rain |
 | `rally/js/config.js` | Title, lighting presets, graphics tiers |
 
 After changing the code, rebuild the one-file versions with `npm install` and `npm run build:desktop`.

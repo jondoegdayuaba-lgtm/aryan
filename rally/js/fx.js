@@ -240,6 +240,7 @@ export class Effects {
     this.skids.clear();
     scene.add(this.dust.mesh, this.bits.mesh, this.glow.mesh, this.skids.mesh);
     this.acc = [0, 0, 0, 0];
+    this.rain = 0;          // wet roads: spray instead of dust
     this.time = 0;
     this.dustTint = new THREE.Color();
     this.light = new THREE.Color(1, 1, 1);
@@ -269,9 +270,10 @@ export class Effects {
       const p = _v.copy(w.point).addScaledVector(w.normal, 0.02);
       this.skids.add(i, p, side, vehicle.spec.wheelWidth * 0.9, Math.min(1, mark) * (sp > 1 ? 1 : 0), this.time);
 
-      if (w.water > 0.02 && sp > 2) {
-        // spray from fords and lake edges
-        this.acc[i] += dt * sp * 6 * Math.min(1, w.water * 4) * strength;
+      const water = Math.max(w.water, this.rain * 0.12);
+      if (water > 0.02 && sp > 2) {
+        // spray from fords, lake edges and wet roads
+        this.acc[i] += dt * sp * 6 * Math.min(1, water * 4) * strength;
         while (this.acc[i] > 1) {
           this.acc[i] -= 1;
           const q = this.bits.spawn();
@@ -279,6 +281,7 @@ export class Effects {
           q.vel.copy(vehicle.vel).multiplyScalar(0.4).add(_v.set((Math.random() - 0.5) * 4, 2 + Math.random() * sp * 0.25, (Math.random() - 0.5) * 4));
           q.life = 0.7 + Math.random() * 0.5; q.s0 = 0.3; q.s1 = 1.6; q.a0 = 0.55;
           q.col.setRGB(0.85, 0.9, 0.95).multiply(this.light);
+          if (!w.water) { q.a0 = 0.3; q.s1 = 2.4; q.life = 0.9; q.vel.y *= 0.5; }
           q.drag = 0.8; q.grav = 9; q.rise = 0; q.rot = Math.random() * 6; q.spin = (Math.random() - 0.5) * 2;
         }
         return;
