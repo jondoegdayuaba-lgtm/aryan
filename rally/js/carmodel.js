@@ -128,17 +128,19 @@ const DETAILS = {
     belt: 0.975, beltRise: 0.05, glassRear: -1.18, bPillar: -0.3, roofEdge: 1.4,
     head: [0.58, 0.675, 0.19, 0.055], tail: [0.64, 0.9, 0.16, 0.09], grille: [0.5, 0.37, 0.58],
     doors: [0.86, -0.28], numberBox: [-0.2, 0.58, 0.5, 0.83], hoodSeam: 0.62, cowl: 1.0,
+    rear: [0.42, 0.6],
   },
   coupe: {
     belt: 0.83, beltRise: 0.0, glassRear: -0.95, bPillar: -0.2, roofEdge: 1.3,
     head: [0.58, 0.64, 0.1, 0.1], tail: [0.6, 0.72, 0.18, 0.06], grille: [0.46, 0.44, 0.66],
     doors: [0.8, -0.35], numberBox: [-0.25, 0.5, 0.42, 0.73], hoodSeam: 0.58, cowl: 0.92,
-    roundLamps: 1,
+    roundLamps: 1, rear: [0.37, 0.56],
   },
   truck: {
     belt: 1.46, beltRise: 0.0, glassRear: -0.62, bPillar: -0.1, roofEdge: 2.0,
     head: [0.72, 1.12, 0.16, 0.07], tail: [0.8, 1.2, 0.08, 0.14], grille: [0.6, 0.72, 1.1],
     doors: [0.95, -0.55], numberBox: [-0.5, 0.95, 0.75, 1.35], hoodSeam: 0.7, cowl: 1.1,
+    rear: [0.74, 0.86],
   },
 };
 
@@ -158,7 +160,8 @@ uniform float uDirt, uWet, uLights, uBrake, uReverse, uGhost;
 uniform float uBelt, uBeltRise, uGlassRear, uBPillar, uRoofEdge, uHoodSeam, uCowl, uRoundLamps;
 uniform vec4 uHead, uTail, uNumBox;
 uniform vec3 uGrille;
-uniform vec2 uDoors;
+uniform vec2 uDoors, uRear;
+uniform sampler2D uPlateTex;
 varying vec3 vObj;
 varying vec3 vObjN;
 float carMetal, carRough, carClear, carEmitGlass;
@@ -203,6 +206,23 @@ const BODY_FS_MAP = /* glsl */`
   col = mix( col, vec3( 0.035 ), plastic );
   carRough = mix( carRough, 0.7, plastic );
   carClear = mix( carClear, 0.0, plastic );
+
+  // ----- rear: a finned diffuser under the bumper and a number plate
+  float back = smoothstep( -0.35, -0.6, n.z );
+  float diff = aa( p.y - uRear.x ) * back;
+  if ( diff > 0.0 ) {
+    float fin = aa( abs( fract( p.x * 5.0 ) - 0.5 ) - 0.05 ) * aa( p.y - uRear.x + 0.03 );
+    col = mix( col, mix( vec3( 0.04 ), vec3( 0.012 ), fin ), diff );
+    carRough = mix( carRough, 0.65, diff );
+    carClear = mix( carClear, 0.0, diff );
+  }
+  float plate = aa( box2( vec2( p.x, p.y ), vec2( -0.25, uRear.y - 0.055 ), vec2( 0.25, uRear.y + 0.055 ) ) ) * back;
+  if ( plate > 0.0 ) {
+    vec2 uv = vec2( ( 0.25 - p.x ) / 0.5, ( p.y - uRear.y + 0.055 ) / 0.11 );
+    float ink = texture2D( uPlateTex, uv ).a;
+    col = mix( col, mix( vec3( 0.95, 0.94, 0.9 ), vec3( 0.03 ), ink ), plate );
+    carRough = mix( carRough, 0.4, plate );
+  }
 
   // ----- grille
   float front = smoothstep( 0.35, 0.6, n.z );
@@ -263,9 +283,12 @@ const BODY_FS_MAP = /* glsl */`
   vec2 tl = ( vec2( ax, p.y ) - uTail.xy ) / uTail.zw;
   float tail = aa( length( tl ) - 1.0 ) * smoothstep( -0.15, -0.35, n.z );
   if ( tail > 0.0 ) {
-    col = mix( col, vec3( 0.5, 0.02, 0.02 ), tail );
-    carRough = mix( carRough, 0.1, tail );
-    carEmit += vec3( 1.0, 0.05, 0.03 ) * tail * ( uLights * 2.5 + uBrake * 14.0 );
+    // deep red lens: a little glow of its own so it reads red in daylight
+    float lens = smoothstep( 1.0, 0.3, length( tl ) );
+    col = mix( col, mix( vec3( 0.22, 0.01, 0.01 ), vec3( 0.42, 0.02, 0.02 ), lens ), tail );
+    carRough = mix( carRough, 0.22, tail );
+    carClear = mix( carClear, 0.25, tail );
+    carEmit += vec3( 1.0, 0.05, 0.03 ) * tail * ( 0.12 + uLights * 2.5 + uBrake * 14.0 );
     float rev = aa( length( tl + vec2( 0.55, 0.0 ) ) - 0.35 ) * tail;
     carEmit += vec3( 1.0 ) * rev * uReverse * 10.0;
     col = mix( col, vec3( 0.8 ), rev * 0.6 );
@@ -302,6 +325,23 @@ function numberTexture(num) {
   return t;
 }
 
+function plateTexture(num) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 56;
+  const g = c.getContext('2d');
+  g.strokeStyle = '#fff';
+  g.lineWidth = 4;
+  g.strokeRect(4, 4, 248, 48);
+  g.fillStyle = '#fff';
+  g.font = 'bold 40px "Barlow Condensed", "Arial Narrow", Arial, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(`RDG ${String(num).padStart(3, '2')}`, 128, 30);
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 4;
+  return t;
+}
+
 export function bodyMaterial(spec, livery, noiseTex, patch, number = 7) {
   const D = DETAILS[spec.id];
   const u = {
@@ -317,6 +357,8 @@ export function bodyMaterial(spec, livery, noiseTex, patch, number = 7) {
     uHead: { value: new THREE.Vector4(...D.head) }, uTail: { value: new THREE.Vector4(...D.tail) },
     uNumBox: { value: new THREE.Vector4(...D.numberBox) }, uGrille: { value: new THREE.Vector3(...D.grille) },
     uDoors: { value: new THREE.Vector2(...D.doors) },
+    uRear: { value: new THREE.Vector2(...D.rear) },
+    uPlateTex: { value: typeof document !== 'undefined' ? plateTexture(number) : null },
   };
   const m = new THREE.MeshPhysicalMaterial({ roughness: 0.3, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.1 });
   patch(m, {
@@ -394,12 +436,36 @@ function treadTexture() {
   return t;
 }
 
+// Mud flap artwork: accent colour, a white sponsor block and a black foot.
+function flapTexture(livery) {
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = livery.accent;
+  g.fillRect(0, 0, 64, 128);
+  g.fillStyle = '#121214';
+  g.fillRect(0, 104, 64, 24);
+  // the top of the flap hides behind the bumper, so the logo sits low
+  g.fillStyle = '#f4f4f2';
+  g.fillRect(6, 62, 52, 30);
+  g.fillStyle = '#121214';
+  g.font = 'bold italic 21px "Barlow Condensed", "Arial Narrow", Arial, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('RIDGE', 32, 78);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 // ---------- The whole car ----------
 
 export class CarVisual {
   constructor(spec, livery, { noiseTex, patch, number = 7, ghost = false, lowDetail = false } = {}) {
     this.spec = spec;
     this.patch = patch;
+    this.livery = livery;
     this.root = new THREE.Group();
     this.body = new THREE.Group();          // everything that moves with the chassis
     this.body.position.y = -spec.cgHeight;  // model space has the ground at y = 0
@@ -498,7 +564,7 @@ export class CarVisual {
       ex.rotateX(Math.PI / 2);
       this.exhaust = add(ex, this.metal, -0.55, 0.3, -2.02);
       // mud flaps
-      this._mudFlaps(black, 0.8, [spec.frontAxle - 0.46, spec.frontAxle - spec.wheelbase - 0.46], 0.2, 0.32);
+      this._mudFlaps(0.8, [spec.frontAxle - 0.46, spec.frontAxle - spec.wheelbase - 0.46], 0.06, 0.42, 0.34);
       // antenna
       add(new THREE.CylinderGeometry(0.004, 0.006, 0.5, 5), black, 0.2, 1.7, -0.7, -0.25);
     } else if (spec.id === 'coupe') {
@@ -511,7 +577,7 @@ export class CarVisual {
       add(mir, chrome, 0.88, 0.9, 0.62);
       add(mir, chrome, -0.88, 0.9, 0.62);
       // roof light pod with four lamps
-      this._mudFlaps(black, 0.76, [spec.frontAxle - 0.44, spec.frontAxle - spec.wheelbase - 0.44], 0.22, 0.28);
+      this._mudFlaps(0.76, [spec.frontAxle - 0.44, spec.frontAxle - spec.wheelbase - 0.44], 0.07, 0.4, 0.3);
       const ex = new THREE.CylinderGeometry(0.045, 0.045, 0.2, 14, 1, true);
       ex.rotateX(Math.PI / 2);
       this.exhaust = add(ex, this.metal, -0.5, 0.3, -2.08);
@@ -545,13 +611,15 @@ export class CarVisual {
     }
   }
 
-  _mudFlaps(mat, x, zs, top, height) {
+  // Rally mud flaps in the livery's accent colour, hanging almost to the ground.
+  _mudFlaps(x, zs, bottom, height, width) {
     this.flaps = [];
+    const mat = this.patch(new THREE.MeshStandardMaterial({ map: flapTexture(this.livery), roughness: 0.75 }), {});
     for (const z of zs) {
       for (const s of [-1, 1]) {
         const pivot = new THREE.Group();
-        pivot.position.set(s * x, top + height, z);
-        const flap = new THREE.Mesh(new THREE.BoxGeometry(0.3, height, 0.012), mat);
+        pivot.position.set(s * x, bottom + height, z);
+        const flap = new THREE.Mesh(new THREE.BoxGeometry(width, height, 0.012), mat);
         flap.position.y = -height / 2;
         flap.castShadow = true;
         pivot.add(flap);
@@ -584,7 +652,8 @@ export class CarVisual {
     });
     if (this.flaps) {
       const sp = vehicle.forwardSpeed;
-      for (const f of this.flaps) f.rotation.x = THREE.MathUtils.lerp(f.rotation.x, -Math.min(0.9, Math.abs(sp) * 0.02), Math.min(1, dt * 6));
+      // stiff rubber: the air pushes the bottom edge back a little at speed
+      for (const f of this.flaps) f.rotation.x = THREE.MathUtils.lerp(f.rotation.x, Math.min(0.45, Math.abs(sp) * 0.012), Math.min(1, dt * 6));
     }
     const u = this.paint.userData.u;
     u.uBrake.value = vehicle.brake > 0.05 ? 1 : 0;

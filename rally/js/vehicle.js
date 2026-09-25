@@ -94,7 +94,18 @@ export class Vehicle {
     this.quat.setFromAxisAngle(_v1.set(0, 1, 0), heading);
     this.vel.set(0, 0, 0);
     this.angVel.set(0, 0, 0);
-    for (const w of this.wheels) { w.omega = 0; w.contact = false; }
+    // Every bit of state goes back to the same values, so a replay that
+    // re-runs the recorded inputs follows the original run exactly.
+    for (const w of this.wheels) {
+      w.omega = 0; w.spin = 0; w.contact = false; w.steer = 0;
+      w.slipRatio = 0; w.slipAngle = 0; w.slide = 0; w.vComp = 0; w.vLong = 0; w.vLat = 0;
+      w.suspF = 0; w.fz = 0; w.driveT = 0; w.brakeT = 0; w.water = 0;
+    }
+    this.handbrake = 0;
+    this.assist = 0;
+    this.engaged = false;
+    this.engineTorque = 0;
+    this._scrape = 0;
     this.rpm = this.spec.engine.idle;
     this.gear = 1;
     this.targetGear = 1;

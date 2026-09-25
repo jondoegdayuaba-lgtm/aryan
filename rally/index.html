@@ -156,18 +156,33 @@
   </section>
 
   <!-- Results -->
-  <section id="menu-results" class="screen screen-center" hidden aria-labelledby="result-title">
+  <section id="menu-results" class="screen" hidden aria-labelledby="result-title">
     <span id="result-stage" class="label"></span>
     <h2 id="result-title" class="title small">Stage complete</h2>
-    <div id="result-time" class="result-time num"></div>
-    <div id="result-medal" class="medal" hidden></div>
+    <div class="result-head">
+      <div id="result-time" class="result-time num"></div>
+      <div class="result-side">
+        <div id="result-medal" class="medal" hidden></div>
+        <span id="result-pos" class="result-pos"></span>
+      </div>
+    </div>
+    <span id="result-sub" class="result-sub"></span>
+    <ol id="result-board" class="board" aria-label="Stage times"></ol>
     <dl id="result-stats" class="stats"></dl>
     <button id="btn-again" class="big-btn" type="button">Run it again</button>
     <div class="menu-row">
+      <button id="btn-replay" class="text-btn" type="button">Watch replay</button>
       <button id="btn-next" class="text-btn" type="button">Next stage</button>
       <button id="btn-menu" class="text-btn" type="button">Menu</button>
     </div>
   </section>
+
+  <!-- Full-screen replay -->
+  <div id="replay-bar" class="replay-bar" hidden>
+    <span class="replay-tag"><i></i>Replay</span>
+    <span id="replay-time" class="replay-time num">0:00.00</span>
+    <button id="replay-back" class="text-btn" type="button">Back to results</button>
+  </div>
 
   <div id="loading" class="loading" role="status">
     <div class="loading-title"><span>RIDGE</span> <span class="accent">RALLY</span></div>

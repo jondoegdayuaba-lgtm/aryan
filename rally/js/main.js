@@ -9,7 +9,7 @@ import { WorldView } from './scene.js';
 import { Post } from './post.js';
 import { CameraRig } from './camera.js';
 import { Input } from './input.js';
-import { Hud, formatTime } from './hud.js';
+import { Hud, formatTime, formatGap } from './hud.js';
 import { Driver } from './ai.js';
 import { locate, wrap } from './road.js';
 import { buildPaceNotes, noteText, CoDriver } from './pacenotes.js';
@@ -18,6 +18,8 @@ import { Sound } from './sound.js';
 import { Effects } from './fx.js';
 import { GhostRecorder, GhostPlayer, unpackGhost } from './ghost.js';
 import { Props } from './props.js';
+import { Tape } from './replay.js';
+import { classify, ordinal } from './rivals.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = THREE.MathUtils.clamp;
@@ -86,6 +88,10 @@ const S = {
 let renderer, world, view, post, camera, rig, input, hud, sound, codriver, fx, props, notes;
 let vehicle, visual, ai, ghostVisual = null, ghostPlayer = null, recorder = new GhostRecorder();
 let heads = [];
+const tape = new Tape();
+// Replay playback: `t` is recorded time consumed, `clock` is how far we should be.
+const replay = { on: false, k: 0, t: 0, clock: 0, endT: 0 };
+const replayInp = {};
 
 async function boot() {
   progress(0.02, 'Warming up');
@@ -121,6 +127,7 @@ async function boot() {
   camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.25, 5200);
   rig = new CameraRig(camera, world);
   rig.view = settings.view;
+  rig.features = FEATURES;
   post = new Post(renderer, { msaa: quality.msaa, bloom: quality.bloom });
   resize();
   input = new Input();
@@ -148,7 +155,7 @@ async function boot() {
     window.__step = (seconds, dt = 1 / 60) => { for (let t = 0; t < seconds; t += dt) update(dt); };
     window.__draw = () => post.render(view.scene, camera, S.time);
   } else requestAnimationFrame(frame);
-  window.__game = { S, world, vehicle: () => vehicle, view, rig, camera, notes, props, fx, sound, settings, startStage, startFree, TIMES, STAGES, renderer };
+  window.__game = { S, world, vehicle: () => vehicle, view, rig, camera, notes, props, fx, sound, settings, startStage, startFree, TIMES, STAGES, renderer, tape, replay };
 }
 
 // ---------- Car ----------
@@ -188,9 +195,91 @@ function setupCar() {
 function placeOnRoad(s, back = 0) {
   const road = world.road, n = road.count;
   const i = wrap(Math.round(s - back), n);
-  vehicle.reset(new THREE.Vector3(road.x[i], 0, road.z[i]), Math.atan2(road.tx[i], road.tz[i]), road.y[i]);
+  const r = { x: road.x[i], z: road.z[i], heading: Math.atan2(road.tx[i], road.tz[i]), y: road.y[i] };
+  applyReset(r);
   rig.snap();
   ai?.reset();
+  return r;
+}
+
+// Every reset during a run goes on the tape so replays can repeat it.
+function applyReset(r) {
+  vehicle.reset(new THREE.Vector3(r.x, 0, r.z), r.heading, r.y);
+  tape.reset(r);
+  if (fx) fx.skids.last = [null, null, null, null];
+}
+
+// ---------- Replays ----------
+// Put the car back where the run began and feed it the recorded inputs again.
+function startReplay() {
+  if (!tape.start || tape.length <= tape.go + 30) { replay.on = false; return false; }
+  tape.recording = false;
+  replay.on = true;
+  replay.k = 0; replay.t = 0; replay.clock = 0; replay.endT = 0;
+  applyReset(tape.start);
+  props.resetBales();
+  fx.clear();
+  // the countdown plays out instantly, off screen
+  while (replay.k < tape.go) replayStep(replay.k++, true);
+  S._airborne = 0;
+  rig.startReplay();
+  visual.sync(vehicle, 0);
+  return true;
+}
+
+// One recorded frame, in the same order the live game ran it.
+function replayStep(k, silent) {
+  const pre = tape.pre.get(k);
+  if (pre) applyReset(pre);
+  const inp = tape.input(k, replayInp);
+  const dt = tape.dt[k];
+  if (inp.hold && vehicle.gear !== 1 && vehicle.shiftTimer <= 0) vehicle.gear = vehicle.targetGear = 1;
+  vehicle.update(dt, inp);
+  if (silent) vehicle.events.length = 0;
+  else handleEvents(dt);
+  const post = tape.post.get(k);
+  if (post) applyReset(post);
+  if (!silent) fx.fromCar(vehicle, dt);
+  const hits = props.update(dt, vehicle, S.time);
+  if (!silent) for (const h of hits) { sound.impact(h.speed * 0.5, 'bale'); fx.debris(h.point, '#c9a85a', h.speed); }
+}
+
+// Advance by real time. A frame is played once the clock passes its middle,
+// so equal frame rates step exactly one recorded frame per drawn frame.
+function replayAdvance(dt) {
+  if (!replay.on) return;
+  replay.clock += dt;
+  let steps = 0;
+  while (replay.k < tape.length && replay.t + tape.dt[replay.k] * 0.5 <= replay.clock) {
+    replay.t += tape.dt[replay.k];
+    replayStep(replay.k++, false);
+    if (++steps >= 12) { replay.clock = replay.t; break; }
+  }
+  if (replay.k >= tape.length) {
+    replay.endT += dt;
+    if (replay.endT > 2.5) startReplay();
+  }
+}
+
+// Where the sound is heard from: in the car, behind it, or at a replay camera
+// the car roars past (with a Doppler drop in pitch).
+const _lv = new THREE.Vector3();
+let dopplerS = 1;
+function listener() {
+  const onboard = rig.view === 'bonnet' || rig.view === 'bumper';
+  if (!replay.on) return { cameraInside: onboard };
+  const shot = rig.shot?.type;
+  let volume = 1, doppler = 1;
+  const trackside = shot === 'tv' || shot === 'heli';
+  if (trackside) {
+    const d = Math.max(1, camera.position.distanceTo(vehicle.pos));
+    volume = clamp(9 / d, 0.05, 1);
+    _lv.subVectors(camera.position, vehicle.pos).divideScalar(d);
+    doppler = clamp(343 / (343 - vehicle.vel.dot(_lv)), 0.8, 1.25);
+  }
+  dopplerS += (doppler - dopplerS) * 0.25;
+  if (S.mode === 'results') volume *= 0.6;       // quieter behind the results card
+  return { cameraInside: shot === 'roof', volume, doppler: dopplerS, trackside };
 }
 
 function applyTime(name) {
@@ -211,7 +300,7 @@ function applyTime(name) {
 function setLights(on) {
   S.lights = on;
   const night = TIMES[S.preset]?.night;
-  heads.forEach((h) => { h.intensity = on ? (night ? (h.userData.pod ? 1400 : 2600) : 400) : 0; });
+  heads.forEach((h) => { h.intensity = on ? (night ? (h.userData.pod ? 1000 : 1600) : 400) : 0; });
   visual.paint.userData.u.uLights.value = on ? 1 : 0;
 }
 
@@ -219,6 +308,8 @@ function setLights(on) {
 const SCREENS = ['menu-main', 'menu-stages', 'menu-garage', 'menu-settings', 'menu-pause', 'menu-results'];
 function show(name) {
   for (const id of SCREENS) $(id).hidden = id !== name;
+  $('replay-bar').hidden = S.mode !== 'replay';
+  document.body.classList.toggle('replaying', S.mode === 'replay');
   const inRace = ['prestart', 'countdown', 'racing', 'finishing', 'free', 'paused'].includes(S.mode);
   $('hud').hidden = !inRace && S.mode !== 'results';
   $('touch').hidden = !(inRace && (touchDevice || input?.usingTouch)) || S.mode === 'paused';
@@ -227,6 +318,8 @@ function show(name) {
 function toMenu() {
   S.mode = 'menu';
   S.demo = true;
+  replay.on = false;
+  tape.recording = false;
   codriver?.stop();
   clearGhost();
   props.setStarsVisible(false);
@@ -340,13 +433,15 @@ function wireMenus() {
   $('liv-next').addEventListener('click', () => cycleLiv(1));
   $('btn-resume').addEventListener('click', resume);
   $('btn-restart').addEventListener('click', () => { resume(); restart(); });
-  $('btn-recover').addEventListener('click', () => { resume(); recover('manual'); });
+  $('btn-recover').addEventListener('click', () => { resume(); S.pendingRecover = true; });
   $('btn-quit').addEventListener('click', toMenu);
   $('btn-pause').addEventListener('click', pause);
   $('btn-cam').addEventListener('click', () => { rig.cycle(); settings.view = rig.view; saveSettings(); });
   $('btn-again').addEventListener('click', () => startStage(S.stage));
   $('btn-next').addEventListener('click', () => startStage(STAGES[(STAGES.indexOf(S.stage) + 1) % STAGES.length]));
   $('btn-menu').addEventListener('click', toMenu);
+  $('btn-replay').addEventListener('click', watchReplay);
+  $('replay-back').addEventListener('click', backToResults);
   input.useTilt = settings.tilt === 'on';
   input.onKey = (code) => {
     const onButton = document.activeElement?.tagName === 'BUTTON';
@@ -354,11 +449,13 @@ function wireMenus() {
       if (S.mode === 'menu') $('btn-rally').click();
       else if (S.mode === 'results') $('btn-again').click();
       else if (S.mode === 'paused') resume();
+      else if (S.mode === 'replay') backToResults();
     }
     if (code === 'Escape') {
       if (['stages', 'garage', 'settings'].includes(S.mode)) toMenu();
       else if (S.mode === 'results') toMenu();
       else if (S.mode === 'paused') resume();
+      else if (S.mode === 'replay') backToResults();
     }
   };
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
@@ -384,8 +481,10 @@ function startStage(stage) {
   props.setStarsVisible(false);
   props.resetBales();
   fx.clear();
+  replay.on = false;
   const n = world.road.count;
-  placeOnRoad(stage.start, 5);
+  const startPos = placeOnRoad(stage.start, 5);
+  tape.begin(startPos);
   const len = stageLength(stage);
   S.run = {
     t: 0, dist: -5, lastS: wrap(stage.start - 5, n), hint: wrap(stage.start - 5, n), len,
@@ -438,6 +537,8 @@ function restart() {
 function startFree() {
   S.demo = false;
   S.stage = null;
+  replay.on = false;
+  tape.recording = false;
   applyTime(params.get('t') || 'noon');
   setLights(!!TIMES[S.preset].night);
   props.setStarsVisible(true, S.stars);
@@ -578,10 +679,13 @@ function update(dt) {
     case 'racing':
     case 'free':
       inp = params.has('autodrive') ? ai.control(dt) : playerControls(ctl);
-      if (ctl.actions.has('recover')) recover('manual');
+      if (ctl.actions.has('recover') || S.pendingRecover) { S.pendingRecover = false; recover('manual'); }
       break;
-    case 'finishing':
-    case 'results': {
+    case 'results':
+    case 'replay':
+      if (replay.on) { inp = null; break; }
+      // falls through: no tape to play, so just roll to a stop
+    case 'finishing': {
       // the co-driver takes the wheel and slows down
       const a = ai.control(dt);
       inp = { ...a, throttle: 0, brake: vehicle.speed > 2 ? 0.45 : 0.1 };
@@ -596,35 +700,43 @@ function update(dt) {
       } else inp = { steer: 0, throttle: 0, brake: 1, handbrake: 1 };
   }
 
-  vehicle.update(dt, inp);
-  handleEvents(dt);
+  const live = inp !== null;
+  if (live) {
+    if (S.run && !S.run.free && tape.recording && S.mode !== 'results') tape.frame(dt, inp);
+    vehicle.update(dt, inp);
+    handleEvents(dt);
+  } else replayAdvance(dt);
   visual.sync(vehicle, dt);
-  if (S.run) runUpdate(dt);
+  if (S.run && live) runUpdate(dt);
+  // a couple of seconds to cross the line and slow down, then the results
+  if (S.mode === 'finishing' && S.modeT > 2.6) showResults();
 
   // camera
   if (['menu', 'stages', 'settings'].includes(S.mode)) rig.broadcast(vehicle, dt, S.time);
   else if (S.mode === 'garage') {
     const c = vehicle.pos.clone();
     rig.orbit(c, 7.2 / Math.min(1, Math.max(camera.aspect, 0.6)), 1.4, S.time, 0.25);
-  } else if (S.mode === 'results') rig.broadcast(vehicle, dt, S.time);
-  else rig.follow(vehicle, dt);
+  } else if (S.mode === 'results' || S.mode === 'replay') {
+    if (replay.on) rig.replay(vehicle, dt, S.mode === 'results');
+    else rig.broadcast(vehicle, dt, S.time);
+  } else rig.follow(vehicle, dt);
   viewOffset();
 
   // effects & world
-  const fxOn = true;
-  if (fxOn) fx.fromCar(vehicle, dt);
+  if (live) {
+    fx.fromCar(vehicle, dt);
+    const hits = props.update(dt, vehicle, S.time);
+    for (const h of hits) { sound.impact(h.speed * 0.5, 'bale'); fx.debris(h.point, '#c9a85a', h.speed); }
+  }
   fx.update(dt, camera, view.scene);
-  const hits = props.update(dt, vehicle, S.time);
-  for (const h of hits) { sound.impact(h.speed * 0.5, 'bale'); fx.debris(h.point, '#c9a85a', h.speed); }
   view.update(camera, vehicle.pos, dt);
   if (ghostPlayer && S.run && !S.run.free) {
     const gp = ghostPlayer.update(S.mode === 'racing' || S.mode === 'finishing' ? S.run.t : 0);
-    ghostVisual.root.visible = S.mode !== 'prestart' || S.modeT > 0.3;
+    ghostVisual.root.visible = (S.mode !== 'prestart' || S.modeT > 0.3) && !replay.on;
     S.run.ghostPos = gp;
   }
-  const cameraInside = rig.view === 'bonnet' || rig.view === 'bumper';
-  const audible = ['prestart', 'countdown', 'racing', 'free', 'finishing', 'results'].includes(S.mode);
-  sound.update(vehicle, dt, { active: audible, cameraInside });
+  const audible = ['prestart', 'countdown', 'racing', 'free', 'finishing', 'results', 'replay'].includes(S.mode);
+  sound.update(vehicle, dt, { active: audible, ...listener() });
   hudUpdate();
   // debug stats
   if (params.has('debug')) document.title = `${fps.toFixed(0)} fps · res ${Math.round(dyn.scale * 100)}%`;
@@ -646,6 +758,7 @@ function countdownUpdate() {
   if (t >= 3) {
     hud.countdown('GO');
     sound.beep(true);
+    tape.markGo();
     S.mode = 'racing';
     S.modeT = 0;
     S.run.t = 0;
@@ -808,31 +921,36 @@ function finish() {
     store.raw('ghost:' + S.stage.id, recorder.pack({ car: vehicle.spec.id, splits: run.splits, time: t }));
   }
   run.result = { t, prev, isBest };
-  setTimeout(() => showResults(), 2600);
 }
 
 function showResults() {
   if (S.mode !== 'finishing') return;
   const run = S.run, st = S.stage;
   S.mode = 'results';
+  startReplay();
+  $('btn-replay').hidden = !replay.on;
   const { t, prev, isBest } = run.result;
   $('result-stage').textContent = `SS${STAGES.indexOf(st) + 1} · ${st.name}`;
-  $('result-title').textContent = isBest && prev ? 'New stage record!' : isBest ? 'Stage complete' : 'Stage complete';
+  const board = classify(st, { name: 'You', nat: '', t }, !!TIMES[st.time].night);
+  const pos = board.findIndex((r) => r.you) + 1;
+  $('result-title').textContent = pos === 1 ? 'Fastest on the stage!' : isBest && prev ? 'New stage record!' : 'Stage complete';
   $('result-time').textContent = formatTime(t);
   const medal = medalFor(st, t);
   const m = $('result-medal');
   m.hidden = !medal;
   if (medal) { m.className = `medal ${medal}`; m.textContent = `${medal} medal`; }
+  $('result-pos').textContent = `${ordinal(pos)} of ${board.length}`;
+  const vs = prev ? `Your best ${formatTime(Math.min(t, prev))} · <span class="${t <= prev ? 'good' : 'bad'}">${formatGap(t - prev)}</span>` : 'First run on this stage';
+  const next = nextMedal(st, t);
+  $('result-sub').innerHTML = vs + (next ? ` · ${next}` : '');
+  renderBoard(board);
   const kmh = (run.len / t) * 3.6;
   const conv = (v) => (settings.units === 'mph' ? `${Math.round(v * 0.6214)} mph` : `${Math.round(v)} km/h`);
   const rows = [
-    ['Best', formatTime(Math.min(t, prev ?? Infinity))],
-    [prev ? 'vs best' : 'First run', prev ? formatTime(t - prev, true) : '—'],
     ['Average', conv(kmh)],
     ['Top speed', conv(run.topSpeed * 3.6)],
     ['Longest jump', `${(run.maxAir || 0).toFixed(1)} s`],
     ['Resets', String(run.resets || 0)],
-    ['Next medal', nextMedal(st, t)],
   ];
   $('result-stats').innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
   show('menu-results');
@@ -840,14 +958,55 @@ function showResults() {
   $('btn-again').focus({ preventScroll: true });
 }
 
-function nextMedal(st, t) {
-  const names = ['gold', 'silver', 'bronze'];
-  for (let i = 2; i >= 0; i--) if (t > st.medals[i]) return `${names[i]} ${formatTime(st.medals[i])}`;
-  for (let i = 1; i >= 0; i--) if (t > st.medals[i]) return `${names[i]} ${formatTime(st.medals[i])}`;
-  return 'All won!';
+// Full-screen replay from the start, and back.
+function watchReplay() {
+  sound.click();
+  if (!startReplay()) return;
+  S.mode = 'replay';
+  show(null);
+  $('hud').hidden = true;
+  $('replay-back').focus({ preventScroll: true });
 }
 
+function backToResults() {
+  if (S.mode !== 'replay') return;
+  sound.click();
+  S.mode = 'results';
+  show('menu-results');
+  $('hud').hidden = true;
+  $('btn-again').focus({ preventScroll: true });
+}
+
+// The next medal up, if there is one to chase.
+function nextMedal(st, t) {
+  const names = ['gold', 'silver', 'bronze'];
+  for (let i = 0; i < 3; i++) {
+    if (t <= st.medals[i]) return i === 0 ? '' : `${names[i - 1]} at ${formatTime(st.medals[i - 1])}`;
+  }
+  return `bronze at ${formatTime(st.medals[2])}`;
+}
+
+// Stage times: the top three, then you and the drivers either side.
+function renderBoard(board) {
+  const me = board.findIndex((r) => r.you);
+  const show = new Set([0, 1, 2, me - 1, me, me + 1].filter((i) => i >= 0 && i < board.length));
+  const lead = board[0].t;
+  let html = '', last = -1;
+  for (const i of [...show].sort((a, b) => a - b)) {
+    if (i > last + 1) html += '<li class="gap-row" aria-hidden="true"><span></span><span>···</span></li>';
+    const r = board[i];
+    html += `<li class="${r.you ? 'you' : ''}"><span class="pos">${i + 1}</span><span class="who">${r.name}${r.nat ? `<small>${r.nat}</small>` : ''}</span><span class="bt">${formatTime(r.t)}</span><span class="gap">${i ? formatGap(r.t - lead) : ''}</span></li>`;
+    last = i;
+  }
+  $('result-board').innerHTML = html;
+}
+
+let replayShown = '';
 function hudUpdate() {
+  if (S.mode === 'replay') {
+    const txt = formatTime(Math.min(replay.t, S.run?.result?.t ?? Infinity));
+    if (txt !== replayShown) $('replay-time').textContent = replayShown = txt;
+  }
   if ($('hud').hidden) return;
   hud.dash(vehicle);
   const run = S.run;
@@ -872,7 +1031,7 @@ function hudUpdate() {
 // Menus sit on the left: shift the picture so the car sits in the clear space.
 function viewOffset() {
   const W = innerWidth, H = innerHeight;
-  const menu = ['menu', 'stages', 'garage', 'settings'].includes(S.mode);
+  const menu = ['menu', 'stages', 'garage', 'settings', 'results'].includes(S.mode);
   if (menu && W > 640) camera.setViewOffset(W, H, -Math.min(260, W * 0.2), 0, W, H);
   else if (menu) camera.setViewOffset(W, H, 0, H * 0.22, W, H);
   else if (camera.view && camera.view.enabled) camera.clearViewOffset();

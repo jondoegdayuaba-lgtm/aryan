@@ -112,6 +112,9 @@ export class Sound {
     this.master.connect(comp).connect(ctx.destination);
     this.sfx = ctx.createGain();
     this.sfx.connect(this.master);
+    // the car's own bangs and knocks: quieter when a replay camera is far away
+    this.carSfx = ctx.createGain();
+    this.carSfx.connect(this.sfx);
 
     const sr = ctx.sampleRate;
     const mk = (sec, fn) => {
@@ -219,7 +222,8 @@ export class Sound {
   }
 
   // Called every frame with the physics car (or null to fade everything).
-  update(car, dt, { active = true, cameraInside = false } = {}) {
+  // `volume` and `doppler` let replay cameras hear the car pass by.
+  update(car, dt, { active = true, cameraInside = false, volume = 1, doppler = 1, trackside = false } = {}) {
     if (!this.ready) return;
     const t = this.ctx.currentTime;
     const on = car && active;
@@ -238,26 +242,28 @@ export class Sound {
     let load = car.throttle;
     if (car.limiter) load = Math.random() < 0.5 ? 0 : load;     // limiter cut: brrap
     if (!car.engaged) load *= 0.6;
-    const rpm = car.rpm;
+    const rpm = car.rpm * doppler;
+    const vol = volume;
+    this.carSfx.gain.setTargetAtTime(vol, t, 0.05);
     if (this.engineParams) {
       this.engineParams.rpm.setTargetAtTime(rpm, t, 0.012);
       this.engineParams.load.setTargetAtTime(load, t, 0.03);
-      this.engineParams.gain.setTargetAtTime(0.55 + 0.45 * load, t, 0.05);
+      this.engineParams.gain.setTargetAtTime((0.55 + 0.45 * load) * vol, t, 0.05);
     } else if (this.fallback) {
       const hz = rpm / 60 * (this.voice?.cylinders || 4) / 2;
       this.fallback.o1.frequency.setTargetAtTime(hz, t, 0.02);
       this.fallback.o2.frequency.setTargetAtTime(hz / 2, t, 0.02);
       this.fallback.f.frequency.setTargetAtTime(400 + load * 1600 + rpm * 0.15, t, 0.05);
-      this.fallback.g.gain.setTargetAtTime(0.12 + load * 0.15, t, 0.05);
+      this.fallback.g.gain.setTargetAtTime((0.12 + load * 0.15) * vol, t, 0.05);
     }
     // turbo whistle and gear whine
     const boost = car.boost || 0;
-    this.turbo.frequency.setTargetAtTime(2200 + boost * 5200 + rpm * 0.25, t, 0.05);
-    this.turboG.gain.setTargetAtTime(car.spec.engine.turbo ? boost * 0.018 : 0, t, 0.06);
-    if (car.spec.engine.turbo && this._lastBoost > 0.55 && boost < this._lastBoost - 0.08 && car.throttle < 0.1) this.blowOff(this._lastBoost);
+    this.turbo.frequency.setTargetAtTime((2200 + boost * 5200 + rpm * 0.25) * doppler, t, 0.05);
+    this.turboG.gain.setTargetAtTime(car.spec.engine.turbo ? boost * 0.018 * vol : 0, t, 0.06);
+    if (car.spec.engine.turbo && this._lastBoost > 0.55 && boost < this._lastBoost - 0.08 && car.throttle < 0.1) this.blowOff(this._lastBoost * vol);
     this._lastBoost = boost;
-    this.whine.frequency.setTargetAtTime(90 + Math.abs(car.forwardSpeed) * 26, t, 0.05);
-    this.whineG.gain.setTargetAtTime(Math.min(0.03, sp * 0.0012) * (0.4 + car.throttle * 0.6), t, 0.08);
+    this.whine.frequency.setTargetAtTime((90 + Math.abs(car.forwardSpeed) * 26) * doppler, t, 0.05);
+    this.whineG.gain.setTargetAtTime(Math.min(0.03, sp * 0.0012) * (0.4 + car.throttle * 0.6) * vol, t, 0.08);
 
     // tyres and surfaces
     let crunch = 0, slide = 0, squeal = 0, water = 0, contact = 0;
@@ -273,17 +279,18 @@ export class Sound {
     }
     crunch /= 4;
     const v = Math.min(1, sp / 30);
-    this.crunch.g.gain.setTargetAtTime(crunch * v * 0.5, t, tc);
+    this.crunch.g.gain.setTargetAtTime(crunch * v * 0.5 * vol, t, tc);
     this.crunch.src.playbackRate.setTargetAtTime(0.55 + v * 1.1, t, tc);
-    this.slideN.g.gain.setTargetAtTime(slide * 0.55 * Math.min(1, sp / 6), t, tc);
+    this.slideN.g.gain.setTargetAtTime(slide * 0.55 * Math.min(1, sp / 6) * vol, t, tc);
     this.slideN.src.playbackRate.setTargetAtTime(0.8 + v * 0.5, t, tc);
-    this.squealG.gain.setTargetAtTime(Math.min(1, squeal) * 0.09, t, tc);
+    this.squealG.gain.setTargetAtTime(Math.min(1, squeal) * 0.09 * vol, t, tc);
     this.squealOsc.frequency.setTargetAtTime(850 + Math.sin(t * 23) * 60, t, 0.01);
-    this.roll.g.gain.setTargetAtTime(contact ? v * 0.35 : 0, t, tc);
+    this.roll.g.gain.setTargetAtTime(contact ? v * 0.35 * vol : 0, t, tc);
     this.roll.f.frequency.setTargetAtTime(120 + v * 220, t, tc);
-    this.water.g.gain.setTargetAtTime(water * Math.min(1, sp / 8) * 0.6, t, tc);
+    this.water.g.gain.setTargetAtTime(water * Math.min(1, sp / 8) * 0.6 * vol, t, tc);
     const wv = Math.min(1, sp / 50);
-    this.wind.g.gain.setTargetAtTime(wv * wv * (cameraInside ? 0.18 : 0.3), t, 0.1);
+    // wind is heard by the camera, not the car: trackside cameras only get a breeze
+    this.wind.g.gain.setTargetAtTime(wv * wv * (cameraInside ? 0.18 : 0.3) * (trackside ? 0.25 : 1), t, 0.1);
     this.wind.f.frequency.setTargetAtTime(350 + wv * 1400, t, 0.1);
   }
 
@@ -301,7 +308,7 @@ export class Sound {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(vol, t + 0.006);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(f).connect(g).connect(this.sfx);
+    src.connect(f).connect(g).connect(this._bus || this.sfx);
     src.start(t, Math.random() * 1.5);
     src.stop(t + dur + 0.05);
   }
@@ -316,53 +323,67 @@ export class Sound {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(this.sfx);
+    o.connect(g).connect(this._bus || this.sfx);
     o.start(t);
     o.stop(t + dur + 0.05);
   }
 
   backfire(power = 1) {
     if (!this.ready) return;
+    this._bus = this.carSfx;
     this.engine?.port.postMessage({ pop: 2 + power * 2 });
     this._noise(0.18, 'lowpass', 2400, 200, 0.5 * power);
     this._tone(80, 0.15, 0.4 * power, 'sine', 40);
+    this._bus = null;
   }
 
   blowOff(amount) {
     if (!this.ready) return;
+    this._bus = this.carSfx;
     this._noise(0.35, 'bandpass', 3200, 1200, 0.12 * amount, 1.5);
+    this._bus = null;
   }
 
   shift(up) {
     if (!this.ready) return;
+    this._bus = this.carSfx;
     this._noise(0.05, 'bandpass', 1800, 900, 0.18, 2);
     this._tone(up ? 140 : 110, 0.06, 0.12, 'square', 70);
+    this._bus = null;
   }
 
   impact(speed, kind = 'tree') {
     if (!this.ready) return;
+    this._bus = this.carSfx;
     const p = Math.min(1, speed / 18);
     this._tone(70, 0.3, 0.7 * p + 0.1, 'sine', 32);
     this._noise(0.35, 'bandpass', 1400, 300, 0.6 * p + 0.1, 0.8);
     if (kind === 'rock') { this._tone(1650, 0.25, 0.05 * p, 'triangle'); this._tone(2230, 0.2, 0.04 * p, 'triangle'); }
     else this._noise(0.12, 'bandpass', 700, 400, 0.4 * p, 3);    // woody knock
+    this._bus = null;
   }
 
   landing(power) {
     if (!this.ready) return;
+    this._bus = this.carSfx;
     this._tone(60, 0.25, 0.6 * power, 'sine', 30);
     this._noise(0.2, 'lowpass', 900, 150, 0.4 * power);
+    this._bus = null;
   }
 
   scrape(p) {
     if (!this.ready || this._scrapeT > this.ctx.currentTime) return;
     this._scrapeT = this.ctx.currentTime + 0.12;
+    this._bus = this.carSfx;
     this._noise(0.15, 'bandpass', 3000, 2000, 0.12 * p, 2);
+    this._bus = null;
   }
 
   splash(power) {
     if (!this.ready) return;
+    this._bus = this.carSfx;
     this._noise(0.9, 'lowpass', 3000, 300, 0.5 * power);
+    this._bus = null;
   }
 
   beep(high = false) {

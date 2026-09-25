@@ -13,6 +13,13 @@ export function formatTime(t, plus = false) {
   return m > 0 ? `${sign}${m}:${ss}` : `${sign}${ss}`;
 }
 
+// Time differences: +0.39, -1.20, +1:02.50
+export function formatGap(d) {
+  if (!isFinite(d)) return '';
+  if (Math.abs(d) >= 60) return formatTime(d, true);
+  return (d < 0 ? '-' : '+') + Math.abs(d).toFixed(2);
+}
+
 // Arc path on the tachometer dial.
 function arc(cx, cy, r, a0, a1) {
   const p = (a) => [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
