@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GAME_TITLE, TAGLINE, TIMES, QUALITY } from './config.js';
-import { generateWorldAsync, WATER } from './gen.js';
+import { generateWorldAsync, WATER, SURF } from './gen.js';
 import { STAGES, FEATURES } from './track.js';
 import { CARS, LIVERIES } from './cars.js';
 import { Vehicle } from './vehicle.js';
@@ -51,7 +51,7 @@ const touchDevice = matchMedia('(hover: none) and (pointer: coarse)').matches;
 if (touchDevice) document.body.classList.add('touch');
 
 const settings = Object.assign({
-  quality: 'auto', gearbox: 'auto', assists: 'full', codriver: 'voice', units: 'kmh', tilt: 'off', sound: true, view: 'chase',
+  quality: 'auto', gearbox: 'auto', assists: 'full', codriver: 'voice', units: 'kmh', tilt: 'off', sound: true, view: 'chase', damage: 'full',
 }, store.get('settings', {}));
 const saveSettings = () => store.set('settings', settings);
 
@@ -172,6 +172,7 @@ function setupCar() {
     view.scene.remove(visual.root);
   }
   vehicle = new Vehicle(spec, world);
+  vehicle.damageMode = settings.damage;
   visual = new CarVisual(spec, LIVERIES[S.livery], { noiseTex: view.textures.noise, patch, number: 7 });
   view.scene.add(visual.root);
   if (rig) rig.eye = visual.eye || null;
@@ -187,6 +188,7 @@ function setupCar() {
     L.position.set(s * 0.55, pod ? y + 0.55 : y, pod ? z - 0.9 : z);
     L.target.position.set(s * 0.8, pod ? -2 : -1.1, z + 30);
     L.userData.pod = pod;
+    L.userData.left = s > 0;
     L.castShadow = s > 0 && S.quality !== 'low';
     L.shadow.mapSize.set(1024, 1024);
     L.shadow.camera.near = 0.5;
@@ -200,10 +202,10 @@ function setupCar() {
   sound?.setCar(spec.id);
 }
 
-function placeOnRoad(s, back = 0) {
+function placeOnRoad(s, back = 0, keepDamage = false) {
   const road = world.road, n = road.count;
   const i = wrap(Math.round(s - back), n);
-  const r = { x: road.x[i], z: road.z[i], heading: Math.atan2(road.tx[i], road.tz[i]), y: road.y[i] };
+  const r = { x: road.x[i], z: road.z[i], heading: Math.atan2(road.tx[i], road.tz[i]), y: road.y[i], keep: keepDamage };
   applyReset(r);
   rig.snap();
   ai?.reset();
@@ -212,9 +214,19 @@ function placeOnRoad(s, back = 0) {
 
 // Every reset during a run goes on the tape so replays can repeat it.
 function applyReset(r) {
-  vehicle.reset(new THREE.Vector3(r.x, 0, r.z), r.heading, r.y);
+  vehicle.reset(new THREE.Vector3(r.x, 0, r.z), r.heading, r.y, r.keep);
   tape.reset(r);
   if (fx) fx.skids.last = [null, null, null, null];
+}
+
+// A clean, undamaged car and working lamps.
+function freshCar() {
+  visual.repair();
+  S.dirt = 0;
+  S.wet = 0;
+  S.dmgSaid = {};
+  for (const h of heads) h.userData.broken = false;
+  setLights(S.lights);
 }
 
 // ---------- Replays ----------
@@ -227,6 +239,7 @@ function startReplay() {
   applyReset(tape.start);
   props.resetBales();
   fx.clear();
+  freshCar();
   // the countdown plays out instantly, off screen
   while (replay.k < tape.go) replayStep(replay.k++, true);
   S._airborne = 0;
@@ -308,7 +321,7 @@ function applyTime(name) {
 function setLights(on) {
   S.lights = on;
   const night = TIMES[S.preset]?.night;
-  heads.forEach((h) => { h.intensity = on ? (night ? (h.userData.pod ? 1000 : 1600) : 400) : 0; });
+  heads.forEach((h) => { h.intensity = on && !h.userData.broken ? (night ? (h.userData.pod ? 1000 : 1600) : 400) : 0; });
   visual.paint.userData.u.uLights.value = on ? 1 : 0;
 }
 
@@ -409,6 +422,7 @@ function renderSettings() {
     ['quality', 'Graphics', 'Auto picks for your device', [['auto', 'Auto'], ['low', 'Low'], ['medium', 'Med'], ['high', 'High']]],
     ['assists', 'Driving help', 'Traction, ABS and slide assist', [['full', 'Full'], ['some', 'Some'], ['off', 'Off']]],
     ['gearbox', 'Gearbox', 'Manual: E / Q or bumpers', [['auto', 'Auto'], ['manual', 'Manual']]],
+    ['damage', 'Damage', 'Real: big hits bend the steering and hurt the engine', [['full', 'Real'], ['visual', 'Looks only']]],
     ['codriver', 'Co-driver', 'Pace notes read aloud', [['voice', 'Voice'], ['icons', 'Icons'], ['off', 'Off']]],
     ['units', 'Speed', '', [['kmh', 'km/h'], ['mph', 'mph']]],
     ['tilt', 'Tilt to steer', 'Phones and tablets', [['off', 'Off'], ['on', 'On']]],
@@ -510,6 +524,8 @@ function startStage(stage) {
   props.resetBales();
   fx.clear();
   replay.on = false;
+  vehicle.damageMode = settings.damage;
+  freshCar();
   const n = world.road.count;
   const startPos = placeOnRoad(stage.start, 5);
   tape.begin(startPos);
@@ -583,6 +599,8 @@ function startFree() {
   props.resetBales();
   fx.clear();
   clearGhost();
+  vehicle.damageMode = settings.damage;
+  freshCar();
   placeOnRoad(40, 5);
   S.run = { free: true, t: 0, topSpeed: 0, maxAir: 0, airT: 0, flipT: 0, hits: 0, lastGood: null, hint: -1 };
   hud.setStage(`Free roam · ★ ${S.stars.filter(Boolean).length} / ${props.stars.length}`, vehicle.spec.engine.redline / vehicle.spec.engine.limiter);
@@ -628,7 +646,7 @@ function recover(reason) {
     const d = (s - S.stage.start + n) % n;
     if (d > S.run.len + 20) s = S.stage.start;
   }
-  placeOnRoad(s, 3);
+  placeOnRoad(s, 3, true);
   if (S.run) {
     S.run.resets = (S.run.resets || 0) + 1;
     S.run.hint = wrap(Math.round(s - 3), n);
@@ -761,7 +779,7 @@ function update(dt) {
     const inside = rig.view === 'cockpit' && ['prestart', 'countdown', 'racing', 'free', 'finishing', 'paused'].includes(S.mode);
     visual.interior.visible = inside;
     // the tops of the flaps reach into the footwells; you can't see them from inside anyway
-    if (visual.flaps) for (const f of visual.flaps) f.visible = !inside;
+    if (visual.flaps) for (const f of visual.flaps) f.visible = !inside && !f.userData.torn;
     visual.syncInterior(vehicle, S.lights);
   }
   if (S.run && live) runUpdate(dt);
@@ -786,6 +804,7 @@ function update(dt) {
     for (const h of hits) { sound.impact(h.speed * 0.5, 'bale'); fx.debris(h.point, '#c9a85a', h.speed); }
   }
   crowdUpdate(dt);
+  dirtUpdate(dt);
   fx.update(dt, camera, view.scene);
   view.update(camera, vehicle.pos, dt);
   if (ghostPlayer && S.run && !S.run.free) {
@@ -798,6 +817,25 @@ function update(dt) {
   hudUpdate();
   // debug stats
   if (params.has('debug')) document.title = `${fps.toFixed(0)} fps · res ${Math.round(dyn.scale * 100)}%`;
+}
+
+// The car picks up dust on gravel and mud in the water, and dries off slowly.
+function dirtUpdate(dt) {
+  const u = visual.paint.userData.u;
+  if (!S.run || S.demo) { u.uDirt.value = 0; u.uWet.value = 0; return; }
+  if (!['racing', 'free', 'finishing', 'results', 'replay'].includes(S.mode)) return;
+  const sp = vehicle.speed;
+  let loose = 0, water = false;
+  for (const w of vehicle.wheels) {
+    if (!w.contact) continue;
+    if (w.surface !== SURF.TARMAC) loose++;
+    if (w.water > 0.03) water = true;
+  }
+  S.dirt = Math.min(0.85, (S.dirt || 0) + dt * sp * 0.00055 * (loose / 4));
+  if (water && sp > 3) { S.wet = 1; S.dirt = Math.min(0.9, S.dirt + dt * 0.35); }
+  else S.wet = Math.max(0, (S.wet || 0) - dt / 25);
+  u.uDirt.value = S.dirt;
+  u.uWet.value = S.wet;
 }
 
 // Spectators: a cheer as the car passes, and at night their camera flashes.
@@ -853,6 +891,7 @@ function handleEvents(dt) {
       case 'backfire': sound.backfire(e.power); fx.backfire(exhaustPos(), exhaustDir()); break;
       case 'impact': {
         if (e.speed < 2) break;
+        carHit(e);
         sound.impact(e.speed, e.kind);
         rig.bump(Math.min(1, e.speed / 14));
         if (!replay.on) input.rumble(e.speed / 12, e.speed / 8, 180);
@@ -885,6 +924,30 @@ function handleEvents(dt) {
   for (const w of vehicle.wheels) comp = Math.max(comp, Math.abs(w.vComp));
   rig.shake = Math.max(rig.shake, Math.min(0.25, comp * 0.05) * Math.min(1, vehicle.speed / 15));
 }
+
+// Damage you can see: dents, smashed lamps, torn flaps, and word from the
+// co-driver when something important breaks.
+function carHit(e) {
+  const sev = Math.min(1, Math.max(0, (e.speed - 3) / 12));
+  if (sev <= 0) return;
+  const r = _hit.subVectors(e.point, vehicle.pos);
+  const local = _hitL.set(r.dot(vehicle.L), r.dot(vehicle.U) + vehicle.spec.cgHeight, r.dot(vehicle.F));
+  const broke = visual.hit(local, sev) || [];
+  const live = !replay.on && S.run && !S.run.free;
+  for (const b of broke) {
+    if (b.kind === 'head') {
+      for (const h of heads) if (!h.userData.pod && h.userData.left === b.left) h.userData.broken = true;
+      setLights(S.lights);
+      sound.glass();
+      if (live) hud.popup('Headlight <em>smashed</em>', 1600);
+    } else if (b.kind === 'tail') sound.glass();
+    else if (b.kind === 'flap') fx.debris(e.point, visual.livery.accent, e.speed);
+  }
+  const D = vehicle.damage, said = S.dmgSaid || (S.dmgSaid = {});
+  if (live && Math.abs(D.steer) > 0.006 && !said.steer) { said.steer = true; hud.popup('Steering <em>damaged</em>', 2000); }
+  if (live && D.engine > 0.25 && !said.engine) { said.engine = true; hud.popup('Radiator <em>damaged</em>', 2000); }
+}
+const _hit = new THREE.Vector3(), _hitL = new THREE.Vector3();
 
 function exhaustPos() {
   const ex = visual.exhaust;

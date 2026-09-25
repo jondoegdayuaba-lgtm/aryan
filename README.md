@@ -29,7 +29,7 @@ What makes it feel real:
 | S / Down: brake, then reverse | Left trigger | Brake button |
 | A D / Left Right: steer | Left stick | Arrow buttons, or tilt (Settings) |
 | Space: handbrake | A | Handbrake button |
-| C: camera (chase, far, bonnet, bumper) | Y | Camera button |
+| C: camera (chase, far, cockpit, bonnet, bumper) | Y | Camera button |
 | R: put the car back on the road | B | Reset button |
 | E / Q: gear up / down (manual gearbox) | Bumpers | |
 | L: lights, M: mute, T: restart stage | X: lights, Back: restart | |
@@ -46,7 +46,9 @@ What makes it feel real:
 
 Three cars: the Kestrel R5 (four-wheel-drive turbo hatchback, the easiest to drive fast), the Vantor RS (rear-drive coupe that loves to slide) and the Brute TT (a trophy truck with huge suspension travel). Each has six paint schemes in the garage. Free roam lets you explore the whole island and hunt for 20 hidden stars.
 
-Settings cover graphics quality, driving help (full, some or none), automatic or manual gears, the co-driver (voice, icons or off), km/h or mph, and tilt steering on phones.
+Cars take damage: hits dent the bodywork and scrape the paint, can smash the lamps (a dark corner at night) and tear off mud flaps, and with real damage on, a hard knock bends the steering or holes the radiator. Being put back on the road doesn't fix it; the next stage does. The paint collects dust on gravel and mud in the water splash.
+
+Settings cover graphics quality, driving help (full, some or none), automatic or manual gears, damage (real or looks only), the co-driver (voice, icons or off), km/h or mph, and tilt steering on phones.
 
 ### Files
 

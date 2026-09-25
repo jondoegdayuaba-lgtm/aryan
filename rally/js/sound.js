@@ -363,6 +363,15 @@ export class Sound {
     this._bus = null;
   }
 
+  // A lamp lens breaking: a bright crack and a spray of tinkles.
+  glass() {
+    if (!this.ready) return;
+    this._bus = this.carSfx;
+    this._noise(0.08, 'highpass', 5000, 3000, 0.25, 1);
+    for (let k = 0; k < 6; k++) this._tone(2500 + Math.random() * 3500, 0.12, 0.04, 'triangle', null, 0.03 + Math.random() * 0.25);
+    this._bus = null;
+  }
+
   landing(power) {
     if (!this.ready) return;
     this._bus = this.carSfx;

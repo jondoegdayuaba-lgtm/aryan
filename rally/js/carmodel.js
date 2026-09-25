@@ -144,13 +144,38 @@ const DETAILS = {
   },
 };
 
+const MAX_DENTS = 8;
 const BODY_VS_PARS = /* glsl */`
+uniform vec4 uDents[ ${MAX_DENTS} ];      // centre (model space) and radius
+uniform float uDentDepth[ ${MAX_DENTS} ];
 varying vec3 vObj;
-varying vec3 vObjN;`;
+varying vec3 vObjN;
+varying float vDmg;`;
+// Dents: each pushes the panel in as a crumpled bowl and tilts its normals,
+// so the light shows the damage.
+const BODY_VS_NORMAL = /* glsl */`
+vec3 objectNormal = vec3( normal );
+vec3 dentOff = vec3( 0.0 );
+float dmg = 0.0;
+for ( int i = 0; i < ${MAX_DENTS}; i ++ ) {
+  float dep = uDentDepth[ i ];
+  if ( dep <= 0.0 ) continue;
+  vec3 d = position - uDents[ i ].xyz;
+  float r = length( d ) / uDents[ i ].w;
+  if ( r >= 1.0 ) continue;
+  float f = ( 1.0 - r * r ) * ( 1.0 - r * r );
+  float crumple = 0.7 + 0.3 * sin( position.x * 37.0 + position.y * 23.0 ) * sin( position.z * 31.0 - position.y * 17.0 );
+  dentOff -= normal * dep * f * crumple;
+  vec3 t = d - normal * dot( d, normal );
+  objectNormal -= normalize( t + 1e-5 ) * dep * 4.0 * r * ( 1.0 - r * r ) / uDents[ i ].w * 2.5;
+  dmg = max( dmg, f * min( 1.0, dep * 14.0 ) );
+}
+objectNormal = normalize( objectNormal );`;
 const BODY_VS = /* glsl */`
-vec3 transformed = vec3( position );
+vec3 transformed = vec3( position ) + dentOff;
 vObj = position;
-vObjN = normal;`;
+vObjN = normal;
+vDmg = dmg;`;
 
 const BODY_FS_PARS = /* glsl */`
 uniform vec3 uBase, uStripe, uAccent, uNumCol;
@@ -162,8 +187,10 @@ uniform vec4 uHead, uTail, uNumBox;
 uniform vec3 uGrille;
 uniform vec2 uDoors, uRear;
 uniform sampler2D uPlateTex;
+uniform vec4 uBroken;       // smashed lamps: head left, head right, tail left, tail right
 varying vec3 vObj;
 varying vec3 vObjN;
+varying float vDmg;
 float carMetal, carRough, carClear, carEmitGlass;
 vec3 carEmit;
 float aa( float d ) { float w = fwidth( d ) * 0.75 + 1e-4; return smoothstep( w, -w, d ); }
@@ -275,23 +302,42 @@ const BODY_FS_MAP = /* glsl */`
   col = mix( col, vec3( 0.03 ), housing );
   if ( head > 0.0 ) {
     float ring = smoothstep( 0.5, 0.9, length( hl ) );
+    float broken = p.x > 0.0 ? uBroken.x : uBroken.y;
     col = mix( col, mix( vec3( 0.9 ), vec3( 0.55 ), ring ), head );
-    carMetal = mix( carMetal, 1.0, head );
-    carRough = mix( carRough, 0.08, head );
-    carEmit += vec3( 1.0, 0.95, 0.85 ) * head * uLights * 18.0 * ( 1.0 - ring * 0.7 );
+    carMetal = mix( carMetal, 1.0, head * ( 1.0 - broken ) );
+    carRough = mix( carRough, mix( 0.08, 0.6, broken ), head );
+    // a smashed lamp: dark, empty reflector with shards
+    col = mix( col, vec3( 0.06 ) + 0.25 * step( 0.7, texture2D( uNoiseTex, p.xy * 6.0 ).r ), head * broken );
+    carEmit += vec3( 1.0, 0.95, 0.85 ) * head * uLights * 18.0 * ( 1.0 - ring * 0.7 ) * ( 1.0 - broken );
   }
   vec2 tl = ( vec2( ax, p.y ) - uTail.xy ) / uTail.zw;
   float tail = aa( length( tl ) - 1.0 ) * smoothstep( -0.15, -0.35, n.z );
   if ( tail > 0.0 ) {
     // deep red lens: a little glow of its own so it reads red in daylight
     float lens = smoothstep( 1.0, 0.3, length( tl ) );
+    float tbroken = p.x > 0.0 ? uBroken.z : uBroken.w;
     col = mix( col, mix( vec3( 0.22, 0.01, 0.01 ), vec3( 0.42, 0.02, 0.02 ), lens ), tail );
+    col = mix( col, vec3( 0.05 ), tail * tbroken * 0.8 );
     carRough = mix( carRough, 0.22, tail );
     carClear = mix( carClear, 0.25, tail );
-    carEmit += vec3( 1.0, 0.05, 0.03 ) * tail * ( 0.12 + uLights * 2.5 + uBrake * 14.0 );
+    carEmit += vec3( 1.0, 0.05, 0.03 ) * tail * ( 0.12 + uLights * 2.5 + uBrake * 14.0 ) * ( 1.0 - tbroken * 0.85 );
     float rev = aa( length( tl + vec2( 0.55, 0.0 ) ) - 0.35 ) * tail;
     carEmit += vec3( 1.0 ) * rev * uReverse * 10.0;
     col = mix( col, vec3( 0.8 ), rev * 0.6 );
+  }
+
+  // ----- damage: paint scraped back to primer and bare metal around dents,
+  // glass crazed white
+  if ( vDmg > 0.02 ) {
+    float n1 = texture2D( uNoiseTex, p.xy * 2.3 + p.z * 1.7 ).r;
+    float scr = smoothstep( 0.3, 0.75, vDmg + ( n1 - 0.5 ) * 0.7 );
+    float streak = smoothstep( 0.5, 0.75, texture2D( uNoiseTex, vec2( p.z * 7.0 + p.x * 3.0, p.y * 0.9 ) ).g );
+    vec3 bare = mix( vec3( 0.36, 0.37, 0.37 ), vec3( 0.7, 0.7, 0.68 ), streak );
+    col = mix( col, bare, scr * 0.9 * ( 1.0 - glass ) );
+    col = mix( col, vec3( 0.55, 0.58, 0.6 ), glass * smoothstep( 0.45, 0.8, vDmg + ( n1 - 0.5 ) * 0.5 ) * 0.7 );
+    carClear *= 1.0 - scr;
+    carRough = mix( carRough, 0.5, scr );
+    carMetal = mix( carMetal, 0.5 * streak, scr * ( 1.0 - glass ) );
   }
 
   // ----- dirt: dust thrown up from the wheels, heavier low down and at the back
@@ -358,13 +404,16 @@ export function bodyMaterial(spec, livery, noiseTex, patch, number = 7) {
     uNumBox: { value: new THREE.Vector4(...D.numberBox) }, uGrille: { value: new THREE.Vector3(...D.grille) },
     uDoors: { value: new THREE.Vector2(...D.doors) },
     uRear: { value: new THREE.Vector2(...D.rear) },
+    uDents: { value: Array.from({ length: MAX_DENTS }, () => new THREE.Vector4(0, 0, 0, 1)) },
+    uDentDepth: { value: new Array(MAX_DENTS).fill(0) },
+    uBroken: { value: new THREE.Vector4(0, 0, 0, 0) },
     uPlateTex: { value: typeof document !== 'undefined' ? plateTexture(number) : null },
   };
   const m = new THREE.MeshPhysicalMaterial({ roughness: 0.3, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.1 });
   patch(m, {
     uniforms: u,
     vertexPars: BODY_VS_PARS,
-    vertex: { '#include <begin_vertex>': BODY_VS },
+    vertex: { '#include <beginnormal_vertex>': BODY_VS_NORMAL, '#include <begin_vertex>': BODY_VS },
     fragmentPars: BODY_FS_PARS,
     fragment: {
       '#include <map_fragment>': BODY_FS_MAP,
@@ -761,6 +810,74 @@ export class CarVisual {
     // light through the windows: the dash, wheel and cage catch the sun; the
     // lining and door cards sit under the roof's shadow
     cab.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = o.material === fabric; } });
+  }
+
+  // ---- Damage ----
+  // A hit at `p` (model space) of severity 0..1: dent the panel there, and
+  // maybe smash a lamp or tear off a mud flap. Returns what broke.
+  hit(p, sev) {
+    if (sev <= 0.02 || !this.paint) return null;
+    const dents = this.dents || (this.dents = []);
+    const near = dents.find((d) => Math.hypot(d.x - p.x, d.y - p.y, d.z - p.z) < d.r * 0.6);
+    if (near) {
+      near.depth = Math.min(0.13, near.depth + sev * 0.05);
+      near.r = Math.min(0.6, near.r + sev * 0.05);
+    } else {
+      const d = { x: p.x, y: p.y, z: p.z, r: 0.26 + sev * 0.26, depth: 0.015 + sev * 0.07 };
+      if (dents.length >= MAX_DENTS) {
+        // out of slots: fold it into the closest dent
+        let best = dents[0];
+        for (const q of dents) if (Math.hypot(q.x - p.x, q.y - p.y, q.z - p.z) < Math.hypot(best.x - p.x, best.y - p.y, best.z - p.z)) best = q;
+        best.depth = Math.min(0.13, best.depth + d.depth * 0.5);
+        best.r = Math.min(0.6, best.r + 0.05);
+      } else dents.push(d);
+    }
+    const u = this.paint.userData.u;
+    dents.forEach((d, i) => { u.uDents.value[i].set(d.x, d.y, d.z, d.r); u.uDentDepth.value[i] = d.depth; });
+    // lamps and flaps near the hit
+    const broke = [];
+    const D = DETAILS[this.spec.id], ext = this._extents();
+    const lamps = [
+      ['head', 0, D.head[0], D.head[1], ext.front - 0.08], ['head', 1, -D.head[0], D.head[1], ext.front - 0.08],
+      ['tail', 2, D.tail[0], D.tail[1], ext.rear + 0.05], ['tail', 3, -D.tail[0], D.tail[1], ext.rear + 0.05],
+    ];
+    const b = u.uBroken.value;
+    for (const [kind, k, x, y, z] of lamps) {
+      if (b.getComponent(k) > 0 || sev < 0.3) continue;
+      if (Math.hypot(p.x - x, p.y - y, p.z - z) < 0.3 + sev * 0.3) { b.setComponent(k, 1); broke.push({ kind, left: k % 2 === 0 }); }
+    }
+    if (this.flaps && sev > 0.35) {
+      for (const f of this.flaps) {
+        if (f.userData.torn) continue;
+        if (Math.hypot(p.x - f.position.x, p.y - (f.position.y - 0.2), p.z - f.position.z) < 0.35 + sev * 0.2) {
+          f.userData.torn = true;
+          f.visible = false;
+          broke.push({ kind: 'flap' });
+        }
+      }
+    }
+    return broke;
+  }
+
+  // Front and rear of the body (model space z).
+  _extents() {
+    if (this._ext) return this._ext;
+    const P = BODIES[this.spec.id].profile;
+    let front = -Infinity, rear = Infinity;
+    for (let i = 0; i < P.length; i += 2) { front = Math.max(front, P[i]); rear = Math.min(rear, P[i]); }
+    return (this._ext = { front, rear });
+  }
+
+  // Straight out of the service park: no dents, lamps whole, flaps back on, clean.
+  repair() {
+    this.dents = [];
+    if (!this.paint) return;
+    const u = this.paint.userData.u;
+    u.uDentDepth.value.fill(0);
+    u.uBroken.value.set(0, 0, 0, 0);
+    u.uDirt.value = 0;
+    u.uWet.value = 0;
+    if (this.flaps) for (const f of this.flaps) { f.userData.torn = false; f.visible = true; }
   }
 
   // Needle, shift lights, steering wheel and gauge lights for the cockpit view.

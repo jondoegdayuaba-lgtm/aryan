@@ -87,7 +87,9 @@ export class Vehicle {
     this.reset(new THREE.Vector3(), 0);
   }
 
-  reset(pos, heading, groundY = null) {
+  // Put the car down at pos facing `heading`. Being put back on the road
+  // after a crash keeps the damage (keepDamage); a new stage starts fresh.
+  reset(pos, heading, groundY = null, keepDamage = false) {
     this.pos.copy(pos);
     const gy = groundY ?? this.world.heightAt(pos.x, pos.z);
     this.pos.y = gy + this.spec.cgHeight + 0.05;
@@ -120,8 +122,33 @@ export class Vehicle {
     this.grounded = 4;
     this.events = [];         // gear shifts, backfires, landings, impacts for sound & effects
     this.stoppedTime = 0;
-    this.damage = 0;
+    if (!keepDamage || !this.damage) {
+      // 0..1 per area; engine loses power, steer is a toe-out pull in radians
+      this.damage = { front: 0, rear: 0, left: 0, right: 0, engine: 0, steer: 0, total: 0 };
+    }
+    this.damageMode = this.damageMode ?? 'full';
+    this._hullT = new Float32Array(this.hull ? this.hull.length : 0);
     this._updateBasis();
+  }
+
+  // Record a hit at world point p with closing speed v (m/s).
+  _hurt(p, v) {
+    const sev = Math.min(1, Math.max(0, (v - 3) / 12));
+    if (sev <= 0) return;
+    const rx = p.x - this.pos.x, ry = p.y - this.pos.y, rz = p.z - this.pos.z;
+    const lx = rx * this.L.x + ry * this.L.y + rz * this.L.z;
+    const lz = rx * this.F.x + ry * this.F.y + rz * this.F.z;
+    const D = this.damage;
+    const half = this.bodyHalf;
+    if (lz > half.z * 0.45) D.front = Math.min(1, D.front + sev * 0.7);
+    if (lz < -half.z * 0.45) D.rear = Math.min(1, D.rear + sev * 0.7);
+    if (lx > half.x * 0.5) D.left = Math.min(1, D.left + sev * 0.6);
+    if (lx < -half.x * 0.5) D.right = Math.min(1, D.right + sev * 0.6);
+    D.total = Math.min(1, D.total + sev * 0.35);
+    if (this.damageMode !== 'full') return;
+    // a smack to the nose finds the radiator; a front corner bends the steering
+    if (lz > half.z * 0.6) D.engine = Math.min(1, D.engine + sev * 0.35);
+    if (lz > half.z * 0.35 && Math.abs(lx) > half.x * 0.4) D.steer = Math.max(-0.02, Math.min(0.02, D.steer - Math.sign(lx) * sev * 0.012));
   }
 
   _updateBasis() {
@@ -178,7 +205,7 @@ export class Vehicle {
     const maxAngle = inp.analog
       ? S.steer.lock * THREE.MathUtils.clamp(11 / av, 0.17, 1)
       : Math.min(S.steer.lock, Math.atan(S.wheelbase * 10 / (av * av)) + 0.055);
-    let target = inp.steer * maxAngle;
+    let target = inp.steer * maxAngle + this.damage.steer;
     // Stability assist: steer into slides a little so the car can be caught.
     if (inp.assist && Math.abs(fwd) > 5) {
       const vl = this.vel.dot(this.L), slip = Math.atan2(vl, Math.abs(fwd));
@@ -357,7 +384,7 @@ export class Vehicle {
         break;
       }
     }
-    let tEngine = thr * E.torque * cf * (E.turbo ? 0.62 + 0.38 * this.boost : 1);
+    let tEngine = thr * E.torque * cf * (E.turbo ? 0.62 + 0.38 * this.boost : 1) * (1 - 0.25 * this.damage.engine);
     if (thr < 0.05 && !this.clutchSlip) tEngine = -E.brake * E.torque * (0.25 + 0.75 * this.rpm / E.redline);
     if (this.rpm >= E.limiter) { tEngine = Math.min(tEngine, 0); this.limiter = true; }
     else if (this.rpm < E.limiter - 150) this.limiter = false;
@@ -493,8 +520,9 @@ export class Vehicle {
     if (grounded === 0) this.angVel.multiplyScalar(1 - dt * 0.4);
 
     // ---- Body against the ground (roofs, bumpers, sills) ----
-    for (const hp of this.hull) {
-      const p = _v1.copy(hp).applyMatrix4(this.R).add(this.pos);
+    for (let hi = 0; hi < this.hull.length; hi++) {
+      if (this._hullT[hi] > 0) this._hullT[hi] -= dt;
+      const p = _v1.copy(this.hull[hi]).applyMatrix4(this.R).add(this.pos);
       const gh = this.world.heightAt(p.x, p.z);
       if (p.y > gh + 0.05) continue;
       this.world.normalAt(p.x, p.z, _n);
@@ -503,6 +531,12 @@ export class Vehicle {
       const rp = _v2.subVectors(p, this.pos);
       const vp = _v3.crossVectors(this.angVel, rp).add(this.vel);
       const vn = vp.dot(_n);
+      // the body slamming into the ground: a roll, or a nose-first landing
+      if (vn < -4 && this._hullT[hi] <= 0) {
+        this._hullT[hi] = 0.5;
+        this.events.push({ type: 'impact', speed: -vn, kind: 'ground', point: p.clone(), normal: _n.clone() });
+        this._hurt(p, -vn);
+      }
       const fn = Math.max(0, 260000 * pen - 14000 * vn);
       const vt = _v4.copy(vp).addScaledVector(_n, -vn);
       const vtl = vt.length();
@@ -607,7 +641,7 @@ export class Vehicle {
       this.applyImpulse(J, p);
       if (vn > 1.5) {
         this.events.push({ type: 'impact', speed: vn, kind: o.kind, point: p.clone(), normal: n.clone(), obstacle: o });
-        this.damage += Math.max(0, vn - 4) * 0.02;
+        this._hurt(p, vn);
       }
     });
   }
