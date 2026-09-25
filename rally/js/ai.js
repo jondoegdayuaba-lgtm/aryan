@@ -6,11 +6,11 @@ import { locate, wrap } from './road.js';
 import { racingLine } from './terrain.js';
 
 export class Driver {
-  constructor(world, car, { skill = 1, grip = 0.9 } = {}) {
+  constructor(world, car, { skill = 1, grip = null } = {}) {
     this.world = world;
     this.car = car;
     this.skill = skill;
-    this.grip = grip;
+    this.gripOverride = grip;
     this.hint = -1;
     this.line = world.road.racing || (world.road.racing = racingLine(world.road));
     this.prevErr = 0;
@@ -46,15 +46,27 @@ export class Driver {
     let steer = THREE.MathUtils.clamp(delta / limit, -1, 1);
 
     // Speed plan: the slowest corner within braking range sets the target.
-    const g = 9.81 * this.grip * this.skill;
+    // Braking is weaker downhill, and crests leading into corners are taken
+    // slowly enough to stay on the ground.
+    const g = 9.81 * (this.gripOverride ?? this.car.spec.aiGrip ?? 0.85) * this.skill;
+    const y = road.y;
     let vt = 60;
-    for (let k = 0; k < 160; k += 2) {
+    for (let k = 0; k < 180; k += 2) {
       const idx = wrap(loc.i + k, n);
       let kk = 0;
       for (let q = -4; q <= 4; q += 2) kk += Math.abs(road.curv[wrap(idx + q, n)]);
       kk = Math.max(kk / 5, 1e-4);
-      const vc = Math.sqrt(g / kk);
-      vt = Math.min(vt, Math.sqrt(vc * vc + 2 * g * 0.7 * Math.max(0, k - av * 0.3)));
+      let vc = Math.sqrt(g / kk);
+      // convex crest here with a bend soon after: don't fly into it
+      const kv = (y[wrap(idx + 10, n)] - 2 * y[idx] + y[wrap(idx - 10, n)]) / 100;
+      if (kv < -0.004) {
+        let bend = 0;
+        for (let q = 10; q < 90; q += 5) bend = Math.max(bend, Math.abs(road.curv[wrap(idx + q, n)]));
+        if (bend > 1 / 150) vc = Math.min(vc, Math.sqrt(9.81 / -kv) * 1.25);
+      }
+      const slope = (y[wrap(idx + 5, n)] - y[wrap(idx - 5, n)]) / 10;
+      const decel = Math.max(1.5, g * 0.7 + 9.81 * Math.min(0, slope));
+      vt = Math.min(vt, Math.sqrt(vc * vc + 2 * decel * Math.max(0, k - av * 0.3)));
     }
     // ease off when well off line or sliding
     vt *= THREE.MathUtils.clamp(1.15 - Math.abs(cross) * 0.08 - Math.abs(slip) * 0.8, 0.5, 1);

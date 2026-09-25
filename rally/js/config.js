@@ -37,10 +37,10 @@ export const TIMES = {
     night: true,
     sunElevation: -25, sunAzimuth: 200, moonElevation: 34, moonAzimuth: 150,
     turbidity: 3, rayleigh: 1.5, mie: 0.004, mieG: 0.8, skyExposure: 1,
-    sunColor: '#a4b8ff', sunIntensity: 0.24,
-    fogColor: '#0a111c', fogSunColor: '#141d2e', fogDensity: 0.0022, fogFalloff: 0.03, haze: 0.0001,
-    clouds: 0.18, cloudLit: '#2e3748', cloudShade: '#0c1018',
-    groundColor: '#030405', envIntensity: 1.6, exposure: 1.25,
+    sunColor: '#9fb4ff', sunIntensity: 0.6,
+    fogColor: '#101a2b', fogSunColor: '#1c2840', fogDensity: 0.0018, fogFalloff: 0.03, haze: 0.0001,
+    clouds: 0.18, cloudLit: '#39445a', cloudShade: '#111724',
+    groundColor: '#06080b', envIntensity: 5, exposure: 1.45,
   },
 };
 

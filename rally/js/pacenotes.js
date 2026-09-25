@@ -6,7 +6,7 @@ import { WATER } from './gen.js';
 
 const GRADES = [[16, 'hairpin'], [28, 1], [45, 2], [70, 3], [110, 4], [170, 5], [260, 6]];
 
-export function buildPaceNotes(road) {
+export function buildPaceNotes(road, features = []) {
   const n = road.count;
   // smoothed curvature
   const k = new Float32Array(n);
@@ -80,6 +80,12 @@ export function buildPaceNotes(road) {
     }
   }
   const within = (x, a, b) => ((x - a + n) % n) <= ((b - a + n) % n);
+  // designed jumps are always called as jumps
+  for (const f of features) {
+    if (f.type !== 'jump') continue;
+    const near = vertical.find((v) => Math.abs(v.s - f.s) < 30);
+    if (near) { near.lift = Math.min(near.lift, 60); near.s = f.s; } else vertical.push({ s: f.s, lift: 60 });
+  }
   for (const v of vertical) {
     const kind = v.lift < 95 ? 'jump' : 'crest';
     // a crest just before or inside a corner becomes part of that call

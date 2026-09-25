@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GAME_TITLE, TAGLINE, TIMES, QUALITY } from './config.js';
 import { generateWorldAsync, WATER } from './gen.js';
-import { STAGES } from './track.js';
+import { STAGES, FEATURES } from './track.js';
 import { CARS, LIVERIES } from './cars.js';
 import { Vehicle } from './vehicle.js';
 import { CarVisual } from './carmodel.js';
@@ -22,6 +22,7 @@ import { Props } from './props.js';
 const $ = (id) => document.getElementById(id);
 const clamp = THREE.MathUtils.clamp;
 const tick = () => new Promise((r) => setTimeout(r, 0));
+const MENU_SPOT = 2380;   // the demo car starts on the lake shore
 
 // localStorage may be unavailable (private windows, blocked storage); the game works without it.
 const store = {
@@ -110,7 +111,7 @@ async function boot() {
   view = new WorldView(renderer, world, quality);
   progress(0.7, 'Walking the stages');
   await tick();
-  notes = buildPaceNotes(world.road);
+  notes = buildPaceNotes(world.road, FEATURES);
   props = new Props(world, notes, STAGES);
   view.scene.add(props.group);
   fx = new Effects(renderer, view.scene, world, { dust: qName === 'low' ? 700 : 1600 });
@@ -135,7 +136,7 @@ async function boot() {
   await tick();
   // The menu backdrop: golden hour by the lake.
   applyTime('sunset');
-  placeOnRoad(1760);
+  placeOnRoad(MENU_SPOT);
   ai = new Driver(world, vehicle, { grip: 0.8 });
   progress(0.97, 'Almost there');
   await tick();
@@ -164,10 +165,13 @@ function setupCar() {
   heads.forEach((h) => { h.parent?.remove(h); h.target.parent?.remove(h.target); });
   heads = [];
   const y = spec.id === 'truck' ? 0.35 : 0.18, z = spec.frontAxle + 0.75;
-  for (const s of [-1, 1]) {
-    const L = new THREE.SpotLight(0xfff1dd, 0, 150, 0.42, 0.5, 1.6);
-    L.position.set(s * 0.55, y, z);
-    L.target.position.set(s * 0.8, -1.2, z + 30);
+  for (const s of [-1, 1, 0]) {
+    // two headlights plus a wide rally light pod on the bonnet
+    const pod = s === 0;
+    const L = new THREE.SpotLight(pod ? 0xf4f6ff : 0xfff1dd, 0, pod ? 160 : 230, pod ? 0.85 : 0.5, pod ? 0.7 : 0.45, 1.25);
+    L.position.set(s * 0.55, pod ? y + 0.55 : y, pod ? z - 0.9 : z);
+    L.target.position.set(s * 0.8, pod ? -2 : -1.1, z + 30);
+    L.userData.pod = pod;
     L.castShadow = s > 0 && S.quality !== 'low';
     L.shadow.mapSize.set(1024, 1024);
     L.shadow.camera.near = 0.5;
@@ -207,7 +211,7 @@ function applyTime(name) {
 function setLights(on) {
   S.lights = on;
   const night = TIMES[S.preset]?.night;
-  heads.forEach((h) => { h.intensity = on ? (night ? 900 : 300) : 0; });
+  heads.forEach((h) => { h.intensity = on ? (night ? (h.userData.pod ? 1400 : 2600) : 400) : 0; });
   visual.paint.userData.u.uLights.value = on ? 1 : 0;
 }
 
@@ -227,7 +231,7 @@ function toMenu() {
   clearGhost();
   props.setStarsVisible(false);
   if (S.preset !== 'sunset') applyTime('sunset');
-  placeOnRoad(1760);
+  placeOnRoad(MENU_SPOT);
   fx.clear();
   S.run = null;
   setLights(false);
@@ -367,7 +371,7 @@ function setupTouch() {
 
 function garageView() {
   const road = world.road;
-  placeOnRoad(1760);
+  placeOnRoad(MENU_SPOT);
   S.demo = false;
 }
 
@@ -513,12 +517,30 @@ function playerControls(ctl) {
 
 let last = performance.now();
 let lastFps = 0, fpsFrames = 0, fps = 60;
+// Adaptive resolution: keep the frame rate up by trading pixels.
+const dyn = { scale: 1, ema: 1 / 60, lastChange: 0 };
+function adaptResolution(now, rawDt) {
+  if (rawDt > 0.25) return;                       // tab switch or hitch: ignore
+  dyn.ema += (rawDt - dyn.ema) * 0.05;
+  if (now - dyn.lastChange < 2500) return;
+  let next = dyn.scale;
+  if (dyn.ema > 1 / 44 && dyn.scale > 0.55) next = Math.max(0.55, dyn.scale - 0.1);
+  else if (dyn.ema < 1 / 57 && dyn.scale < 1) next = Math.min(1, dyn.scale + 0.05);
+  if (next !== dyn.scale) {
+    dyn.scale = next;
+    dyn.lastChange = now;
+    resize();
+  }
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
+  const rawDt = (now - last) / 1000;
+  const dt = Math.min(0.05, Math.max(0.001, rawDt));
   last = now;
   fpsFrames++;
   if (now - lastFps > 1000) { fps = fpsFrames * 1000 / (now - lastFps); fpsFrames = 0; lastFps = now; }
+  if (!params.has('fixedres')) adaptResolution(now, rawDt);
   try {
     update(dt);
     post.render(view.scene, camera, S.time);
@@ -566,9 +588,12 @@ function update(dt) {
       break;
     }
     default:
-      // menu backdrop: the robot drives the loop
-      if (S.demo) inp = ai.control(dt);
-      else inp = { steer: 0, throttle: 0, brake: 1, handbrake: 1 };
+      // menu backdrop: the robot drives the loop (and picks itself up after a crash)
+      if (S.demo) {
+        inp = ai.control(dt);
+        S.demoStuck = (vehicle.U.y < 0.4 || vehicle.speed < 1) ? (S.demoStuck || 0) + dt : 0;
+        if (S.demoStuck > 3) { S.demoStuck = 0; placeOnRoad(ai.progress ?? MENU_SPOT); }
+      } else inp = { steer: 0, throttle: 0, brake: 1, handbrake: 1 };
   }
 
   vehicle.update(dt, inp);
@@ -602,7 +627,7 @@ function update(dt) {
   sound.update(vehicle, dt, { active: audible, cameraInside });
   hudUpdate();
   // debug stats
-  if (params.has('debug')) document.title = `${fps.toFixed(0)} fps · ${renderer.info.render.calls} calls · ${(renderer.info.render.triangles / 1000).toFixed(0)}k tris`;
+  if (params.has('debug')) document.title = `${fps.toFixed(0)} fps · res ${Math.round(dyn.scale * 100)}%`;
 }
 
 // Countdown: 3, 2, 1, GO.
@@ -856,6 +881,7 @@ function viewOffset() {
 
 function resize() {
   const w = innerWidth, h = innerHeight;
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, QUALITY[S.quality].pixelRatio) * dyn.scale);
   renderer.setSize(w, h, false);
   const pr = renderer.getPixelRatio();
   post.setSize(Math.floor(w * pr), Math.floor(h * pr));

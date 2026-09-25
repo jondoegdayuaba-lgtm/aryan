@@ -25,7 +25,7 @@ export class Water {
 
     // Tiling ripple normals.
     this.normalTex = bakeTexture(renderer, /* glsl */`
-      float Hw( vec2 uv ) { return fbm( uv, 6., 5 ) + 0.35 * gn( uv, vec2( 24., 18. ) ); }
+      float Hw( vec2 uv ) { return fbm( uv, 5., 4 ) + 0.4 * fbm( uv + 0.37, 13., 3 ); }
       void main() {
         float e = 1. / 256.;
         float hx = Hw( vUv + vec2( e, 0. ) ) - Hw( vUv - vec2( e, 0. ) );

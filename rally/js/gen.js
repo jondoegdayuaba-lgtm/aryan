@@ -77,8 +77,8 @@ function featureOffset(f, ds) {
       const up = f.up ?? 38, down = f.down ?? 26, drop = f.drop ?? f.h * 0.6;
       if (ds <= -up || ds >= down * 2.2) return 0;
       if (ds <= 0) {
-        const u = (ds + up) / up;                 // 0..1 up the ramp
-        return f.h * (u * u * (3 - 2 * u)) ** 1.35;
+        const u = (ds + up) / up;                 // 0..1 up the ramp, steepest at the lip
+        return f.h * u * u * (1.6 - 0.6 * u);
       }
       const u = ds / down;
       if (u <= 1) return lerp(f.h, -drop, (1 - Math.cos(Math.PI * u)) / 2) + f.h * 0.12 * Math.sin(Math.PI * u);

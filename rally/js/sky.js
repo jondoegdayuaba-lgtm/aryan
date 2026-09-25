@@ -116,7 +116,7 @@ export class Sky {
       uMieG: { value: 0.8 },
       uExposure: { value: 1 },
       uNight: { value: 0 },
-      uNightTint: { value: new THREE.Color(0.004, 0.008, 0.02) },
+      uNightTint: { value: new THREE.Color(0.007, 0.013, 0.032) },
       uMoon: { value: new THREE.Vector3(0.3, 0.5, -0.8) },
       uStars: { value: 1 },
       uClouds: { value: 0.3 },

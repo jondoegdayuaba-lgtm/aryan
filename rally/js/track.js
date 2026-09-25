@@ -4,18 +4,59 @@
 // Everything along the road is placed by distance `s` in metres from the start.
 
 export const ROUTE = [
-  [-480, 470], [-530, 430], [-560, 380], [-565, 320], [-610, 280], [-640, 285], [-670, 250], [-672, 200],
-  [-650, 160], [-665, 110], [-700, 80], [-725, 30], [-730, -20], [-705, -60], [-715, -100], [-730, -150],
-  [-725, -185], [-705, -208], [-670, -214], [-625, -212], [-595, -225], [-588, -252], [-605, -270], [-640, -275],
-  [-680, -285], [-700, -310], [-700, -350], [-690, -380], [-650, -420], [-600, -440], [-570, -480], [-520, -505],
-  [-470, -500], [-420, -540], [-380, -600], [-330, -620], [-280, -650], [-230, -700], [-170, -715], [-110, -745],
-  [-40, -735], [10, -700], [40, -660], [90, -640], [110, -590], [95, -540], [70, -500], [85, -455],
-  [115, -420], [100, -370], [80, -320], [95, -270], [140, -235], [200, -205], [260, -180], [320, -175],
-  [380, -190], [440, -160], [500, -175], [560, -130], [600, -80], [640, -30], [650, 30], [690, 80],
-  [705, 140], [690, 200], [650, 240], [590, 262], [530, 290], [470, 290], [420, 320], [400, 370],
-  [410, 420], [385, 470], [390, 520], [420, 560], [400, 610], [350, 640], [290, 630], [240, 600],
-  [180, 610], [120, 640], [60, 655], [0, 630], [-50, 590], [-100, 600], [-150, 620], [-200, 590],
-  [-250, 560], [-300, 570], [-350, 545], [-400, 560], [-430, 540],
+  // ---- SS1 Pine Crest: up the west side into the hills
+  [-470, 470], ['head', 205],
+  ['go', 260],                      // start straight with a jump
+  ['arc', 'R', 160, 25],            // fast right
+  ['go', 100],
+  ['arc', 'L', 60, 50],
+  ['arc', 'R', 60, 50],
+  ['go', 180],                      // straight north, a crest
+  ['arc', 'R', 45, 55],
+  ['arc', 'L', 45, 55],             // esses
+  ['go', 110],
+  ['arc', 'R', 13, 170],            // hairpin right
+  ['go', 80],
+  ['arc', 'L', 13, 170],            // hairpin left
+  ['go', 120],
+  ['arc', 'R', 80, 45],
+  ['go', 200],                      // along the ridge
+  ['arc', 'R', 110, 40],
+  // ---- SS2 Lakeside Sprint: across the north and down the big lake
+  ['go', 230],                      // fast straight east, jump
+  ['arc', 'L', 60, 35],
+  ['arc', 'R', 50, 80],
+  ['go', 90],
+  ['arc', 'R', 30, 60],             // tight right
+  ['go', 150],                      // down toward the lake
+  ['arc', 'L', 50, 35],
+  ['arc', 'R', 60, 35],
+  ['go', 150],                      // west shore
+  ['arc', 'L', 100, 50],
+  ['go', 150],
+  ['arc', 'L', 70, 40],             // round the lake's south end
+  ['go', 200],                      // flat out east: two jumps
+  ['go', 220],
+  // ---- SS3 Midnight Ridge: the east side, a splash, the southern ridges
+  ['arc', 'R', 55, 80],             // turn south down the east side
+  ['go', 170],
+  ['arc', 'L', 60, 30],
+  ['arc', 'R', 60, 30],
+  ['go', 140],
+  ['arc', 'R', 70, 70],             // round the east lake
+  ['go', 110],                      // along its shore: water splash
+  ['arc', 'R', 60, 22],
+  ['go', 150],
+  ['arc', 'R', 22, 75],             // tight right
+  ['arc', 'L', 30, 80],             // tight left
+  ['go', 120],
+  ['arc', 'R', 80, 30],
+  ['go', 230],                      // over the ridges: jump
+  ['arc', 'L', 80, 38],
+  ['go', 170],                      // crest
+  ['arc', 'L', 60, 25],
+  ['go', 70],
+  ['arc', 'R', 85, 101],            // long right onto the start straight
 ];
 
 export const ROAD = {
@@ -33,7 +74,16 @@ export const ROAD = {
 // jump: a kicker whose far side falls away, `h` metres high.
 // crest: a smooth rounded hump that lightens the car.
 // ford: the road dips into the water for a splash.
-export const FEATURES = [];
+export const FEATURES = [
+  { type: 'jump', s: 115, h: 1.4 },
+  { type: 'crest', s: 640, h: 1.0, len: 24 },
+  { type: 'jump', s: 1595, h: 1.5 },
+  { type: 'jump', s: 2740, h: 1.25 },
+  { type: 'crest', s: 2905, h: 0.8, len: 22 },
+  { type: 'ford', s: 3655, len: 26, depth: 0.3, ramp: 32 },
+  { type: 'jump', s: 4170, h: 1.5 },
+  { type: 'crest', s: 4470, h: 1.1, len: 26 },
+];
 
 // Asphalt sections [from, to] in metres.
 export const TARMAC = [];
@@ -41,8 +91,8 @@ export const TARMAC = [];
 // Stages are stretches of the loop. `start`/`end` are distances along it;
 // medal times are in seconds (gold, silver, bronze).
 export const STAGES = [
-  { id: 'pine', name: 'Pine Crest', start: 40, end: 1720, time: 'morning', tint: '#34546b', medals: [95, 110, 130] },
-  { id: 'lake', name: 'Lakeside Sprint', start: 1720, end: 3400, time: 'sunset', tint: '#7a4b2e', medals: [95, 110, 130] },
-  { id: 'night', name: 'Midnight Ridge', start: 3400, end: 5040, time: 'night', tint: '#1b2447', medals: [95, 110, 130] },
-  { id: 'loop', name: 'Grand Loop', start: 40, end: 40, full: true, time: 'noon', tint: '#3f5b2c', medals: [290, 330, 390] },
+  { id: 'pine', name: 'Pine Crest', start: 20, end: 1540, time: 'morning', tint: '#34546b', medals: [66, 74, 86] },
+  { id: 'lake', name: 'Lakeside Sprint', start: 1540, end: 3100, time: 'sunset', tint: '#7a4b2e', medals: [62, 70, 81] },
+  { id: 'night', name: 'Midnight Ridge', start: 3100, end: 4780, time: 'night', tint: '#1b2447', medals: [72, 81, 94] },
+  { id: 'loop', name: 'Grand Loop', start: 20, end: 20, full: true, time: 'noon', tint: '#3f5b2c', medals: [202, 226, 262] },
 ];

@@ -1,27 +1,64 @@
 // The stage road: a closed spline through hand-placed control points,
 // resampled every metre, plus helpers to find where a car is along it.
 
-// Expands hairpin entries (['hp', x, z, side, radius, degrees]) into points
-// along a circular arc that starts at (x, z) heading away from the previous point.
+// Expands a route description into spline control points. Entries are:
+//   [x, z]                         an absolute point
+//   ['head', degrees]              set the heading (0 = +z, 90 = +x)
+//   ['go', metres]                 straight ahead
+//   ['arc', 'L' | 'R', radius, degrees]  a constant-radius corner
+//   ['hp', x, z, side, radius, degrees]  jump to (x, z), then a hairpin
+// The heading follows the last segment unless set explicitly.
 export function expandRoute(route) {
   const out = [];
-  for (const p of route) {
-    if (p[0] !== 'hp') { out.push(p); continue; }
-    const [, x, z, side, r, deg] = p;
-    const prev = out[out.length - 1];
-    let fx = x - prev[0], fz = z - prev[1];
-    const l = Math.hypot(fx, fz);
-    fx /= l; fz /= l;
-    // With y up, the driver's left is (fz, -fx) and right is (-fz, fx).
+  let hx = 0, hz = 1;
+  const last = () => out[out.length - 1];
+  const arc = (side, r, deg) => {
+    const [x, z] = last();
     const right = side === 'R';
-    const cx = x + (right ? -fz : fz) * r, cz = z + (right ? fx : -fx) * r;
+    // with y up, the driver's left is (hz, -hx) and right is (-hz, hx)
+    const cx = x + (right ? -hz : hz) * r, cz = z + (right ? hx : -hx) * r;
     const a0 = Math.atan2(z - cz, x - cx);
     const dir = right ? 1 : -1;
-    const n = Math.max(2, Math.ceil(deg / 30));
-    out.push([x, z]);
+    const n = Math.max(2, Math.ceil((deg * Math.PI / 180) * r / 12), Math.ceil(deg / 30));
     for (let k = 1; k <= n; k++) {
       const a = a0 + dir * (deg * Math.PI / 180) * (k / n);
       out.push([cx + Math.cos(a) * r, cz + Math.sin(a) * r]);
+    }
+    const t = Math.atan2(hx, hz) + (right ? -1 : 1) * deg * Math.PI / 180;
+    hx = Math.sin(t); hz = Math.cos(t);
+  };
+  for (const p of route) {
+    if (typeof p[0] === 'number') {
+      if (out.length) {
+        const [qx, qz] = last();
+        const l = Math.hypot(p[0] - qx, p[1] - qz);
+        if (l > 1e-6) { hx = (p[0] - qx) / l; hz = (p[1] - qz) / l; }
+      }
+      out.push([p[0], p[1]]);
+      continue;
+    }
+    switch (p[0]) {
+      case 'head':
+        hx = Math.sin(p[1] * Math.PI / 180); hz = Math.cos(p[1] * Math.PI / 180);
+        break;
+      case 'go': {
+        const [x, z] = last();
+        const n = Math.max(1, Math.ceil(p[1] / 30));
+        for (let k = 1; k <= n; k++) out.push([x + hx * p[1] * k / n, z + hz * p[1] * k / n]);
+        break;
+      }
+      case 'arc':
+        arc(p[1], p[2], p[3]);
+        break;
+      case 'hp': {
+        const [, x, z, side, r, deg] = p;
+        const [qx, qz] = last();
+        const l = Math.hypot(x - qx, z - qz) || 1;
+        hx = (x - qx) / l; hz = (z - qz) / l;
+        out.push([x, z]);
+        arc(side, r, deg);
+        break;
+      }
     }
   }
   return out;
@@ -30,6 +67,9 @@ export function expandRoute(route) {
 // Centripetal Catmull-Rom through a closed loop of [x, z] points, sampled
 // densely, then resampled to exactly `step` metres apart.
 export function buildLoop(points, step = 1) {
+  // drop points that (nearly) repeat their neighbour or close the loop
+  points = points.filter((p, i) => i === 0 || Math.hypot(p[0] - points[i - 1][0], p[1] - points[i - 1][1]) > 2);
+  while (points.length > 3 && Math.hypot(points[points.length - 1][0] - points[0][0], points[points.length - 1][1] - points[0][1]) < 12) points.pop();
   const n = points.length;
   const dense = [];
   for (let i = 0; i < n; i++) {

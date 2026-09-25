@@ -162,7 +162,13 @@ class Skids {
     this.last = [null, null, null, null];
   }
 
-  add(wheel, p, side, width, strength, now) {
+  add(wheel, pIn, sideIn, width, strength, now) {
+    // copy first: callers pass shared scratch vectors
+    const p = this._p || (this._p = new THREE.Vector3());
+    const side = this._s || (this._s = new THREE.Vector3());
+    p.copy(pIn);
+    side.copy(sideIn);
+    const a = this._a || (this._a = new THREE.Vector3()), b = this._b || (this._b = new THREE.Vector3());
     const last = this.last[wheel];
     if (!last || strength <= 0.02) {
       this.last[wheel] = strength > 0.02 ? { p: p.clone(), side: side.clone(), s: strength } : null;
@@ -174,10 +180,10 @@ class Skids {
     this.next = (this.next + 1) % this.max;
     const hw = width / 2;
     const P = this.pos, o = i * 12;
-    const a1 = _v.copy(last.p).addScaledVector(last.side, -hw), a2 = _w.copy(last.p).addScaledVector(last.side, hw);
+    const a1 = a.copy(last.p).addScaledVector(last.side, -hw), a2 = b.copy(last.p).addScaledVector(last.side, hw);
     P[o] = a1.x; P[o + 1] = a1.y; P[o + 2] = a1.z;
     P[o + 3] = a2.x; P[o + 4] = a2.y; P[o + 5] = a2.z;
-    const b1 = _v.copy(p).addScaledVector(side, hw), b2 = _w.copy(p).addScaledVector(side, -hw);
+    const b1 = a.copy(p).addScaledVector(side, hw), b2 = b.copy(p).addScaledVector(side, -hw);
     P[o + 6] = b1.x; P[o + 7] = b1.y; P[o + 8] = b1.z;
     P[o + 9] = b2.x; P[o + 10] = b2.y; P[o + 11] = b2.z;
     const D = this.dat, d = i * 8;
