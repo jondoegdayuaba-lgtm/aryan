@@ -19,7 +19,7 @@ import { Effects } from './fx.js';
 import { GhostRecorder, GhostPlayer, unpackGhost } from './ghost.js';
 import { Props } from './props.js';
 import { Tape } from './replay.js';
-import { classify, ordinal } from './rivals.js';
+import { classify, overall, ordinal } from './rivals.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = THREE.MathUtils.clamp;
@@ -83,7 +83,12 @@ const S = {
   best: store.get('best', {}),
   lights: false,
   demo: true,
+  event: null,       // the full rally in progress: { stages, idx, times }
+  eventBest: store.get('event-best', null),
 };
+
+// The full rally: the first three stages back to back.
+const EVENT_STAGES = [0, 1, 2];
 
 let renderer, world, view, post, camera, rig, input, hud, sound, codriver, fx, props, notes;
 let vehicle, visual, ai, ghostVisual = null, ghostPlayer = null, recorder = new GhostRecorder();
@@ -318,6 +323,7 @@ function show(name) {
 function toMenu() {
   S.mode = 'menu';
   S.demo = true;
+  S.event = null;
   replay.on = false;
   tape.recording = false;
   codriver?.stop();
@@ -352,7 +358,15 @@ function medalFor(stage, t) {
 function stageLength(st) { return st.full ? world.road.count : (st.end - st.start + world.road.count) % world.road.count; }
 
 function renderStages() {
-  $('stage-list').innerHTML = STAGES.map((st, i) => {
+  const evLen = EVENT_STAGES.reduce((a, i) => a + stageLength(STAGES[i]), 0);
+  const eb = S.eventBest;
+  const eventCard = `<button class="stage-card event-card" data-event="1">
+      <span class="stage-num">Full rally</span>
+      <span class="stage-name">Ridge Rally · three stages</span>
+      <span class="stage-meta">SS1 to SS3 back to back · ${(evLen / 1000).toFixed(2)} km · overall times against eleven rivals</span>
+      <span class="stage-best"><span>${eb ? `Best: ${ordinal(eb.pos)} overall, ${formatTime(eb.total)}` : 'Not run yet'}</span>${eb && eb.pos <= 3 ? `<i class="medal-dot ${['gold', 'silver', 'bronze'][eb.pos - 1]}"></i>` : ''}</span>
+    </button>`;
+  $('stage-list').innerHTML = eventCard + STAGES.map((st, i) => {
     const best = S.best[st.id];
     const medal = best ? medalFor(st, best) : null;
     const km = (stageLength(st) / 1000).toFixed(2);
@@ -365,7 +379,11 @@ function renderStages() {
     </button>`;
   }).join('');
   for (const b of $('stage-list').querySelectorAll('.stage-card')) {
-    b.addEventListener('click', () => { sound.click(); startStage(STAGES[+b.dataset.stage]); });
+    b.addEventListener('click', () => {
+      sound.click();
+      if (b.dataset.event) startEvent();
+      else { S.event = null; startStage(STAGES[+b.dataset.stage]); }
+    });
   }
   $('stage-list').querySelector('.stage-card')?.focus({ preventScroll: true });
 }
@@ -437,7 +455,14 @@ function wireMenus() {
   $('btn-quit').addEventListener('click', toMenu);
   $('btn-pause').addEventListener('click', pause);
   $('btn-cam').addEventListener('click', () => { rig.cycle(); settings.view = rig.view; saveSettings(); });
-  $('btn-again').addEventListener('click', () => startStage(S.stage));
+  $('btn-again').addEventListener('click', () => {
+    sound.click();
+    if (!S.event) { startStage(S.stage); return; }
+    // the full rally carries on (or starts over after the last stage)
+    const ev = S.event;
+    if (ev.idx + 1 >= ev.stages.length) startEvent();
+    else { ev.idx++; startStage(STAGES[ev.stages[ev.idx]]); }
+  });
   $('btn-next').addEventListener('click', () => startStage(STAGES[(STAGES.indexOf(S.stage) + 1) % STAGES.length]));
   $('btn-menu').addEventListener('click', toMenu);
   $('btn-replay').addEventListener('click', watchReplay);
@@ -502,7 +527,8 @@ function startStage(stage) {
     S.run.bestSplits = g.splits || null;
   }
   recorder.start();
-  hud.setStage(`SS${STAGES.indexOf(stage) + 1} · ${stage.name}`, vehicle.spec.engine.redline / vehicle.spec.engine.limiter);
+  const leg = S.event ? ` · ${S.event.idx + 1}/${S.event.stages.length}` : '';
+  hud.setStage(`SS${STAGES.indexOf(stage) + 1} · ${stage.name}${leg}`, vehicle.spec.engine.redline / vehicle.spec.engine.limiter);
   hud.delta(null);
   hud.timer(0);
   S.mode = 'prestart';
@@ -514,6 +540,11 @@ function startStage(stage) {
   show(null);
   $('hud').hidden = false;
   $('touch').hidden = !(touchDevice || input.usingTouch);
+}
+
+function startEvent() {
+  S.event = { stages: EVENT_STAGES.slice(), idx: 0, times: [] };
+  startStage(STAGES[EVENT_STAGES[0]]);
 }
 
 function stageNotes(stage) {
@@ -537,6 +568,7 @@ function restart() {
 function startFree() {
   S.demo = false;
   S.stage = null;
+  S.event = null;
   replay.on = false;
   tape.recording = false;
   applyTime(params.get('t') || 'noon');
@@ -930,20 +962,60 @@ function showResults() {
   startReplay();
   $('btn-replay').hidden = !replay.on;
   const { t, prev, isBest } = run.result;
-  $('result-stage').textContent = `SS${STAGES.indexOf(st) + 1} · ${st.name}`;
+  const ssName = `SS${STAGES.indexOf(st) + 1} · ${st.name}`;
   const board = classify(st, { name: 'You', nat: '', t }, !!TIMES[st.time].night);
   const pos = board.findIndex((r) => r.you) + 1;
-  $('result-title').textContent = pos === 1 ? 'Fastest on the stage!' : isBest && prev ? 'New stage record!' : 'Stage complete';
-  $('result-time').textContent = formatTime(t);
-  const medal = medalFor(st, t);
   const m = $('result-medal');
-  m.hidden = !medal;
-  if (medal) { m.className = `medal ${medal}`; m.textContent = `${medal} medal`; }
-  $('result-pos').textContent = `${ordinal(pos)} of ${board.length}`;
-  const vs = prev ? `Your best ${formatTime(Math.min(t, prev))} · <span class="${t <= prev ? 'good' : 'bad'}">${formatGap(t - prev)}</span>` : 'First run on this stage';
-  const next = nextMedal(st, t);
-  $('result-sub').innerHTML = vs + (next ? ` · ${next}` : '');
-  renderBoard(board);
+  const ev = S.event;
+  if (ev) {
+    // the full rally: stage result, then where you stand overall
+    ev.times[ev.idx] = t;
+    const done = ev.stages.slice(0, ev.idx + 1).map((i) => STAGES[i]);
+    const table = overall(done, ev.times.slice(0, ev.idx + 1), done.map((x) => !!TIMES[x.time].night));
+    const opos = table.findIndex((r) => r.you) + 1;
+    const last = ev.idx + 1 === ev.stages.length;
+    const total = table[opos - 1].t;
+    $('result-stage').textContent = `${ssName} · Rally ${ev.idx + 1}/${ev.stages.length}`;
+    $('result-title').textContent = last ? (opos === 1 ? 'Rally won!' : 'Rally complete') : `${ordinal(opos)} overall`;
+    $('result-time').textContent = formatTime(last ? total : t);
+    // podium finishers get the medal
+    const podium = last ? ['gold', 'silver', 'bronze'][opos - 1] : medalFor(st, t);
+    m.hidden = !podium;
+    if (podium) { m.className = `medal ${podium}`; m.textContent = last ? `${ordinal(opos)} place` : `${podium} medal`; }
+    $('result-pos').textContent = last ? `${ordinal(opos)} of ${table.length}` : `${ordinal(pos)} on the stage`;
+    const lead = opos === 1 ? (table[1] ? `leading by ${formatGap(table[1].t - total).slice(1)}` : 'leading') : `${formatGap(total - table[0].t)} to the lead`;
+    $('result-sub').innerHTML = last
+      ? `Total of three stages · ${lead} · ${st.name} ${formatTime(t)}, ${ordinal(pos)} on the stage`
+      : `Stage ${formatTime(t)} · overall ${formatTime(total)}, ${lead}`;
+    $('result-board-label').textContent = last ? 'Final classification' : `Overall after ${ev.idx + 1} of ${ev.stages.length}`;
+    renderBoard(table);
+    if (last) {
+      const best = S.eventBest;
+      if (!best || opos < best.pos || (opos === best.pos && total < best.total)) {
+        S.eventBest = { pos: opos, total };
+        store.set('event-best', S.eventBest);
+      }
+    }
+    $('btn-again').textContent = last ? 'Run the rally again' : `Start SS${ev.stages[ev.idx + 1] + 1}`;
+    $('btn-next').hidden = true;
+    $('btn-menu').textContent = last ? 'Menu' : 'Quit rally';
+  } else {
+    $('result-stage').textContent = ssName;
+    $('result-title').textContent = pos === 1 ? 'Fastest on the stage!' : isBest && prev ? 'New stage record!' : 'Stage complete';
+    $('result-time').textContent = formatTime(t);
+    const medal = medalFor(st, t);
+    m.hidden = !medal;
+    if (medal) { m.className = `medal ${medal}`; m.textContent = `${medal} medal`; }
+    $('result-pos').textContent = `${ordinal(pos)} of ${board.length}`;
+    const vs = prev ? `Your best ${formatTime(Math.min(t, prev))} · <span class="${t <= prev ? 'good' : 'bad'}">${formatGap(t - prev)}</span>` : 'First run on this stage';
+    const next = nextMedal(st, t);
+    $('result-sub').innerHTML = vs + (next ? ` · ${next}` : '');
+    $('result-board-label').textContent = 'Stage times';
+    renderBoard(board);
+    $('btn-again').textContent = 'Run it again';
+    $('btn-next').hidden = false;
+    $('btn-menu').textContent = 'Menu';
+  }
   const kmh = (run.len / t) * 3.6;
   const conv = (v) => (settings.units === 'mph' ? `${Math.round(v * 0.6214)} mph` : `${Math.round(v)} km/h`);
   const rows = [

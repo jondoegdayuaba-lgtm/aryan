@@ -218,6 +218,9 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
   transition: transform 0.15s, border-color 0.15s;
 }
 .stage-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+/* the full rally runs the first three stages back to back */
+.stage-card.event-card { grid-column: 1 / -1; min-height: 0; background: linear-gradient(120deg, #3a2f10, rgba(0, 0, 0, 0.45) 70%); border-color: rgba(255, 198, 41, 0.45); }
+.stage-card.event-card .stage-name { font-size: 1.9rem; }
 .stage-card .stage-num { font-family: var(--display); font-weight: 700; font-size: 0.9rem; letter-spacing: 0.14em; color: var(--accent); }
 .stage-card .stage-name { font-family: var(--display); font-weight: 700; font-style: italic; font-size: 1.6rem; line-height: 1; }
 .stage-card .stage-meta { font-size: 0.82rem; color: var(--muted); }
@@ -251,7 +254,8 @@ body.touch .controls-desktop { display: none; }
 .medal.bronze { background: var(--bronze); }
 .screen:not(.screen-center) .medal { align-self: flex-start; }
 .result-head { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.result-side { display: flex; align-items: center; gap: 12px; }
+.result-side { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.result-side .medal { white-space: nowrap; }
 .result-pos { font-family: var(--display); font-style: italic; font-weight: 700; font-size: 1.35rem; letter-spacing: 0.02em; }
 .result-sub { margin-top: -8px; font-size: 0.88rem; color: var(--muted); }
 .result-sub .good { color: var(--good); }
@@ -411,8 +415,18 @@ body.touch .minimap { display: none; }
   .menu-btn span { font-size: 1.2rem; }
   .menu-btn small { display: none; }
   .stage-card { min-height: 104px; padding: 10px; }
+  .stage-card.event-card { min-height: 0; }
+  .stage-card.event-card .stage-name { font-size: 1.4rem; }
   .stage-card .stage-name { font-size: 1.3rem; }
-  .result-time { font-size: 2.6rem; }
+  #menu-results { gap: 8px; }
+  .result-head { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+  .result-time { font-size: 2.2rem; }
+  .result-side .medal { font-size: 0.85rem; padding: 3px 10px; }
+  .result-pos { font-size: 1.05rem; }
+  #result-board-label { display: none; }
+  .result-sub { margin-top: -4px; font-size: 0.8rem; }
+  #menu-results .title.small { font-size: 1.5rem; }
+  .board { font-size: 0.82rem; }
   .board li { padding: 2px 8px; }
   #result-stats { display: none; }
   .big-btn { padding: 9px 24px; font-size: 1.2rem; }

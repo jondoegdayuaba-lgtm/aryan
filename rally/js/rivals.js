@@ -39,6 +39,17 @@ export function classify(stage, you, night = false) {
   return rows;
 }
 
+// Overall times after the stages run so far (`yours` has one time per stage).
+export function overall(stages, yours, nights) {
+  const rows = RIVALS.map((r) => ({ name: r.name, nat: r.nat, t: 0 }));
+  stages.forEach((st, k) => {
+    rivalTimes(st, nights[k]).forEach((x, i) => { rows[i].t += x.t; });
+  });
+  rows.push({ name: 'You', nat: '', t: yours.reduce((a, b) => a + b, 0), you: true });
+  rows.sort((a, b) => a.t - b.t);
+  return rows;
+}
+
 export function ordinal(n) {
   const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);

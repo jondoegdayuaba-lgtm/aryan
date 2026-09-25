@@ -235,7 +235,7 @@ export class CameraRig {
     const jump = this._jumpAhead(loc, speed);
     if (jump) {
       this._covered.add(jump.s);
-      const tv = this._placeTV(jump.s + 12 + speed * 0.15, [0.6, 1.4], [6, 10], jump.s - 12, jump.s + 30);
+      const tv = this._placeTV(jump.s + 12 + speed * 0.15, [0.6, 1.4], [5.2, 8], jump.s - 12, jump.s + 30);
       if (tv) { tv.jump = true; tv.frame = 17; this.shot = tv; this._lastType = 'tv'; return; }
     }
     // the replay opens on a trackside camera watching the launch
@@ -249,7 +249,8 @@ export class CameraRig {
     }
     if (type === 'tv') {
       const ahead = this._lastType ? clamp(speed * 2.4, 30, 75) : 45;
-      const tv = this._placeTV(loc.s + ahead, [1.2, 5], [6, 16], loc.s + ahead - 25, loc.s + ahead + 25);
+      // like the photographers and TV crews: at the roadside, a little above it
+      const tv = this._placeTV(loc.s + ahead, [1.3, 4.5], [4.8, 10], loc.s + ahead - 25, loc.s + ahead + 25);
       if (tv) { this.shot = tv; this._lastType = 'tv'; return; }
       type = 'heli';
     }
