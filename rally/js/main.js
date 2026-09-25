@@ -1097,7 +1097,8 @@ function showResults() {
   $('btn-replay').hidden = !replay.on;
   const { t, prev, isBest } = run.result;
   const ssName = `SS${STAGES.indexOf(st) + 1} · ${st.name}`;
-  const board = classify(st, { name: 'You', nat: '', t }, !!TIMES[st.time].night);
+  const pace = vehicle.spec.pace ?? 1;
+  const board = classify(st, { name: 'You', nat: '', t }, !!TIMES[st.time].night, pace);
   const pos = board.findIndex((r) => r.you) + 1;
   const m = $('result-medal');
   const ev = S.event;
@@ -1105,7 +1106,7 @@ function showResults() {
     // the full rally: stage result, then where you stand overall
     ev.times[ev.idx] = t;
     const done = ev.stages.slice(0, ev.idx + 1).map((i) => STAGES[i]);
-    const table = overall(done, ev.times.slice(0, ev.idx + 1), done.map((x) => !!TIMES[x.time].night));
+    const table = overall(done, ev.times.slice(0, ev.idx + 1), done.map((x) => !!TIMES[x.time].night), pace);
     const opos = table.findIndex((r) => r.you) + 1;
     const last = ev.idx + 1 === ev.stages.length;
     const total = table[opos - 1].t;
@@ -1121,7 +1122,7 @@ function showResults() {
     $('result-sub').innerHTML = last
       ? `Total of three stages · ${lead} · ${st.name} ${formatTime(t)}, ${ordinal(pos)} on the stage`
       : `Stage ${formatTime(t)} · overall ${formatTime(total)}, ${lead}`;
-    $('result-board-label').textContent = last ? 'Final classification' : `Overall after ${ev.idx + 1} of ${ev.stages.length}`;
+    $('result-board-label').textContent = `${last ? 'Final classification' : `Overall after ${ev.idx + 1} of ${ev.stages.length}`} · ${vehicle.spec.name} class`;
     renderBoard(table);
     if (last) {
       const best = S.eventBest;
@@ -1144,7 +1145,7 @@ function showResults() {
     const vs = prev ? `Your best ${formatTime(Math.min(t, prev))} · <span class="${t <= prev ? 'good' : 'bad'}">${formatGap(t - prev)}</span>` : 'First run on this stage';
     const next = nextMedal(st, t);
     $('result-sub').innerHTML = vs + (next ? ` · ${next}` : '');
-    $('result-board-label').textContent = 'Stage times';
+    $('result-board-label').textContent = `Stage times · ${vehicle.spec.name} class`;
     renderBoard(board);
     $('btn-again').textContent = 'Run it again';
     $('btn-next').hidden = false;

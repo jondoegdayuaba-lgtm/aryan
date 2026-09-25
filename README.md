@@ -43,9 +43,9 @@ What makes it feel real:
 | SS2 Lakeside Sprint | 1.56 km | Golden hour | 1:02.00 |
 | SS3 Midnight Ridge | 1.68 km | Night | 1:12.00 |
 | SS4 Grand Loop | 4.81 km | Midday sun | 3:22.00 |
-| SS5 Lakeside Downpour | 1.56 km | Heavy rain | 1:08.00 |
+| SS5 Lakeside Downpour | 1.56 km | Heavy rain | 1:05.00 |
 
-Three cars: the Kestrel R5 (four-wheel-drive turbo hatchback, the easiest to drive fast), the Vantor RS (rear-drive coupe that loves to slide) and the Brute TT (a trophy truck with huge suspension travel). Each has six paint schemes in the garage. Free roam lets you explore the whole island and hunt for 20 hidden stars.
+Three cars: the Kestrel R5 (four-wheel-drive turbo hatchback, the easiest to drive fast), the Vantor RS (rear-drive coupe that loves to slide) and the Brute TT (a trophy truck with huge suspension travel). Each has six paint schemes in the garage. Medal times are set for the Kestrel; the rival drivers always drive the same car as you. Free roam lets you explore the whole island and hunt for 20 hidden stars.
 
 Cars take damage: hits dent the bodywork and scrape the paint, can smash the lamps (a dark corner at night) and tear off mud flaps, and with real damage on, a hard knock bends the steering or holes the radiator. Being put back on the road doesn't fix it; the next stage does. The paint collects dust on gravel and mud in the water splash.
 

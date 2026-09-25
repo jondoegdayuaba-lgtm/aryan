@@ -23,8 +23,9 @@ function luck(a, b) {
   return ((h >>> 0) / 4294967295) * 2 - 1;
 }
 
-export function rivalTimes(stage, night = false) {
-  const gold = stage.medals[0];
+// The rivals drive the same car as you, so `pace` is your car's class pace.
+export function rivalTimes(stage, night = false, pace = 1) {
+  const gold = stage.medals[0] * pace;
   return RIVALS.map((r) => ({
     name: r.name, nat: r.nat,
     t: gold * r.pace * (night ? r.night : 1) * (1 + luck(r.name, stage.id) * 0.008),
@@ -32,18 +33,18 @@ export function rivalTimes(stage, night = false) {
 }
 
 // Everyone on the stage, you included, fastest first.
-export function classify(stage, you, night = false) {
-  const rows = rivalTimes(stage, night);
+export function classify(stage, you, night = false, pace = 1) {
+  const rows = rivalTimes(stage, night, pace);
   if (you) rows.push({ name: you.name, nat: you.nat, t: you.t, you: true });
   rows.sort((a, b) => a.t - b.t);
   return rows;
 }
 
 // Overall times after the stages run so far (`yours` has one time per stage).
-export function overall(stages, yours, nights) {
+export function overall(stages, yours, nights, pace = 1) {
   const rows = RIVALS.map((r) => ({ name: r.name, nat: r.nat, t: 0 }));
   stages.forEach((st, k) => {
-    rivalTimes(st, nights[k]).forEach((x, i) => { rows[i].t += x.t; });
+    rivalTimes(st, nights[k], pace).forEach((x, i) => { rows[i].t += x.t; });
   });
   rows.push({ name: 'You', nat: '', t: yours.reduce((a, b) => a + b, 0), you: true });
   rows.sort((a, b) => a.t - b.t);

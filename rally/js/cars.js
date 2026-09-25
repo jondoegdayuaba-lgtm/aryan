@@ -42,6 +42,7 @@ const hatch = {
   body: { half: [0.9, 0.6, 2.02], centre: [0, 0.2, 0.03] },
   shift: { up: 7050, down: 3600, time: 0.09 },
   aiGrip: 0.86,
+  pace: 1,          // rivals in this car's class are this much slower than the medal pace
 };
 
 const coupe = {
@@ -79,6 +80,7 @@ const coupe = {
   body: { half: [0.84, 0.58, 1.95], centre: [0, 0.18, 0.02] },
   shift: { up: 7900, down: 4200, time: 0.1 },
   aiGrip: 0.74,
+  pace: 1.1,
 };
 
 const truck = {
@@ -116,6 +118,7 @@ const truck = {
   body: { half: [1.08, 0.72, 2.5], centre: [0, 0.35, 0.05] },
   shift: { up: 5900, down: 3100, time: 0.12 },
   aiGrip: 0.64,
+  pace: 1.12,
 };
 
 export const CARS = [hatch, coupe, truck];
