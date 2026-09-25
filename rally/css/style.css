@@ -170,7 +170,10 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 
 .menu-row { display: flex; flex-wrap: wrap; gap: 8px 14px; justify-content: center; align-items: center; }
 .screen:not(.screen-center) .menu-row { justify-content: flex-start; }
-.menu-foot { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 0.85rem; }
+.menu-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; color: var(--muted); font-size: 0.85rem; }
+.menu-foot > * { white-space: nowrap; }
+.menu-foot #foot-stars { margin-right: auto; }
+.menu-foot .text-btn { padding-inline: 4px; }
 
 .arrow-btn {
   width: 44px; height: 44px;

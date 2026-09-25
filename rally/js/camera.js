@@ -1,5 +1,5 @@
-// Cameras: a chase camera that swings out when the car slides, bonnet and
-// bumper views, and trackside "TV" cameras for the menu and replays.
+// Cameras: a chase camera that swings out when the car slides, cockpit,
+// bonnet and bumper views, and a TV director for the menu and replays.
 import * as THREE from 'three';
 import { locate, wrap } from './road.js';
 
@@ -125,49 +125,20 @@ export class CameraRig {
     }
   }
 
-  // TV coverage: pick a camera beside the road ahead of the car, stay until the
-  // car has gone past, then cut to the next one.
-  broadcast(car, dt, time) {
-    const road = this.world.road, n = road.count;
-    const loc = locate(road, car.pos.x, car.pos.z, this._tvHint ?? -1, 60);
-    this._tvHint = loc.i;
-    const cam = this.camera;
-    const needNew = !this.tv || car.pos.distanceTo(this.tv.pos) > 70 || this._tvAge > 9 ||
-      (this._tvAge > 2.5 && ((loc.s - this.tv.s + n) % n) > 45 && ((loc.s - this.tv.s + n) % n) < n / 2);
-    this._tvAge = (this._tvAge || 0) + dt;
-    if (needNew) {
-      const ahead = 35 + Math.random() * 25;
-      const i = wrap(Math.round(loc.s + ahead), n);
-      const side = Math.random() < 0.5 ? -1 : 1;
-      const off = 7 + Math.random() * 9;
-      const lx = road.tz[i] * side, lz = -road.tx[i] * side;
-      const p = new THREE.Vector3(road.x[i] + lx * off, 0, road.z[i] + lz * off);
-      p.y = this.world.heightAt(p.x, p.z) + 1.4 + Math.random() * 3.5;
-      this.tv = { pos: p, s: i, fov: 24 + Math.random() * 16 };
-      this._tvAge = 0;
-    }
-    cam.position.copy(this.tv.pos);
-    this.look.lerp(_v.copy(car.pos).setY(car.pos.y + 0.5), needNew ? 1 : Math.min(1, dt * 6));
-    cam.up.set(0, 1, 0);
-    cam.lookAt(this.look);
-    const d = cam.position.distanceTo(car.pos);
-    const fov = THREE.MathUtils.clamp(this.tv.fov * 30 / Math.max(d, 8), 10, 55);
-    cam.fov += (fov - cam.fov) * (needNew ? 1 : Math.min(1, dt * 2));
-    cam.updateProjectionMatrix();
-    this._init = false;
-  }
-
   // ---- Replays: a director cutting between trackside, helicopter and on-car cameras ----
-  startReplay() { this.shot = null; this._shotAge = 0; this._lastType = null; this._covered = new Set(); this._hidden = 0; this._losT = 0; }
+  startReplay() { this.shot = null; this._shotAge = 0; this._lastType = null; this._covered = new Map(); this._clock = 0; this._hidden = 0; this._losT = 0; }
 
-  // `wide` keeps to cameras that show the whole car (behind the results card).
+  // `wide` keeps to cameras that show the whole car (behind the results
+  // card); 'menu' keeps to the trackside and helicopter cameras.
   replay(car, dt, wide = false) {
     const road = this.world.road, n = road.count;
     const loc = locate(road, car.pos.x, car.pos.z, this._tvHint ?? -1, 60);
     this._tvHint = loc.i;
     this._shotAge += dt;
+    this._clock = (this._clock || 0) + dt;
+    if (!this._covered) this.startReplay();
     const sh = this.shot;
-    let cut = !sh || (wide && !['tv', 'heli', 'chase'].includes(sh.type));
+    let cut = !sh || (wide && !this._allowed(sh.type, wide));
     if (sh && sh.type === 'tv') {
       const past = (loc.s - sh.s + n) % n;
       cut ||= car.pos.distanceTo(sh.pos) > 95 || this._shotAge > 11 || (past > 28 && past < n / 2 && this._shotAge > 1.2);
@@ -241,10 +212,15 @@ export class CameraRig {
     this._init = false;
   }
 
+  _allowed(type, wide) {
+    if (!wide) return true;
+    return type === 'tv' || type === 'heli' || (wide !== 'menu' && type === 'chase');
+  }
+
   _jumpAhead(loc, speed) {
     const n = this.world.road.count;
     for (const f of this.features || []) {
-      if (f.type !== 'jump' || this._covered.has(f.s)) continue;
+      if (f.type !== 'jump' || this._clock - (this._covered.get(f.s) ?? -1e9) < 45) continue;
       const ahead = (f.s - loc.s + n) % n;
       if (ahead > 20 && ahead < 25 + Math.max(55, speed * 3)) return f;
     }
@@ -258,7 +234,7 @@ export class CameraRig {
     // a jump coming up gets a low camera beside the landing
     const jump = this._jumpAhead(loc, speed);
     if (jump) {
-      this._covered.add(jump.s);
+      this._covered.set(jump.s, this._clock);
       const tv = this._placeTV(jump.s + 12 + speed * 0.15, [0.6, 1.4], [5.2, 8], jump.s - 12, jump.s + 30);
       if (tv) { tv.jump = true; tv.frame = 17; this.shot = tv; this._lastType = 'tv'; return; }
     }
@@ -267,7 +243,7 @@ export class CameraRig {
     if (this.forceShot) { type = this.forceShot; this.forceShot = null; }
     else if (this._lastType) {
       const types = [['tv', 5], ['heli', 1.3], ['chase', 1], ['wheel', 1.1], ['roof', 1], ['front', 0.9]]
-        .filter(([t]) => (t === 'tv' || t !== this._lastType) && (!wide || t === 'tv' || t === 'heli' || t === 'chase'));
+        .filter(([t]) => (t === 'tv' || t !== this._lastType) && this._allowed(t, wide));
       let r = Math.random() * types.reduce((a, [, w]) => a + w, 0);
       for (const [t, w] of types) { if ((r -= w) <= 0) { type = t; break; } }
     }
@@ -363,9 +339,10 @@ export class CameraRig {
       const t = clamp(((o.x - a.x) * dx + (o.z - a.z) * dz) / (len * len), 0, 1);
       const ex = a.x + dx * t - o.x, ez = a.z + dz * t - o.z;
       const hy = a.y + dy * t - o.y;
+      // the visible tree: taller than its trunk's collision height, and bushy
       const [start, crown] = CROWN[o.tree.type];
-      const r = hy > start * o.tree.scale ? crown * o.tree.scale * 0.7 : o.r + 0.1;
-      if (hy < o.h && ex * ex + ez * ez < r * r) blocked = true;
+      const r = hy > start * o.tree.scale ? crown * o.tree.scale : o.r + 0.1;
+      if (hy < 17 * o.tree.scale && ex * ex + ez * ez < r * r) blocked = true;
     };
     for (let k = 0; k <= len / 6 && !blocked; k++) {
       const u = Math.min(1, (k * 6) / len);

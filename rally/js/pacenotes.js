@@ -155,7 +155,7 @@ export class CoDriver {
     if (this.synth) {
       const pick = () => {
         const vs = this.synth.getVoices();
-        this.voice = vs.find((v) => /en-GB/i.test(v.lang) && /male|daniel|arthur|oliver/i.test(v.name))
+        this.voice = vs.find((v) => /en-GB/i.test(v.lang) && /\bmale|daniel|arthur|oliver/i.test(v.name))
           || vs.find((v) => /en-GB/i.test(v.lang)) || vs.find((v) => /^en/i.test(v.lang)) || null;
       };
       pick();
@@ -163,15 +163,32 @@ export class CoDriver {
     }
   }
 
+  // Notes that arrive while the co-driver is still talking wait their turn,
+  // but only the freshest few: a call for a corner already passed is no use.
   say(text, rate = 1.35) {
     if (!this.enabled || !this.synth) return;
+    if (this.synth.speaking || this.synth.pending) {
+      this.queue = (this.queue || []).concat(text).slice(-2);
+      this.queueRate = rate;
+      return;
+    }
+    this._speak(text, rate);
+  }
+
+  _speak(text, rate) {
     const u = new SpeechSynthesisUtterance(text);
     if (this.voice) u.voice = this.voice;
     u.rate = rate;
     u.pitch = 0.95;
     u.volume = 0.9;
+    u.onend = () => {
+      if (!this.queue || !this.queue.length) return;
+      const next = this.queue.join(', ');
+      this.queue = [];
+      this._speak(next, this.queueRate || rate);
+    };
     this.synth.speak(u);
   }
 
-  stop() { this.synth?.cancel(); }
+  stop() { this.queue = []; this.synth?.cancel(); }
 }

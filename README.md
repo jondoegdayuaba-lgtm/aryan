@@ -32,7 +32,7 @@ What makes it feel real:
 | C: camera (chase, far, cockpit, bonnet, bumper) | Y | Camera button |
 | R: put the car back on the road | B | Reset button |
 | E / Q: gear up / down (manual gearbox) | Bumpers | |
-| L: lights, M: mute, T: restart stage | X: lights, Back: restart | |
+| L: lights, M: mute, T: restart stage, F: full screen | X: lights, Back: restart | |
 | Esc / P: pause | Start | Pause button |
 
 ### Stages and cars

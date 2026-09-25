@@ -344,6 +344,7 @@ function show(name) {
 function toMenu() {
   S.mode = 'menu';
   S.demo = true;
+  rig.startReplay();
   S.event = null;
   replay.on = false;
   tape.recording = false;
@@ -477,6 +478,19 @@ function wireMenus() {
   $('btn-quit').addEventListener('click', toMenu);
   $('btn-pause').addEventListener('click', pause);
   $('btn-cam').addEventListener('click', () => { rig.cycle(); settings.view = rig.view; saveSettings(); });
+  // full screen where the browser allows it (not every frame or phone does)
+  const canFull = !!(document.fullscreenEnabled && document.documentElement.requestFullscreen);
+  $('btn-full').hidden = !canFull;
+  $('btn-fullscreen').hidden = !canFull;
+  const toggleFull = () => {
+    if (!canFull) return;
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    else document.documentElement.requestFullscreen().catch(() => {});
+  };
+  $('btn-full').addEventListener('click', toggleFull);
+  $('btn-fullscreen').addEventListener('click', () => { sound.click(); toggleFull(); });
+  document.addEventListener('fullscreenchange', () => { $('btn-fullscreen').textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen'; });
+  S.toggleFull = toggleFull;
   $('btn-again').addEventListener('click', () => {
     sound.click();
     if (!S.event) { startStage(S.stage); return; }
@@ -626,6 +640,7 @@ function pause() {
   if (!['prestart', 'countdown', 'racing', 'free', 'finishing'].includes(S.mode)) return;
   S.prevMode = S.mode;
   S.mode = 'paused';
+  hud.hint(null);
   codriver.stop();
   sound.update(null, 0);
   show('menu-pause');
@@ -730,6 +745,7 @@ function update(dt) {
   const ctl = input.read(dt, vehicle ? Math.abs(vehicle.forwardSpeed) : 0);
   if (ctl.actions.has('pause')) (S.mode === 'paused' ? resume() : pause());
   if (ctl.actions.has('mute')) { settings.sound = !settings.sound; saveSettings(); sound.setMuted(!settings.sound); }
+  if (ctl.actions.has('fullscreen')) S.toggleFull?.();
   if (S.mode === 'paused') return;
 
   const driving = ['racing', 'free', 'prestart', 'countdown'].includes(S.mode);
@@ -793,13 +809,12 @@ function update(dt) {
   if (S.mode === 'finishing' && S.modeT > 2.6) showResults();
 
   // camera
-  if (['menu', 'stages', 'settings'].includes(S.mode)) rig.broadcast(vehicle, dt, S.time);
+  if (['menu', 'stages', 'settings'].includes(S.mode)) rig.replay(vehicle, dt, 'menu');
   else if (S.mode === 'garage') {
     const c = vehicle.pos.clone();
     rig.orbit(c, 7.2 / Math.min(1, Math.max(camera.aspect, 0.6)), 1.4, S.time, 0.25);
   } else if (S.mode === 'results' || S.mode === 'replay') {
-    if (replay.on) rig.replay(vehicle, dt, S.mode === 'results');
-    else rig.broadcast(vehicle, dt, S.time);
+    rig.replay(vehicle, dt, S.mode === 'results' ? true : false);
   } else rig.follow(vehicle, dt);
   viewOffset();
 

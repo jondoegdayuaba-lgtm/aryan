@@ -39,7 +39,7 @@ class EngineVoice extends AudioWorkletProcessor {
     const fireHz = rpm / 60 * this.cyl / 2;
     const a1 = Math.exp(-dt / 0.00028), a2 = Math.exp(-dt / (0.0012 + 0.0009 * (1 - load)));
     const D = Math.max(8, Math.min(this.len - 2, Math.round(this.pipe * sampleRate)));
-    const fb = 0.5 + 0.22 * load;
+    const fb = 0.4 + 0.16 * load;
     const cut = (500 + 2600 * load + rpm * 0.28) * this.bright;
     const k = 1 - Math.exp(-2 * Math.PI * cut * dt);
     const k2 = 1 - Math.exp(-2 * Math.PI * cut * 1.7 * dt);

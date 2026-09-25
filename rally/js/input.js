@@ -145,5 +145,5 @@ const KEY_ACTIONS = {
   Escape: 'pause', KeyP: 'pause',
   KeyE: 'shiftUp', ShiftRight: 'shiftUp',
   KeyQ: 'shiftDown', ControlRight: 'shiftDown',
-  KeyL: 'lights', KeyM: 'mute', KeyG: 'ghost', KeyT: 'restart',
+  KeyL: 'lights', KeyM: 'mute', KeyG: 'ghost', KeyT: 'restart', KeyF: 'fullscreen',
 };
