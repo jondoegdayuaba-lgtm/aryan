@@ -344,6 +344,11 @@ body.replaying::after { bottom: 0; }
 
 .countdown { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-family: var(--display); font-style: italic; font-weight: 800; font-size: clamp(5rem, 16vw, 9rem); text-shadow: 0 6px 30px rgba(0, 0, 0, 0.6); }
 .countdown.go { color: var(--good); }
+/* first runs: how to drive, shown over the start line */
+.hint-card { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); display: grid; grid-template-columns: auto auto; gap: 6px 22px; padding: 12px 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font-size: 0.9rem; white-space: nowrap; animation: rise 0.35s ease-out both; }
+.hint-card div { display: flex; gap: 10px; align-items: baseline; }
+.hint-card kbd { font-family: var(--display); font-weight: 700; font-size: 1rem; letter-spacing: 0.04em; color: var(--accent); }
+.hint-card.single { grid-template-columns: auto; white-space: normal; max-width: min(420px, calc(100vw - 32px)); text-align: center; line-height: 1.45; }
 .warning { position: absolute; top: 44%; left: 50%; transform: translateX(-50%); padding: 8px 18px; font-family: var(--display); font-weight: 700; font-style: italic; font-size: 1.5rem; background: var(--bad); color: #fff; border-radius: 3px; animation: blink 0.9s ease-in-out infinite; }
 @keyframes blink { 50% { opacity: 0.55; } }
 
@@ -433,6 +438,7 @@ body.touch .minimap { display: none; }
   .picker-info { min-height: 44px; }
   .controls { display: none; }
   .countdown { top: 40%; font-size: 4.5rem; }
+  .hint-card { top: 52%; font-size: 0.8rem; padding: 8px 12px; }
   .pacenotes { top: calc(var(--safe-top) + 58px); }
 }
 @media (prefers-reduced-motion: reduce) {

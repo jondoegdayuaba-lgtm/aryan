@@ -70,7 +70,7 @@ export class Hud {
     this.el = {
       root: $('hud'), time: $('hud-time'), delta: $('hud-delta'), speed: $('hud-speed'), unit: $('hud-unit'),
       gear: $('hud-gear'), progress: $('hud-progress'), ghost: $('hud-ghost-pos'), stage: $('hud-stage-name'),
-      notes: $('pacenotes'), popups: $('popups'), countdown: $('countdown'), warning: $('warning'),
+      notes: $('pacenotes'), popups: $('popups'), countdown: $('countdown'), warning: $('warning'), hint: $('hint'),
       tachoFill: $('tacho-fill'), tachoBg: $('tacho-bg'), tachoRed: $('tacho-red'), minimap: $('minimap'),
     };
     this.el.tachoBg.setAttribute('d', arc(100, 100, 82, A0, A1));
@@ -157,6 +157,17 @@ export class Hud {
       el.textContent = text;
       el.classList.toggle('go', text === 'GO');
     }
+  }
+
+  // The how-to-drive card (null hides it).
+  hint(html, single = false) {
+    const el = this.el.hint;
+    if (!html) { el.hidden = true; this.cache.hint = null; return; }
+    if (this.cache.hint === html) return;
+    this.cache.hint = html;
+    el.innerHTML = html;
+    el.classList.toggle('single', single);
+    el.hidden = false;
   }
 
   warning(text) {

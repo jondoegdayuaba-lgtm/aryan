@@ -353,6 +353,15 @@ export class Effects {
     }
   }
 
+  // A spectator's camera flash (night stages).
+  flash(pos) {
+    const q = this.glow.spawn();
+    q.pos.copy(pos);
+    q.vel.set(0, 0, 0);
+    q.life = 0.07; q.s0 = 0.9; q.s1 = 0.5; q.a0 = 1;
+    q.col.setRGB(9, 9, 10); q.drag = 0; q.grav = 0; q.rise = 0; q.rot = Math.random() * 6; q.spin = 0;
+  }
+
   // A big landing throws out a ring of dust.
   landing(vehicle, power) {
     for (let k = 0; k < 16 * power; k++) {

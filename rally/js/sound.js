@@ -386,6 +386,41 @@ export class Sound {
     this._bus = null;
   }
 
+  // Spectators roaring and whistling as the car flies past.
+  cheer(power = 1, when = 0) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime + when;
+    // the roar: band-passed noise that swells and fades
+    const src = ctx.createBufferSource();
+    src.buffer = this.white;
+    src.loop = true;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 0.6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16 * power, t + 0.35);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.2);
+    src.connect(f).connect(g).connect(this.sfx);
+    src.start(t, Math.random() * 1.5);
+    src.stop(t + 2.3);
+    // a few whistles and whoops
+    for (let k = 0; k < 2 + Math.floor(Math.random() * 3); k++) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      const t0 = t + 0.1 + Math.random() * 0.9, f0 = 1300 + Math.random() * 900;
+      o.frequency.setValueAtTime(f0, t0);
+      o.frequency.exponentialRampToValueAtTime(f0 * (1.25 + Math.random() * 0.4), t0 + 0.25);
+      o.frequency.exponentialRampToValueAtTime(f0 * 0.8, t0 + 0.55);
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.0001, t0);
+      og.gain.exponentialRampToValueAtTime(0.03 * power, t0 + 0.05);
+      og.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.55);
+      o.connect(og).connect(this.sfx);
+      o.start(t0);
+      o.stop(t0 + 0.6);
+    }
+  }
+
   beep(high = false) {
     if (!this.ready) return;
     this._tone(high ? 880 : 440, high ? 0.5 : 0.18, 0.2, 'square');

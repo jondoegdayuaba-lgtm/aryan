@@ -436,6 +436,47 @@ function treadTexture() {
   return t;
 }
 
+// ---------- Cockpit ----------
+
+// Where the inside of each body is (model space, metres). eye: driver's eyes
+// (left-hand drive, so x > 0); dash: rear edge, front edge and top of the
+// dashboard; ws: windscreen base and top (z, y); roof height, cabin half-width,
+// B-pillar and how far back the roof lining goes.
+const COCKPITS = {
+  hatch: { eye: [0.37, 1.13, -0.36], dash: [0.3, 0.9, 0.955], ws: [0.93, 0.975, 0.08, 1.42], roof: 1.405, halfW: 0.75, bPillar: -0.3, rear: -1.45 },
+  coupe: { eye: [0.36, 1.05, -0.3], dash: [0.3, 0.84, 0.81], ws: [0.86, 0.82, 0.2, 1.31], roof: 1.295, halfW: 0.72, bPillar: -0.2, rear: -1.0 },
+  truck: { eye: [0.42, 1.8, -0.2], dash: [0.45, 1.02, 1.44], ws: [1.05, 1.46, 0.4, 2.02], roof: 2.0, halfW: 0.86, bPillar: -0.1, rear: -0.7 },
+};
+
+// Rev counter face: dark dial, white ticks, red line from 7000.
+function dialTexture(maxK, redK) {
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#08090a';
+  g.beginPath(); g.arc(64, 64, 63, 0, Math.PI * 2); g.fill();
+  const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25;
+  for (let k = 0; k <= maxK * 2; k++) {
+    const a = a0 + (a1 - a0) * (k / (maxK * 2)), major = k % 2 === 0;
+    g.strokeStyle = k / 2 >= redK ? '#ff3b30' : '#e8e8e8';
+    g.lineWidth = major ? 3 : 1.5;
+    g.beginPath();
+    g.moveTo(64 + Math.cos(a) * (major ? 44 : 50), 64 + Math.sin(a) * (major ? 44 : 50));
+    g.lineTo(64 + Math.cos(a) * 58, 64 + Math.sin(a) * 58);
+    g.stroke();
+    if (major) {
+      g.fillStyle = '#e8e8e8';
+      g.font = 'bold 13px Arial, sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(String(k / 2), 64 + Math.cos(a) * 33, 64 + Math.sin(a) * 33);
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 // Mud flap artwork: accent colour, a white sponsor block and a black foot.
 function flapTexture(livery) {
   if (typeof document === 'undefined') return null;
@@ -484,6 +525,7 @@ export class CarVisual {
     this.metal = patch(new THREE.MeshStandardMaterial({ color: '#8a8a8a', metalness: 0.95, roughness: 0.3, side: THREE.DoubleSide }), {});
     this.chrome = patch(new THREE.MeshStandardMaterial({ color: '#dfe3e8', metalness: 1, roughness: 0.15 }), {});
     this._addExtras(spec, black, accent);
+    if (!ghost) this._interior(spec, livery);
 
     // wheels
     const r = spec.wheelRadius, w = spec.wheelWidth;
@@ -609,6 +651,128 @@ export class CarVisual {
       ex.rotateX(Math.PI / 2);
       this.exhaust = add(ex, this.metal, 0.6, 0.62, -2.72);
     }
+  }
+
+  // The cabin, seen only from the cockpit camera: dashboard with a rev counter
+  // and shift lights, a steering wheel that turns, pillars, roof lining and a
+  // roll cage. The body shell is invisible from inside, so these frame the view.
+  _interior(spec, livery) {
+    const C = COCKPITS[spec.id];
+    if (!C) return;
+    const P = this.patch;
+    const plastic = P(new THREE.MeshStandardMaterial({ color: '#1e2024', roughness: 0.8 }), {});
+    const fabric = P(new THREE.MeshStandardMaterial({ color: '#2b2c2f', roughness: 0.95, side: THREE.DoubleSide }), {});
+    const cage = P(new THREE.MeshStandardMaterial({ color: '#c9ccd1', roughness: 0.35, metalness: 0.7 }), {});
+    const tape = P(new THREE.MeshStandardMaterial({ color: livery.accent === '#1b1b1f' || livery.accent === '#15171e' ? '#ffc629' : livery.accent, roughness: 0.6 }), {});
+    const cab = (this.interior = new THREE.Group());
+    cab.visible = false;
+    this.body.add(cab);
+    const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); cab.add(m); return m; };
+    const bar = (a, b, mat, r) => {
+      const len = a.distanceTo(b);
+      const m = add(r ? new THREE.CylinderGeometry(r, r, len, 10) : new THREE.BoxGeometry(0.075, len, 0.055), mat, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+      return m;
+    };
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const [ex, ey, ez] = C.eye, [d0, d1, top] = C.dash, [wz0, wy0, wz1, wy1] = C.ws, W = C.halfW;
+    const floorY = spec.wheelRadius + 0.02;
+    this.eye = V(ex, ey - spec.cgHeight, ez);
+
+    // dashboard, the hood over the instruments, door cards, and the floor
+    // and bulkhead below (the shell is invisible from inside, so they close
+    // the cabin off from the road)
+    add(new THREE.BoxGeometry(W * 2, 0.18, d1 - d0), plastic, 0, top - 0.09, (d0 + d1) / 2);
+    add(new THREE.BoxGeometry(W * 2, top - 0.18 - floorY, 0.04), plastic, 0, (top - 0.18 + floorY) / 2, d0 + 0.35);
+    add(new THREE.BoxGeometry(W * 2.1, 0.04, d1 - C.rear), fabric, 0, floorY, (d1 + C.rear) / 2);
+    add(new THREE.BoxGeometry(0.44, 0.08, 0.2), plastic, ex, top + 0.035, d0 + 0.1);
+    for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.05, top - floorY, d1 - C.rear * 0.6), fabric, s * W, (top + floorY) / 2, (d1 + C.rear * 0.6) / 2);
+
+    // rev counter with a needle, and a row of shift lights above it
+    const face = dialTexture(Math.ceil(spec.engine.limiter / 1000), Math.floor(spec.engine.redline / 1000));
+    const dial = add(new THREE.CircleGeometry(0.06, 32), P(new THREE.MeshStandardMaterial({ map: face, emissiveMap: face, roughness: 0.5, emissive: '#ffe2b8', emissiveIntensity: 0 }), {}), ex, top + 0.02, d0 - 0.003);
+    dial.rotation.y = Math.PI;
+    this.dialMat = dial.material;
+    const needle = new THREE.Group();
+    needle.position.set(ex, top + 0.02, d0 - 0.006);
+    const nm = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.05, 0.002), P(new THREE.MeshStandardMaterial({ color: '#ff6a1a', emissive: '#ff6a1a', emissiveIntensity: 0.6 }), {}));
+    nm.position.y = 0.022;
+    needle.add(nm);
+    cab.add(needle);
+    this.needle = needle;
+    this.shiftLights = [];
+    const lc = ['#35e05a', '#35e05a', '#35e05a', '#ffd21f', '#ffd21f', '#ff3b30', '#ff3b30'];
+    lc.forEach((col, k) => {
+      const m = add(new THREE.BoxGeometry(0.018, 0.012, 0.006), new THREE.MeshStandardMaterial({ color: '#111', emissive: col, emissiveIntensity: 0 }), ex + (k - 3) * 0.024, top + 0.085, d0 + 0.02);
+      this.shiftLights.push(m.material);
+    });
+
+    // steering wheel: rim, three spokes, hub and the straight-ahead marker
+    const pivot = new THREE.Group();
+    pivot.position.set(ex, ey - 0.3, ez + 0.44);
+    pivot.rotation.x = 0.33;
+    const wheel = new THREE.Group();
+    const suede = P(new THREE.MeshStandardMaterial({ color: '#26272b', roughness: 0.75 }), {});
+    wheel.add(new THREE.Mesh(new THREE.TorusGeometry(0.175, 0.021, 10, 44), suede));
+    for (const a of [0, Math.PI, -Math.PI / 2]) {
+      const sp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 0.012), plastic);
+      sp.position.set(Math.cos(a) * 0.085, Math.sin(a) * 0.085, 0);
+      sp.rotation.z = a;
+      wheel.add(sp);
+    }
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.04, 16), plastic);
+    hub.rotation.x = Math.PI / 2;
+    wheel.add(hub);
+    const mark = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.046, 0.046), tape);
+    mark.position.y = 0.175;
+    wheel.add(mark);
+    pivot.add(wheel);
+    cab.add(pivot);
+    this.steeringWheel = wheel;
+    bar(V(ex, ey - 0.3, ez + 0.44), V(ex, top - 0.2, d0 + 0.3), plastic, 0.028);   // column, down into the dash
+
+    // pillars, windscreen header, roof lining, B-pillars
+    for (const s of [-1, 1]) {
+      bar(V(s * W * 0.97, wy0 - 0.02, wz0 - 0.03), V(s * W * 0.86, wy1 - 0.03, wz1 + 0.03), plastic);
+      bar(V(s * W, top - 0.05, C.bPillar), V(s * W * 0.9, C.roof - 0.03, C.bPillar), plastic);
+    }
+    bar(V(-W * 0.9, wy1 - 0.04, wz1), V(W * 0.9, wy1 - 0.04, wz1), plastic);
+    const liner = add(new THREE.PlaneGeometry(W * 1.85, wz1 - C.rear), fabric, 0, C.roof - 0.035, (wz1 + C.rear) / 2);
+    liner.rotation.x = Math.PI / 2;
+    add(new THREE.BoxGeometry(0.19, 0.05, 0.02), plastic, 0, wy1 - 0.11, wz1 + 0.05);   // mirror
+
+    // roll cage: tubes along the pillars, over the roof, a main hoop behind
+    // the seats with a diagonal, and door bars
+    const r = 0.021, hz = ez - 0.45;
+    for (const s of [-1, 1]) {
+      const x = s * W * 0.8;
+      bar(V(s * W * 0.9, top - 0.25, wz0 - 0.08), V(x, C.roof - 0.07, wz1 + 0.02), cage, r);
+      bar(V(x, C.roof - 0.07, wz1 + 0.02), V(x, C.roof - 0.07, hz), cage, r);
+      bar(V(s * W * 0.9, 0.4, hz), V(x, C.roof - 0.07, hz), cage, r);
+      bar(V(s * W * 0.93, 0.45, d0), V(s * W * 0.93, top - 0.12, hz + 0.1), cage, r);
+      bar(V(s * W * 0.93, top - 0.12, d0), V(s * W * 0.93, 0.45, hz + 0.1), cage, r);
+    }
+    bar(V(-W * 0.8, C.roof - 0.07, wz1 + 0.02), V(W * 0.8, C.roof - 0.07, wz1 + 0.02), cage, r);
+    bar(V(-W * 0.8, C.roof - 0.07, hz), V(W * 0.8, C.roof - 0.07, hz), cage, r);
+    bar(V(W * 0.85, C.roof - 0.1, hz), V(-W * 0.88, 0.45, hz), cage, r);
+
+    // the co-driver's seat back, over on the right
+    add(new THREE.BoxGeometry(0.46, 0.62, 0.1), fabric, -ex, top - 0.18, ez - 0.12);
+    // light through the windows: the dash, wheel and cage catch the sun; the
+    // lining and door cards sit under the roof's shadow
+    cab.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = o.material === fabric; } });
+  }
+
+  // Needle, shift lights, steering wheel and gauge lights for the cockpit view.
+  syncInterior(vehicle, lights) {
+    if (!this.interior || !this.interior.visible) return;
+    const E = this.spec.engine;
+    const f = Math.min(1, vehicle.rpm / (Math.ceil(E.limiter / 1000) * 1000));
+    this.needle.rotation.z = Math.PI * (1.5 * f - 0.75);
+    const on = (vehicle.rpm - E.redline * 0.72) / (E.limiter - E.redline * 0.72);
+    this.shiftLights.forEach((m, k) => { m.emissiveIntensity = on * 7 > k ? (on > 0.97 && Math.floor(performance.now() / 70) % 2 ? 0.2 : 3) : 0; });
+    this.steeringWheel.rotation.z = -vehicle.steerAngle * 9;
+    this.dialMat.emissiveIntensity = lights ? 1.6 : 0;
   }
 
   // Rally mud flaps in the livery's accent colour, hanging almost to the ground.

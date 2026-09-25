@@ -205,6 +205,14 @@ export class Props {
       if (note.grade === 'jump' || note.mods.includes('over jump')) baleSpots.push({ i: wrap(note.s + 30, n), out: r() < 0.5 ? -1 : 1, count: 3 });
     }
     this.crowd = crowd;
+    // groups of spectators, so the crowd cheers once as the car goes by
+    this.crowdGroups = [];
+    for (const c of crowd) {
+      let g = this.crowdGroups.find((q) => Math.hypot(q.x - c.x, q.z - c.z) < 25);
+      if (!g) this.crowdGroups.push((g = { x: c.x, z: c.z, n: 0, people: [], last: -99 }));
+      g.people.push(c);
+      g.n++;
+    }
     if (crowd.length) {
       const geo = personGeometry();
       const mat = new THREE.MeshStandardMaterial({ roughness: 0.85, vertexColors: true });
@@ -367,6 +375,16 @@ export class Props {
       this.baleMesh.setMatrixAt(i, m);
     });
     this.baleMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  // The nearest group of spectators within `radius`, or null.
+  crowdNear(pos, radius) {
+    let best = null, bd = radius;
+    for (const g of this.crowdGroups) {
+      const d = Math.hypot(g.x - pos.x, g.z - pos.z);
+      if (d < bd) { bd = d; best = g; }
+    }
+    return best ? { group: best, dist: bd } : null;
   }
 
   // Car against bales (sphere vs the car's box), then bale motion.

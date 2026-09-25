@@ -10,7 +10,7 @@ const CROWN = [[7.5, 1.6], [0.9, 1.9], [3.8, 1.4]];
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _u = new THREE.Vector3(), _q = new THREE.Quaternion();
 
-export const VIEWS = ['chase', 'far', 'bonnet', 'bumper'];
+export const VIEWS = ['chase', 'far', 'cockpit', 'bonnet', 'bumper'];
 
 export class CameraRig {
   constructor(camera, world) {
@@ -25,6 +25,10 @@ export class CameraRig {
     this.fovBase = 62;
     this.tv = null;
     this._init = false;
+    this.eye = null;                       // driver's eye point, set per car
+    this.head = new THREE.Vector3();
+    this.headVel = new THREE.Vector3();
+    this._prevVel = new THREE.Vector3();
   }
 
   cycle() {
@@ -76,6 +80,26 @@ export class CameraRig {
       this.look.y += 0.75;
       cam.up.set(0, 1, 0);
       cam.lookAt(this.look);
+    } else if (this.view === 'cockpit' && this.eye) {
+      // the driver's eyes: the head is thrown about by braking, cornering
+      // and bumps, a little behind the car's own movement
+      if (!this._init) { this._prevVel.copy(car.vel); this.head.set(0, 0, 0); this.headVel.set(0, 0, 0); }
+      const acc = _w.subVectors(car.vel, this._prevVel).divideScalar(Math.max(dt, 1e-3));
+      this._prevVel.copy(car.vel);
+      acc.y += 9.81;
+      // acceleration in the car's frame, pushing the head the other way
+      const want = _v.set(-acc.dot(car.L) * 0.0045, -(acc.dot(car.U) - 9.81) * 0.0022, -acc.dot(F) * 0.0032);
+      want.clampLength(0, 0.07);
+      const k = 90, c = 2 * Math.sqrt(k) * 0.7;
+      this.headVel.addScaledVector(_u.subVectors(want, this.head).multiplyScalar(k).addScaledVector(this.headVel, -c), dt);
+      this.head.addScaledVector(this.headVel, dt);
+      cam.position.copy(this.eye).add(this.head).applyQuaternion(car.quat).add(car.pos);
+      cam.quaternion.copy(car.quat).multiply(_q.setFromAxisAngle(_v.set(0, 1, 0), Math.PI));
+      // look a touch down the road, and lean into the corner
+      cam.quaternion.multiply(_q.setFromAxisAngle(_v.set(1, 0, 0), -0.05));
+      cam.quaternion.multiply(_q.setFromAxisAngle(_v.set(0, 0, 1), THREE.MathUtils.clamp(this.head.x * 1.5, -0.04, 0.04)));
+      cam.up.set(0, 1, 0);
+      this._init = true;
     } else {
       // onboard: rigidly attached, rolls and pitches with the car
       const off = this.view === 'bonnet' ? [0, 0.62, 0.35] : [0, 0.05, 2.15];
@@ -94,7 +118,7 @@ export class CameraRig {
       cam.rotation.z += (Math.random() - 0.5) * s * 0.3;
       this.shake = Math.max(0, this.shake - dt * 1.6);
     }
-    const fov = this.fovBase + Math.min(1, speed / 45) * 12 + (this.view === 'bumper' ? 6 : 0);
+    const fov = this.view === 'cockpit' ? this.fovBase + 6 + Math.min(1, speed / 45) * 4 : this.fovBase + Math.min(1, speed / 45) * 12 + (this.view === 'bumper' ? 6 : 0);
     if (Math.abs(cam.fov - fov) > 0.05) {
       cam.fov += (fov - cam.fov) * Math.min(1, dt * 3);
       cam.updateProjectionMatrix();

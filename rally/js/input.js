@@ -98,6 +98,15 @@ export class Input {
     return null;
   }
 
+  // Shake the gamepad (hits and landings), if it can.
+  rumble(strong, weak, ms) {
+    if (!this.usingPad || !navigator.getGamepads) return;
+    for (const p of navigator.getGamepads()) {
+      const a = p && p.vibrationActuator;
+      if (a && a.playEffect) a.playEffect('dual-rumble', { duration: ms, strongMagnitude: Math.min(1, strong), weakMagnitude: Math.min(1, weak) }).catch(() => {});
+    }
+  }
+
   // Poll once per frame. `speed` (m/s) shapes the keyboard steering.
   read(dt, speed = 0) {
     const k = this.keys;

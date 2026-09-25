@@ -84,6 +84,7 @@ const S = {
   lights: false,
   demo: true,
   event: null,       // the full rally in progress: { stages, idx, times }
+  runs: store.get('runs', 0),   // stages started, for the first-run driving hints
   eventBest: store.get('event-best', null),
 };
 
@@ -133,6 +134,7 @@ async function boot() {
   rig = new CameraRig(camera, world);
   rig.view = settings.view;
   rig.features = FEATURES;
+  rig.eye = visual ? visual.eye : null;
   post = new Post(renderer, { msaa: quality.msaa, bloom: quality.bloom });
   resize();
   input = new Input();
@@ -160,7 +162,7 @@ async function boot() {
     window.__step = (seconds, dt = 1 / 60) => { for (let t = 0; t < seconds; t += dt) update(dt); };
     window.__draw = () => post.render(view.scene, camera, S.time);
   } else requestAnimationFrame(frame);
-  window.__game = { S, world, vehicle: () => vehicle, view, rig, camera, notes, props, fx, sound, settings, startStage, startFree, TIMES, STAGES, renderer, tape, replay };
+  window.__game = { S, world, vehicle: () => vehicle, visual: () => visual, view, rig, camera, notes, props, fx, sound, settings, startStage, startFree, TIMES, STAGES, renderer, tape, replay };
 }
 
 // ---------- Car ----------
@@ -172,6 +174,7 @@ function setupCar() {
   vehicle = new Vehicle(spec, world);
   visual = new CarVisual(spec, LIVERIES[S.livery], { noiseTex: view.textures.noise, patch, number: 7 });
   view.scene.add(visual.root);
+  if (rig) rig.eye = visual.eye || null;
   if (ai) ai.car = vehicle;
   // headlights
   heads.forEach((h) => { h.parent?.remove(h); h.target.parent?.remove(h.target); });
@@ -271,7 +274,7 @@ function replayAdvance(dt) {
 const _lv = new THREE.Vector3();
 let dopplerS = 1;
 function listener() {
-  const onboard = rig.view === 'bonnet' || rig.view === 'bumper';
+  const onboard = rig.view === 'bonnet' || rig.view === 'bumper' || rig.view === 'cockpit';
   if (!replay.on) return { cameraInside: onboard };
   const shot = rig.shot?.type;
   let volume = 1, doppler = 1;
@@ -533,6 +536,9 @@ function startStage(stage) {
   hud.timer(0);
   S.mode = 'prestart';
   S.modeT = 0;
+  S.runs++;
+  store.set('runs', S.runs);
+  S.hintUntil = S.runs <= 3 ? Infinity : 0;
   rig.view = settings.view;
   rig.snap();
   codriver.enabled = settings.codriver === 'voice';
@@ -583,6 +589,7 @@ function startFree() {
   hud.delta(null);
   hud.progress(0);
   S.mode = 'free';
+  S.hintUntil = S.runs <= 3 ? S.time + 8 : 0;
   rig.view = settings.view;
   rig.snap();
   codriver.stop();
@@ -630,6 +637,17 @@ function recover(reason) {
   }
   fx.skids.last = [null, null, null, null];
   hud.popup(reason === 'water' ? 'Too deep! <em>Car recovered</em>' : 'Car <em>reset</em>', 1400);
+}
+
+// How to drive, for the first few runs.
+function controlsHint() {
+  if (input.usingTouch || (touchDevice && !input.usingPad)) {
+    return ['Hold <b>Gas</b> and steer with the arrows. <b>Brake</b> early for corners, the <b>Hand brake</b> swings the car round hairpins, and <b>Reset</b> puts you back on the road.', true];
+  }
+  if (input.usingPad) {
+    return ['<div><kbd>RT</kbd>Throttle</div><div><kbd>LT</kbd>Brake, reverse</div><div><kbd>Stick</kbd>Steer</div><div><kbd>A</kbd>Handbrake</div><div><kbd>Y</kbd>Camera</div><div><kbd>B</kbd>Reset to road</div>', false];
+  }
+  return ['<div><kbd>W / ↑</kbd>Throttle</div><div><kbd>S / ↓</kbd>Brake, reverse</div><div><kbd>A D / ← →</kbd>Steer</div><div><kbd>Space</kbd>Handbrake</div><div><kbd>C</kbd>Camera</div><div><kbd>R</kbd>Reset to road</div>', false];
 }
 
 // ---------- Per-frame ----------
@@ -739,6 +757,13 @@ function update(dt) {
     handleEvents(dt);
   } else replayAdvance(dt);
   visual.sync(vehicle, dt);
+  if (visual.interior) {
+    const inside = rig.view === 'cockpit' && ['prestart', 'countdown', 'racing', 'free', 'finishing', 'paused'].includes(S.mode);
+    visual.interior.visible = inside;
+    // the tops of the flaps reach into the footwells; you can't see them from inside anyway
+    if (visual.flaps) for (const f of visual.flaps) f.visible = !inside;
+    visual.syncInterior(vehicle, S.lights);
+  }
   if (S.run && live) runUpdate(dt);
   // a couple of seconds to cross the line and slow down, then the results
   if (S.mode === 'finishing' && S.modeT > 2.6) showResults();
@@ -760,6 +785,7 @@ function update(dt) {
     const hits = props.update(dt, vehicle, S.time);
     for (const h of hits) { sound.impact(h.speed * 0.5, 'bale'); fx.debris(h.point, '#c9a85a', h.speed); }
   }
+  crowdUpdate(dt);
   fx.update(dt, camera, view.scene);
   view.update(camera, vehicle.pos, dt);
   if (ghostPlayer && S.run && !S.run.free) {
@@ -773,6 +799,25 @@ function update(dt) {
   // debug stats
   if (params.has('debug')) document.title = `${fps.toFixed(0)} fps · res ${Math.round(dyn.scale * 100)}%`;
 }
+
+// Spectators: a cheer as the car passes, and at night their camera flashes.
+function crowdUpdate(dt) {
+  const racing = ['racing', 'free', 'finishing', 'results', 'replay'].includes(S.mode);
+  if (!racing) return;
+  const near = props.crowdNear(vehicle.pos, 70);
+  if (!near) return;
+  const g = near.group;
+  if (near.dist < 32 && vehicle.speed > 8 && S.time - g.last > 8) {
+    g.last = S.time;
+    const loud = Math.min(1, 0.4 + vehicle.speed / 40) * Math.min(1, g.n / 10);
+    sound.cheer(loud * (replay.on ? listener().volume ?? 1 : 1));
+  }
+  if (TIMES[S.preset]?.night && Math.random() < dt * Math.min(8, g.n * 0.5) * (1 - near.dist / 70)) {
+    const c = g.people[Math.floor(Math.random() * g.people.length)];
+    fx.flash(_flash.set(c.x + (Math.random() - 0.5) * 0.3, c.y + 1.55 * c.h, c.z + (Math.random() - 0.5) * 0.3));
+  }
+}
+const _flash = new THREE.Vector3();
 
 // Countdown: 3, 2, 1, GO.
 function countdownUpdate() {
@@ -791,6 +836,7 @@ function countdownUpdate() {
     hud.countdown('GO');
     sound.beep(true);
     tape.markGo();
+    S.hintUntil = Math.min(S.hintUntil ?? 0, S.time + 2.5);
     S.mode = 'racing';
     S.modeT = 0;
     S.run.t = 0;
@@ -809,6 +855,7 @@ function handleEvents(dt) {
         if (e.speed < 2) break;
         sound.impact(e.speed, e.kind);
         rig.bump(Math.min(1, e.speed / 14));
+        if (!replay.on) input.rumble(e.speed / 12, e.speed / 8, 180);
         fx.debris(e.point, e.kind === 'tree' ? '#5a4030' : '#8a8580', e.speed);
         if (e.kind === 'rock' && e.speed > 5) fx.sparks(e.point, e.normal, e.speed);
         if (S.run) S.run.hits = (S.run.hits || 0) + 1;
@@ -823,6 +870,7 @@ function handleEvents(dt) {
     const power = Math.min(1, S._airborne / 1.2);
     sound.landing(power);
     rig.bump(power * 0.8);
+    if (!replay.on) input.rumble(power * 0.8, power * 0.4, 140);
     fx.landing(vehicle, power);
   }
   S._airborne = vehicle.grounded === 0 ? (S._airborne || 0) + dt : 0;
@@ -1075,6 +1123,9 @@ function renderBoard(board) {
 
 let replayShown = '';
 function hudUpdate() {
+  const hinting = ['prestart', 'countdown', 'racing', 'free'].includes(S.mode) && S.time < (S.hintUntil ?? 0);
+  if (hinting) hud.hint(...controlsHint());
+  else hud.hint(null);
   if (S.mode === 'replay') {
     const txt = formatTime(Math.min(replay.t, S.run?.result?.t ?? Infinity));
     if (txt !== replayShown) $('replay-time').textContent = replayShown = txt;
