@@ -201,9 +201,10 @@ function* steps() {
       y[i] = lerp(y[i], target, w);
     }
   }
-  // Gravel roads are never perfectly smooth: small undulations and ruts.
+  // Gravel roads are never perfectly smooth: long undulations and a little
+  // short ripple (kept small: at 130 km/h a 3 m ripple shakes like a drum).
   const rough = makeSimplex(777);
-  for (let i = 0; i < n; i++) y[i] += 0.06 * rough(i / 9, 0.5) + 0.025 * rough(i / 3.1, 7.5);
+  for (let i = 0; i < n; i++) y[i] += 0.055 * rough(i / 11, 0.5) + 0.01 * rough(i / 3.1, 7.5);
 
   const surf = new Uint8Array(n);                // per-sample road surface
   for (const [a, b] of TARMAC) for (let s = a; s <= b; s++) surf[wrap(s, n)] = 1;

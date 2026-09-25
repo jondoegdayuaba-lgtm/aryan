@@ -172,10 +172,13 @@ export class Vehicle {
     const S = this.spec;
     const fwd = this.forwardSpeed;
     // Steering: the wheels turn at a limited rate, and full lock shrinks with
-    // speed so a keyboard tap doesn't throw the car off the road.
+    // speed. With keys, full lock at speed is about what the tyres can use,
+    // so holding a key turns hard without tripping the car into a spin.
     const av = Math.max(Math.abs(fwd), 0.1);
-    const speedLimit = THREE.MathUtils.clamp((inp.analog ? 11 : 6.5) / av, 0.17, 1);
-    let target = inp.steer * S.steer.lock * speedLimit;
+    const maxAngle = inp.analog
+      ? S.steer.lock * THREE.MathUtils.clamp(11 / av, 0.17, 1)
+      : Math.min(S.steer.lock, Math.atan(S.wheelbase * 10 / (av * av)) + 0.055);
+    let target = inp.steer * maxAngle;
     // Stability assist: steer into slides a little so the car can be caught.
     if (inp.assist && Math.abs(fwd) > 5) {
       const vl = this.vel.dot(this.L), slip = Math.atan2(vl, Math.abs(fwd));
@@ -189,10 +192,12 @@ export class Vehicle {
     let thr = inp.throttle, brk = inp.brake;
     if (this.gear < 0) [thr, brk] = [brk, thr];
 
-    // Stability control: ease the throttle when the car is sliding too far.
+    // Stability control: ease the throttle when the car is sliding too far
+    // (full help steps in earlier than partial help).
     if (inp.assist && Math.abs(fwd) > 4) {
       const slip = Math.abs(Math.atan2(this.vel.dot(this.L), Math.abs(fwd)));
-      if (slip > 0.35) thr *= THREE.MathUtils.clamp(1 - (slip - 0.35) * 2 * inp.assist, 0.25, 1);
+      const from = 0.38 - 0.14 * inp.assist;
+      if (slip > from) thr *= THREE.MathUtils.clamp(1 - (slip - from) * 2.5 * inp.assist, 0.25, 1);
     }
 
     // Automatic gearbox. Decisions use road speed, so wheelspin can't fool it.
@@ -296,7 +301,12 @@ export class Vehicle {
     for (const w of this.wheels) {
       if (!w.contact) { w.suspF = 0; continue; }
       const over = Math.max(0, w.compression - susp.travel);
-      let f = w.k * w.compression + over * w.k * 12 + (w.vComp > 0 ? w.bump : w.rebound) * w.vComp;
+      let f = w.k * w.compression + (w.vComp > 0 ? w.bump : w.rebound) * w.vComp;
+      if (over > 0) {
+        // hydraulic bump stop: very stiff going in, and it soaks up the energy
+        // instead of handing it back, so a big landing doesn't kick the car over
+        f += over * w.k * (w.vComp > 0 ? 12 : 3) + 8000 * w.vComp * Math.min(1, over / 0.04);
+      }
       const other = this.wheels[w.index ^ 1];
       f += susp.antiRoll[w.axle] * (w.compression - (other.contact ? other.compression : 0));
       w.suspF = Math.max(0, f);
@@ -363,13 +373,15 @@ export class Vehicle {
       let share = S.drive === 'awd' ? (w.front ? S.frontBias : 1 - S.frontBias) / 2 : 0.5;
       if (rearCut) share = w.front ? 0.5 : 0;
       w.driveT = tDrive * share;
-      // traction control trims wheelspin
-      if (this.assist && w.slipRatio > 0.16 && w.driveT * Math.sign(w.omega || 1) > 0) w.driveT *= THREE.MathUtils.clamp(1 - (w.slipRatio - 0.16) * 3 * this.assist, 0.15, 1);
+      // traction control trims wheelspin just past the tyre's peak
+      const tcAt = S.tire.slipRatio * (1.5 - 0.4 * this.assist);
+      if (this.assist && w.slipRatio > tcAt && w.driveT * Math.sign(w.omega || 1) > 0) w.driveT *= THREE.MathUtils.clamp(1 - (w.slipRatio - tcAt) * 4 * this.assist, 0.15, 1);
       if (!(rearCut && !w.front)) w.inertia += reflected;
     }
 
     // ---- Tyres ----
     const T = S.tire;
+    let spinUp = 0;     // angular momentum the airborne wheels gain (they take it from the body)
     // Ackermann: the inside wheel turns more.
     const ack = Math.tan(this.steerAngle) / S.wheelbase;
     for (const w of this.wheels) {
@@ -379,9 +391,11 @@ export class Vehicle {
       w.brakeT = bT;
       if (!w.contact) {
         // wheel spins freely in the air
+        const om0 = w.omega;
         w.omega += (w.driveT / w.inertia) * dt;
         const bd = (bT + 20) * dt / w.inertia;
         w.omega = Math.abs(w.omega) <= bd ? 0 : w.omega - Math.sign(w.omega) * bd;
+        spinUp += (w.omega - om0) * w.inertia;
         w.fz = 0; w.slide = 0;
         continue;
       }
@@ -398,7 +412,9 @@ export class Vehicle {
       w.fz = fz;
       const surf = SURFACES[w.surface] || SURFACES[SURF.GRAVEL];
       const nominal = this.cornerLoad[w.axle];
-      const mu = T.mu * surf.mu * (1 - T.loadSens * (fz / nominal - 1));
+      // grip falls off a little as load rises, but a heavy landing (twenty
+      // times the normal load) must never push the friction below zero
+      const mu = T.mu * surf.mu * Math.max(0.6, 1 - T.loadSens * (Math.min(fz / nominal, 4) - 1));
       w.mu = mu;
       const fmax = mu * fz;
       const vRef = Math.max(Math.abs(vLong), V_MIN);
@@ -470,13 +486,11 @@ export class Vehicle {
     const vf = this.vel.dot(F);
     force.addScaledVector(U, -S.aero.lift * vf * vf);
 
-    // ---- In the air: a little control over pitch and roll ----
-    if (grounded === 0) {
-      const I = S.inertia;
-      torque.addScaledVector(L, (this.throttle - this.brake) * I[0] * 1.1);
-      torque.addScaledVector(F, -(inp.steer || 0) * I[2] * 1.3);
-      this.angVel.multiplyScalar(1 - dt * 0.4);
-    }
+    // ---- In the air ----
+    // Wheels spun up by the throttle push the nose up; braking them to a stop
+    // tips it down. That reaction is all the control a real driver has.
+    if (spinUp !== 0) torque.addScaledVector(L, -spinUp / dt);
+    if (grounded === 0) this.angVel.multiplyScalar(1 - dt * 0.4);
 
     // ---- Body against the ground (roofs, bumpers, sills) ----
     for (const hp of this.hull) {

@@ -3,6 +3,24 @@
 
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
+// Keys are on or off, so the game shapes them into smooth inputs. Steering
+// ramps in (more gently at speed, so a tap is a small correction), springs
+// back when released and swings across quickly to catch a slide. Pedals
+// squeeze on over a fraction of a second rather than slamming.
+export function keySteer(current, want, dt, speed = 0) {
+  const calm = 1 / (1 + Math.max(0, speed - 8) / 18);
+  let rate;
+  if (want === 0) rate = Math.max(3.5, 7 * calm);
+  else if (current !== 0 && Math.sign(want) !== Math.sign(current)) rate = Math.max(4.5, 9 * calm);
+  else rate = 4.5 * calm;
+  return current + clamp(want - current, -rate * dt, rate * dt);
+}
+
+export function keyPedal(current, want, dt, up = 5, down = 10) {
+  const rate = want > current ? up : down;
+  return current + clamp(want - current, -rate * dt, rate * dt);
+}
+
 export class Input {
   constructor() {
     this.keys = new Set();
@@ -12,6 +30,8 @@ export class Input {
     this.tilt = null;                 // steering from device tilt, -1..1
     this.useTilt = false;
     this.steerKey = 0;
+    this.gasKey = 0;
+    this.brakeKey = 0;
     this.usingPad = false;
     this.usingTouch = false;
     this.padSteer = 0;
@@ -78,18 +98,18 @@ export class Input {
     return null;
   }
 
-  // Poll once per frame.
-  read(dt) {
+  // Poll once per frame. `speed` (m/s) shapes the keyboard steering.
+  read(dt, speed = 0) {
     const k = this.keys;
     const left = k.has('ArrowLeft') || k.has('KeyA') || this.touch.left;
     const right = k.has('ArrowRight') || k.has('KeyD') || this.touch.right;
     const want = (left ? 1 : 0) - (right ? 1 : 0);
-    // keyboard steering ramps in and springs back, so taps give partial lock
-    const rate = want === 0 ? 7 : Math.sign(want) !== Math.sign(this.steerKey) && this.steerKey !== 0 ? 9 : 4.5;
-    this.steerKey += clamp(want - this.steerKey, -rate * dt, rate * dt);
+    this.steerKey = keySteer(this.steerKey, want, dt, speed);
     let steer = this.steerKey;
-    let throttle = (k.has('ArrowUp') || k.has('KeyW') || this.touch.gas) ? 1 : 0;
-    let brake = (k.has('ArrowDown') || k.has('KeyS') || this.touch.brake) ? 1 : 0;
+    this.gasKey = keyPedal(this.gasKey, (k.has('ArrowUp') || k.has('KeyW') || this.touch.gas) ? 1 : 0, dt);
+    this.brakeKey = keyPedal(this.brakeKey, (k.has('ArrowDown') || k.has('KeyS') || this.touch.brake) ? 1 : 0, dt, 7, 10);
+    let throttle = this.gasKey;
+    let brake = this.brakeKey;
     let hand = (k.has('Space') || this.touch.hand) ? 1 : 0;
     let analog = false;
     const pad = this._pad();

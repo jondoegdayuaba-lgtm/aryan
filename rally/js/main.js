@@ -653,7 +653,7 @@ function frame(now) {
 function update(dt) {
   S.time += dt;
   S.modeT += dt;
-  const ctl = input.read(dt);
+  const ctl = input.read(dt, vehicle ? Math.abs(vehicle.forwardSpeed) : 0);
   if (ctl.actions.has('pause')) (S.mode === 'paused' ? resume() : pause());
   if (ctl.actions.has('mute')) { settings.sound = !settings.sound; saveSettings(); sound.setMuted(!settings.sound); }
   if (S.mode === 'paused') return;
