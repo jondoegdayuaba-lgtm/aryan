@@ -163,8 +163,10 @@ html, body {
 .menu-foot {
   margin-top: 20px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 6px 14px;
   color: var(--dim);
   font-size: 14px;
 }
@@ -325,31 +327,64 @@ html, body {
   place-items: center;
   filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.55));
 }
-.rpm { position: absolute; inset: 0; width: 100%; height: 100%; }
-.rpm path { fill: none; stroke-width: 12; stroke-linecap: round; }
-.rpm-track { stroke: rgba(20, 12, 8, 0.55); }
-.rpm-red { stroke: rgba(255, 70, 50, 0.55); stroke-linecap: butt; }
-.rpm-fill { stroke: var(--accent); stroke-dasharray: 0 400; transition: stroke 0.1s; }
-.rpm-fill.limit { stroke: #ff3b2a; }
+.power-arc { position: absolute; inset: 0; width: 100%; height: 100%; }
+.power-arc path { fill: none; stroke-width: 12; stroke-linecap: round; }
+.power-track { stroke: rgba(20, 12, 8, 0.55); }
+.power-fill { stroke: var(--accent); stroke-dasharray: 0 400; transition: stroke 0.1s; }
+.power-fill.boost { stroke: #5cc8ff; }
 .speed { display: grid; justify-items: center; margin-top: -6px; }
 #speed { font-size: 64px; font-weight: 800; font-style: italic; line-height: 0.9; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5); }
 .unit { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
 .gear {
   position: absolute;
-  bottom: 16px;
+  bottom: 14px;
   left: 50%;
   transform: translateX(-50%);
   font-family: var(--display);
   font-weight: 800;
-  font-size: 28px;
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
+  font-size: 20px;
+  min-width: 54px;
+  height: 40px;
+  padding: 0 8px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 3px;
+  line-height: 40px;
   border-radius: 10px;
   background: rgba(20, 12, 8, 0.7);
   border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
 }
+.gear small { font-size: 11px; letter-spacing: 0.08em; color: var(--dim); }
+
+/* Wheelie meter: angle against the balance point, distance so far. */
+.wheelie {
+  position: absolute;
+  left: 50%;
+  bottom: calc(22px + var(--safe-b));
+  width: 220px;
+  transform: translateX(-50%) translateY(16px);
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.55));
+}
+.wheelie.show { opacity: 1; transform: translateX(-50%); }
+.wheelie svg { width: 100%; display: block; }
+.wheelie path { fill: none; stroke-width: 12; stroke-linecap: butt; }
+.w-track { stroke: rgba(20, 12, 8, 0.55); stroke-linecap: round !important; }
+.z-low { stroke: rgba(255, 214, 120, 0.55); }
+.z-good { stroke: #5fe07c; }
+.z-warn { stroke: #ffb13b; }
+.z-bad { stroke: #ff4a36; }
+.w-needle { stroke: #fff7ee; stroke-width: 5; stroke-linecap: round; transition: transform 0.05s linear; }
+.w-hub { fill: #fff7ee; }
+.w-text { position: absolute; left: 0; bottom: 0; display: grid; justify-items: start; }
+.w-text .num { font-family: var(--display); font-style: italic; font-weight: 800; font-size: 34px; line-height: 1; }
+.wheelie.done .w-needle { opacity: 0.3; }
+.wheelie.done .num { color: var(--accent-2); }
+.chal { min-width: 150px; }
+.chal-next { font-size: 12px; color: var(--dim); }
 .boost {
   position: absolute;
   right: 190px;
@@ -383,7 +418,9 @@ html, body {
 }
 .popup em { color: var(--accent-2); font-style: italic; }
 .popup .pts { font-size: 22px; color: var(--good); margin-left: 10px; }
+.popup .sub { display: block; text-align: center; font-size: 16px; color: var(--dim); letter-spacing: 0.06em; }
 .popup.cp { font-size: 26px; }
+.popup.bad { color: #ff7a5c; font-size: 40px; }
 @keyframes pop {
   0% { opacity: 0; transform: translateY(12px) scale(0.85); }
   12% { opacity: 1; transform: translateY(0) scale(1.06); }
@@ -482,6 +519,9 @@ body.touch .touch-ui { display: block; }
 .touch-right .gas { background: rgba(60, 180, 90, 0.45); }
 body.touch .speedo { right: auto; left: 50%; transform: translateX(-50%) scale(0.72); transform-origin: bottom center; bottom: calc(6px + var(--safe-b)); }
 body.touch .boost { display: none; }
+body.touch .wheelie { left: calc(14px + var(--safe-l)); bottom: calc(112px + var(--safe-b)); width: 150px; transform: translateY(12px); }
+body.touch .wheelie.show { transform: none; }
+body.touch .w-text .num { font-size: 26px; }
 body.touch #minimap { width: 120px; height: 120px; }
 body.touch .icon-btn { top: calc(140px + var(--safe-t)); }
 
@@ -532,3 +572,14 @@ body.touch .icon-btn { top: calc(140px + var(--safe-t)); }
   .touch-left button { width: 70px; height: 70px; }
   .touch-right { grid-template-columns: 68px 84px; grid-template-rows: 46px 84px; }
 }
+
+/* ---------- Garage ---------- */
+.garage-panel { width: min(400px, calc(100vw - 32px)); }
+.bike-blurb { margin: 2px 0 10px; color: var(--dim); font-size: 15px; line-height: 1.35; min-height: 2.7em; }
+.bike-stats { display: grid; gap: 7px; margin: 0 0 8px; }
+.bike-stats div { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; }
+.bike-stats dt { font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+.bike-stats dd { margin: 0; height: 8px; border-radius: 4px; background: rgba(20, 12, 8, 0.6); border: 1px solid var(--line); overflow: hidden; }
+.bike-stats dd span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transform-origin: left; transition: transform 0.35s ease; }
+.menu-bike { font-family: var(--display); font-style: italic; font-weight: 800; color: var(--accent-2); }
+.touch-right .lean { background: rgba(255, 140, 50, 0.4); }

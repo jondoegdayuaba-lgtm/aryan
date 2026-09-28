@@ -1,19 +1,20 @@
-// Heads-up display: speedometer and rev counter, gear, boost, race timer with
-// split times, checkpoint count, a heading-up minimap, a pointer to the next
-// gate, stunt pop-ups and the start countdown.
+// Heads-up display: speedometer with the motor's power, boost, the wheelie
+// meter, race timer with split times, checkpoint count, a heading-up minimap,
+// a pointer to the next gate, stunt pop-ups and the start countdown.
 import { formatTime } from './race.js';
 
 const $ = (id) => document.getElementById(id);
-const RPM_LEN = 377;          // length of the 270 degree arc in the SVG
-const MAX_RPM = 7500;
+const ARC_LEN = 377;          // length of the 270 degree arc in the SVG
+const deg = (r) => (r * 180) / Math.PI;
 
 export class Hud {
   constructor(world, route, gates) {
     this.el = {
       hud: $('hud'), cp: $('cp'), timer: $('timer'), split: $('split'), style: $('style'), speed: $('speed'), unit: $('unit'),
-      gear: $('gear'), rpm: $('rpm-fill'), boost: $('boost-fill'), popups: $('popups'), countdown: $('countdown'),
+      gear: $('gear'), power: $('power-fill'), boost: $('boost-fill'), popups: $('popups'), countdown: $('countdown'),
       message: $('message'), nav: $('nav'), navArrow: document.querySelector('#nav svg'), navDist: $('nav-dist'),
-      minimap: $('minimap'), chipCp: $('chip-cp'),
+      minimap: $('minimap'), chipCp: $('chip-cp'), chal: $('chal'), chalBest: $('chal-best'), chalNext: $('chal-next'),
+      wheelie: $('wheelie'), wNeedle: $('wheelie-needle'), wDist: $('wheelie-dist'), wZones: $('wheelie-zones'),
     };
     this.route = route;
     this.gates = gates;
@@ -79,23 +80,37 @@ export class Hud {
     }
   }
 
-  show(on, { race = true } = {}) {
+  show(on, { race = true, challenge = false } = {}) {
     this.el.hud.hidden = !on;
     this.race = race;
     this.el.chipCp.style.visibility = race ? 'visible' : 'hidden';
     this.el.timer.parentElement.style.visibility = race ? 'visible' : 'hidden';
+    this.el.chal.hidden = !challenge;
     if (!on) this.el.popups.textContent = '';
+  }
+
+  // Colour the wheelie meter for this bike's balance point.
+  setBalance(angle) {
+    const b = deg(angle);
+    const pt = (a) => `${(100 + 88 * Math.cos((a * Math.PI) / 180)).toFixed(1)} ${(108 - 88 * Math.sin((a * Math.PI) / 180)).toFixed(1)}`;
+    const arc = (a0, a1, cls) => `<path class="${cls}" d="M ${pt(a0)} A 88 88 0 0 0 ${pt(a1)}"/>`;
+    this.el.wZones.innerHTML = arc(4, b - 16, 'z-low') + arc(b - 16, b + 3, 'z-good') + arc(b + 3, b + 10, 'z-warn') + arc(b + 10, 88, 'z-bad');
+  }
+
+  challenge(best, next) {
+    this._text('chalBest', best > 0 ? `${Math.round(best)} m` : '--');
+    this._text('chalNext', next);
   }
 
   update(s) {
     const E = this.el;
     const speed = this.units === 'mph' ? s.speed * 2.23694 : s.speed * 3.6;
     this._text('speed', String(Math.round(Math.abs(speed))));
-    this._text('gear', s.gear === 0 ? 'R' : String(s.gear));
-    const f = Math.min(1, s.rpm / MAX_RPM);
-    const dash = `${(f * RPM_LEN).toFixed(1)} 400`;
-    if (this.cache.rpm !== dash) { this.cache.rpm = dash; E.rpm.style.strokeDasharray = dash; }
-    E.rpm.classList.toggle('limit', s.rpm > 6800);
+    this._text('gear', s.kw < 0.5 ? '0' : s.kw < 10 ? s.kw.toFixed(1) : String(Math.round(s.kw)));
+    const f = Math.min(1, s.power);
+    const dash = `${(f * ARC_LEN).toFixed(1)} 400`;
+    if (this.cache.power !== dash) { this.cache.power = dash; E.power.style.strokeDasharray = dash; }
+    E.power.classList.toggle('boost', !!s.boosting);
     const b = `scaleX(${s.boost.toFixed(3)})`;
     if (this.cache.boost !== b) { this.cache.boost = b; E.boost.style.transform = b; }
     this._text('style', s.style.toLocaleString());
@@ -111,6 +126,18 @@ export class Hud {
       this._text('navDist', s.nav.dist > 999 ? `${(s.nav.dist / 1000).toFixed(1)} km` : `${Math.round(s.nav.dist / 10) * 10} m`);
     } else E.nav.style.visibility = 'hidden';
     this._minimap(s);
+
+    // Wheelie meter: angle against the balance point, and the distance so far.
+    const W = s.wheelie;
+    const showW = W && (W.active || W.lastT < 2.2);
+    E.wheelie.classList.toggle('show', !!showW);
+    if (showW) {
+      const a = W.active ? Math.max(0, deg(s.pitch)) : 0;
+      const r = `rotate(${(-Math.min(95, a)).toFixed(1)} 100 108)`;
+      if (this.cache.needle !== r) { this.cache.needle = r; E.wNeedle.setAttribute('transform', r); }
+      this._text('wDist', `${Math.round(W.active ? W.dist : W.last)} m`);
+      E.wheelie.classList.toggle('done', !W.active);
+    }
   }
 
   _minimap(s) {

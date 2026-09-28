@@ -36,9 +36,7 @@ export function loadSettings() {
     units: store.get('units', 'kmh'),
     volume: store.get('volume', 0.8),
     shake: store.get('shake', true),
-    livery: store.get('livery', 0),
-    best: store.get('best', null),
-    bestSplits: store.get('bestSplits', null),
+    bike: store.get('bike', 0),
     muted: store.get('muted', false),
   };
   const q = new URLSearchParams(location.search);

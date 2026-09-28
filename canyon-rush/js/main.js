@@ -11,13 +11,13 @@ import { Scatter } from './render/scatter.js';
 import { Effects } from './render/effects.js';
 import { Water } from './render/water.js';
 import { PhysicsWorld } from './game/physicsworld.js';
-import { Vehicle } from './game/vehicle.js';
-import { TruckModel, LIVERIES } from './game/truck.js';
+import { Bike, BIKES } from './game/bike.js';
+import { BikeModel, LOOKS } from './game/bikemodel.js';
 import { CameraRig } from './game/camera.js';
 import { Input } from './game/input.js';
 import { Autopilot } from './game/autopilot.js';
 import { Gates } from './game/gates.js';
-import { Race, formatTime } from './game/race.js';
+import { Race, formatTime, WHEELIE_MEDALS } from './game/race.js';
 import { Stunts } from './game/stunts.js';
 import { Hud } from './game/hud.js';
 import { Audio } from './game/audio.js';
@@ -104,9 +104,11 @@ async function boot() {
   await nextFrame();
   const phys = new PhysicsWorld(world, STAGE);
   const scatter = new Scatter(scene, world, phys, tex, atmo, Q.scatter);
-  const vehicle = new Vehicle(phys);
-  const truck = new TruckModel(tex, clamp(settings.livery | 0, 0, LIVERIES.length - 1));
-  scene.add(truck.root);
+  let bikeIndex = clamp(settings.bike | 0, 0, BIKES.length - 1);
+  let spec = BIKES[bikeIndex];
+  const bike = new Bike(phys, spec);
+  const model = new BikeModel(tex, spec, LOOKS[spec.id]);
+  scene.add(model.root);
   const heightAt = (x, z) => phys.heightAt(x, z);
   const fx = new Effects(scene, atmo, heightAt, { soft: Q.soft });
   const water = new Water(scene, STAGE, atmo, tex);
@@ -114,7 +116,7 @@ async function boot() {
   const gates = new Gates(scene, route, STAGE, heightAt);
   const race = new Race(route, gates);
   const stunts = new Stunts();
-  const auto = new Autopilot(route, { maxSpeed: 34 });
+  const auto = new Autopilot(route, { maxSpeed: 30, wheelies: true });
 
   const post = new PostPipeline(renderer, {
     samples: params.has('msaa') ? +params.get('msaa') : Q.msaa,
@@ -131,6 +133,13 @@ async function boot() {
   audio.muted = settings.muted;
   const hud = new Hud(world, route, gates);
   hud.setUnits(settings.units);
+  hud.setBalance(bike.balanceAngle);
+
+  // Records are kept per bike: best lap and its splits, and the longest wheelie.
+  const records = {};
+  const rec = (id = spec.id) => records[id] || (records[id] = {
+    best: store.get('best:' + id, null), splits: store.get('splits:' + id, null), wheelie: store.get('wheelie:' + id, 0),
+  });
 
   function resize() {
     renderer.setSize(innerWidth, innerHeight, false);
@@ -147,7 +156,6 @@ async function boot() {
     state: 'menu',
     mode: 'race',
     boost: 1,
-    upsideT: 0,
     stuckT: 0,
     lastLanding: 0,
     time: 0,
@@ -155,6 +163,7 @@ async function boot() {
     cacti: 0,
     recovers: 0,
     pausedFrom: null,
+    crashes: 0,
   };
   const startPos = () => {
     const s = route.wrapS(-14);
@@ -163,9 +172,11 @@ async function boot() {
   };
   const placeAt = (s) => {
     const p = route.pos(s), t = route.tangent(s);
-    vehicle.placeOnGround(p.x, p.z, Math.atan2(-t.x, -t.z));
+    bike.placeOnGround(p.x, p.z, Math.atan2(-t.x, -t.z));
     rig.snap();
   };
+  // The wheelie challenge starts where the road runs onto the dry lake: flat and wide open.
+  const challengeS = route.sAtControl(2) + 45;
   const placeAtStart = () => {
     placeAt(startPos().s);
     auto.reset(startPos().s);
@@ -176,15 +187,22 @@ async function boot() {
   }
 
   function renderMenuBest() {
-    const b = settings.best;
-    $('best').textContent = b ? formatTime(b) : '--';
-    const m = b ? race.medalFor(b) : null;
+    const r = rec();
+    $('best').textContent = r.best ? formatTime(r.best) : '--';
+    $('best-wheelie').textContent = r.wheelie ? `${Math.round(r.wheelie)} m` : '--';
+    $('menu-bike').textContent = spec.name;
+    const m = r.best ? race.medalFor(r.best, spec.id) : null;
     $('best-medal').hidden = !m;
     if (m) {
       $('best-medal').textContent = m;
       $('best-medal').className = 'medal-chip ' + m.toLowerCase();
     }
   }
+
+  const nextWheelieTarget = (d) => {
+    const next = [...WHEELIE_MEDALS].reverse().find((m) => d < m.dist);
+    return next ? `${next.name} at ${next.dist} m` : 'Gold! Keep going';
+  };
 
   function toMenu() {
     G.state = 'menu';
@@ -196,44 +214,55 @@ async function boot() {
     placeAt(route.wrapS(startPos().s + 180));
     auto.reset(null);
     fx.clear();
-    truck.setDirt(0.1);
+    model.setDirt(0.1);
   }
 
-  function startRace() {
+  function resetRun() {
     audio.init();
-    G.mode = 'race';
-    G.state = 'countdown';
     G.boost = 1;
     G.topSpeed = 0;
     G.cacti = 0;
     G.recovers = 0;
+    G.crashes = 0;
     stunts.reset();
     fx.clear();
-    placeAtStart();
-    race.startCountdown(3);
-    truck.setDirt(0.05);
+    model.setDirt(0.05);
     showScreen(null);
-    hud.show(true, { race: true });
-    hud.countdown('3');
-    audio.beep();
     post.resetAdaptation();
   }
 
+  function startRace() {
+    resetRun();
+    G.mode = 'race';
+    G.state = 'countdown';
+    placeAtStart();
+    race.startCountdown(3);
+    hud.show(true, { race: true });
+    hud.countdown('3');
+    audio.beep();
+  }
+
   function startFree() {
-    audio.init();
+    resetRun();
     G.mode = 'free';
     G.state = 'free';
-    G.boost = 1;
-    stunts.reset();
-    fx.clear();
     placeAtStart();
     race.reset();
     gates.setNext(-1);
-    truck.setDirt(0.05);
-    showScreen(null);
     hud.show(true, { race: false });
-    hud.popup('Free <em>roam</em>');
-    post.resetAdaptation();
+    hud.popup('Free <em>ride</em>');
+  }
+
+  function startWheelie() {
+    resetRun();
+    G.mode = 'wheelie';
+    G.state = 'free';
+    race.reset();
+    gates.setNext(-1);
+    placeAt(challengeS);
+    hud.show(true, { race: false, challenge: true });
+    hud.challenge(rec().wheelie, nextWheelieTarget(rec().wheelie));
+    hud.popup('Wheelie <em>challenge</em>');
   }
 
   function pause() {
@@ -251,40 +280,46 @@ async function boot() {
     audio.init();
   }
 
-  function recover() {
+  function recover(quiet = false) {
     if (!['race', 'free'].includes(G.state)) return;
-    const n = route.nearest(vehicle.pos.x, vehicle.pos.z, race.progressS, 200);
+    fx.tracks.clear();
+    if (G.mode === 'wheelie') {
+      placeAt(challengeS);
+      return;
+    }
+    const n = route.nearest(bike.pos.x, bike.pos.z, race.progressS, 200);
     let s = n.s;
     if (race.lastSafe !== null && Math.abs(route.wrapS(n.s - race.lastSafe + route.length / 2) - route.length / 2) < 250) s = race.lastSafe;
     placeAt(route.wrapS(s - 5));
     G.recovers++;
-    hud.popup('Back on <em>track</em>', 'cp');
+    if (!quiet) hud.popup('Back on <em>track</em>', 'cp');
   }
 
   function finishRace() {
     G.state = 'results';
     const t = race.time;
-    const prevBest = settings.best;
+    const r = rec();
+    const prevBest = r.best;
     const newBest = !prevBest || t < prevBest;
     if (newBest) {
-      settings.best = t;
-      settings.bestSplits = race.splits.slice();
-      store.set('best', t);
-      store.set('bestSplits', settings.bestSplits);
+      r.best = t;
+      r.splits = race.splits.slice();
+      store.set('best:' + spec.id, t);
+      store.set('splits:' + spec.id, r.splits);
     }
-    const medal = race.medalFor(t);
+    const medal = race.medalFor(t, spec.id);
     $('res-medal').textContent = medal || '';
     $('res-medal').className = 'medal ' + (medal ? medal.toLowerCase() : '');
     $('res-title').textContent = newBest && prevBest ? 'New record!' : medal ? `${medal} medal` : 'Stage complete';
     $('res-time').textContent = formatTime(t);
     const speedK = settings.units === 'mph' ? 2.23694 : 3.6;
     const stats = [
-      ['Best time', formatTime(settings.best), newBest],
+      [`Best on the ${spec.name}`, formatTime(r.best), newBest],
       ['Style points', stunts.total.toLocaleString()],
       ['Top speed', `${Math.round(G.topSpeed * speedK)} ${settings.units === 'mph' ? 'mph' : 'km/h'}`],
+      ['Longest wheelie', `${Math.round(stunts.best.wheelie)} m`],
       ['Biggest air', `${stunts.best.air.toFixed(1)} s`],
-      ['Cacti flattened', String(G.cacti)],
-      ['Recoveries', String(G.recovers)],
+      ['Crashes', String(G.crashes)],
     ];
     $('res-stats').innerHTML = stats.map(([k, v, good]) => `<div><dt>${k}</dt><dd class="${good ? 'good' : ''}">${v}</dd></div>`).join('');
     setTimeout(() => {
@@ -301,19 +336,33 @@ async function boot() {
   const click = (id, fn) => $(id).addEventListener('click', () => { audio.init(); audio.click(); fn(); });
   click('btn-rally', startRace);
   click('btn-free', startFree);
+  click('btn-wheelie', startWheelie);
+  const renderGarage = () => {
+    $('liv-name').textContent = spec.name;
+    $('bike-blurb').textContent = spec.blurb;
+    const st = spec.stats;
+    for (const [k, v] of Object.entries(st)) $('stat-' + k).style.transform = `scaleX(${v.toFixed(2)})`;
+    const r = rec();
+    $('garage-best').textContent = `Best lap ${r.best ? formatTime(r.best) : '--'} · Longest wheelie ${r.wheelie ? Math.round(r.wheelie) + ' m' : '--'}`;
+  };
   click('btn-garage', () => {
     G.state = 'garage';
     showScreen('garage');
     placeAtStart();
-    $('liv-name').textContent = LIVERIES[truck.liveryIndex].name;
+    renderGarage();
   });
-  const cycleLivery = (d) => {
-    const i = (truck.liveryIndex + d + LIVERIES.length) % LIVERIES.length;
-    truck.setLivery(i);
-    settings.livery = i;
-    store.set('livery', i);
-    $('liv-name').textContent = LIVERIES[i].name;
+  const setBike = (i) => {
+    bikeIndex = (i + BIKES.length) % BIKES.length;
+    spec = BIKES[bikeIndex];
+    settings.bike = bikeIndex;
+    store.set('bike', bikeIndex);
+    bike.setSpec(spec);
+    model.build(spec, LOOKS[spec.id]);
+    hud.setBalance(bike.balanceAngle);
+    placeAtStart();
+    renderGarage();
   };
+  const cycleLivery = (d) => setBike(bikeIndex + d);
   click('liv-prev', () => cycleLivery(-1));
   click('liv-next', () => cycleLivery(1));
   click('garage-done', toMenu);
@@ -349,7 +398,7 @@ async function boot() {
     } else showScreen('menu');
   });
   click('btn-resume', resume);
-  click('btn-restart', () => { showScreen(null); if (G.mode === 'race') startRace(); else startFree(); });
+  click('btn-restart', () => { showScreen(null); if (G.mode === 'race') startRace(); else if (G.mode === 'wheelie') startWheelie(); else startFree(); });
   click('btn-quit', toMenu);
   click('btn-again', startRace);
   click('btn-menu', toMenu);
@@ -400,16 +449,16 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 
   // ---- Per-frame.
-  const bodyPos = new THREE.Vector3(), bodyQuat = new THREE.Quaternion();
+  const bodyPos = new THREE.Vector3(), bodyQuat = new THREE.Quaternion(), headPos = new THREE.Vector3();
   const tmpV = new THREE.Vector3(), camDir = new THREE.Vector3();
-  const HOLD = { throttle: 0, brake: 1, steer: 0, handbrake: true, boost: false, lookX: 0, lookY: 0 };
+  const HOLD = { throttle: 0, brake: 1, steer: 0, lean: false, boost: false, hold: true, lookX: 0, lookY: 0 };
 
   function handleEvents(events) {
     for (const e of events) {
       if (e.type === 'count') { hud.countdown(String(e.value)); audio.beep(); }
       else if (e.type === 'go') { hud.countdown('GO!', true); audio.beep(true); G.state = 'race'; }
       else if (e.type === 'checkpoint') {
-        const best = settings.bestSplits?.[e.index];
+        const best = rec().splits?.[e.index];
         hud.split(best ? e.time - best : null, best ? undefined : formatTime(e.time));
         hud.popup(`Checkpoint <em>${e.index + 1}</em>`, 'cp');
         audio.checkpoint();
@@ -417,9 +466,22 @@ async function boot() {
         hud.popup('<em>Finish!</em>', 'cp');
         finishRace();
       } else if (e.type === 'stunt') {
-        hud.popup(`${e.label}${e.combo > 1 ? ` <em>x${e.combo}</em>` : ''}<span class="pts">+${e.points}</span>`);
+        hud.popup(`${e.label}${e.combo > 1 ? ` <em>x${e.combo}</em>` : ''}<span class="pts">+${e.points}</span>${e.sub ? `<span class="sub">${e.sub}</span>` : ''}`);
         G.boost = Math.min(1, G.boost + 0.12);
         audio.stunt();
+      } else if (e.type === 'wheelieEnd') {
+        const r = rec();
+        const record = e.wheelie > r.wheelie + 0.5;
+        if (record) {
+          r.wheelie = e.wheelie;
+          store.set('wheelie:' + spec.id, e.wheelie);
+        }
+        if (G.mode === 'wheelie') {
+          const m = Race.wheelieMedal(e.wheelie);
+          hud.popup(`${Math.round(e.wheelie)} m${record ? ' <em>New record!</em>' : m ? ` <em>${m}</em>` : ''}`, 'cp');
+          if (record) audio.finish();
+          hud.challenge(r.wheelie, nextWheelieTarget(r.wheelie));
+        } else if (record && e.wheelie > 20) hud.popup(`Wheelie record <em>${Math.round(e.wheelie)} m</em>`, 'cp');
       }
     }
   }
@@ -428,36 +490,43 @@ async function boot() {
     G.time += dt;
     const S = G.state;
     let inp;
-    if (S === 'menu' || S === 'results') inp = auto.drive(vehicle);
+    auto.wheelies = S === 'menu' || S === 'results';
+    if (S === 'menu' || S === 'results') inp = auto.drive(bike, dt);
     else if (S === 'garage' || S === 'countdown') inp = HOLD;
     else {
-      inp = params.has('auto') ? auto.drive(vehicle) : input.read();
+      inp = params.has('auto') ? auto.drive(bike, dt) : input.read();
       // Boost burns the boost bar; it refills slowly and with stunts.
       if (inp.boost && G.boost > 0.01) G.boost = Math.max(0, G.boost - dt * 0.22);
       else { inp.boost = false; G.boost = Math.min(1, G.boost + dt * 0.025); }
     }
     const playing = S === 'race' || S === 'free';
 
-    if (S === 'countdown') {
-      // The truck holds on the line; throttle revs the engine.
-      const rev = input.read().throttle;
-      vehicle.rpm += (900 + rev * 5200 - vehicle.rpm) * (1 - Math.exp(-dt * (rev > 0.1 ? 6 : 3)));
-      vehicle.throttleInput = rev;
-    } else {
-      vehicle.update(dt, inp);
-    }
-    vehicle.renderTransform(bodyPos, bodyQuat);
+    bike.update(dt, inp);
+    bike.renderTransform(bodyPos, bodyQuat);
 
     // Race logic and stunts.
-    const ev = race.update(dt, vehicle);
+    const ev = race.update(dt, bike);
     if (playing || S === 'countdown') handleEvents(ev);
     if (playing) {
-      handleEvents(stunts.update(dt, vehicle));
-      G.topSpeed = Math.max(G.topSpeed, vehicle.speed);
+      handleEvents(stunts.update(dt, bike));
+      G.topSpeed = Math.max(G.topSpeed, bike.speed);
     }
 
-    // Impacts: cacti, rocks, landings.
-    for (const e of vehicle.impacts) {
+    // Impacts: crashes, cacti, rocks, landings.
+    for (const e of bike.impacts) {
+      if (e.type === 'crash') {
+        audio.crash(e.strength);
+        rig.kick(settings.shake ? 0.8 : 0);
+        fx.burst(tmpV.copy(bike.pos).setY(bike.pos.y - 0.6), 0.8);
+        if (playing) {
+          G.crashes++;
+          const sev = [];
+          stunts.crash(sev);
+          handleEvents(sev);
+          hud.popup(e.reason === 'loop' ? 'Looped <em>out!</em>' : '<em>Crash!</em>', 'bad');
+        }
+        continue;
+      }
       if (e.type === 'break' && e.target.type === 'cactus') {
         scatter.breakCactus(e.target);
         fx.cactusBreak(e.target, e.velocity);
@@ -474,43 +543,49 @@ async function boot() {
         rig.kick(settings.shake ? e.strength : 0);
       }
     }
-    vehicle.impacts.length = 0;
-    if (vehicle.landing > G.lastLanding + 0.25) {
-      fx.burst(tmpV.copy(vehicle.pos).setY(vehicle.pos.y - 0.8), vehicle.landing);
-      audio.thump(vehicle.landing);
-      rig.kick(settings.shake ? vehicle.landing * 0.6 : 0);
+    bike.impacts.length = 0;
+    if (bike.landing > G.lastLanding + 0.25 && !bike.crashed) {
+      fx.burst(tmpV.copy(bike.pos).setY(bike.pos.y - 0.8), bike.landing * 0.7);
+      audio.thump(bike.landing * 0.8);
+      rig.kick(settings.shake ? bike.landing * 0.5 : 0);
     }
-    G.lastLanding = vehicle.landing;
+    G.lastLanding = bike.landing;
 
+    // After a crash, pick yourself up where you were on the road.
+    if (bike.crashed && bike.crashTime > 2.4) {
+      if (playing) recover(true);
+      else placeAt(auto.s ?? startPos().s);
+      auto.reset(race.progressS);
+    }
     // Recovery hints.
     if (playing) {
-      G.upsideT = vehicle.upsideDown ? G.upsideT + dt : 0;
-      G.stuckT = inp.throttle > 0.5 && vehicle.speed < 0.8 ? G.stuckT + dt : 0;
-      if (G.upsideT > 3.5) { recover(); G.upsideT = 0; }
-      const far = Math.hypot(vehicle.pos.x, vehicle.pos.z) > 1000;
-      hud.message(G.upsideT > 1 || G.stuckT > 3 ? (coarse ? 'Tap ↻ to recover' : 'Press R to recover') : far ? 'Head back into the canyon' : '');
+      G.stuckT = inp.throttle > 0.5 && bike.speed < 0.8 && !bike.crashed ? G.stuckT + dt : 0;
+      const far = Math.hypot(bike.pos.x, bike.pos.z) > 1000;
+      hud.message(G.stuckT > 3 ? (coarse ? 'Tap ↻ to recover' : 'Press R to recover') : far ? 'Head back into the canyon' : '');
     }
 
-    // Truck and camera.
-    truck.update(dt, vehicle, bodyPos, bodyQuat, G.time);
-    if (playing && vehicle.speed > 5) truck.setDirt(Math.min(0.9, truck.shared.uDirt.value + dt * 0.004));
+    // Bike and camera.
+    model.update(dt, bike, bodyPos, bodyQuat, G.time, scene);
+    if (playing && bike.speed > 5) model.setDirt(Math.min(0.9, model.shared.uDirt.value + dt * 0.004));
     const look = input.consumeLook();
-    if (S === 'menu' || S === 'results') rig.cinematic(dt, vehicle, bodyPos, route, race.progressS ?? 0);
+    const camPos = bike.crashed ? model.riderCrashGroup.position : bodyPos;
+    if (S === 'menu' || S === 'results') rig.cinematic(dt, bike, camPos, route, race.progressS ?? 0);
     else if (S === 'garage') rig.orbit(dt, bodyPos);
     else {
-      const rumble = vehicle.groundedWheels && settings.shake ? clamp(vehicle.speed / 40, 0, 1) : 0;
-      rig.update(dt, vehicle, bodyPos, bodyQuat, look, { boost: inp.boost, stickX: inp.lookX, stickY: inp.lookY, rumble });
+      const rumble = bike.groundedWheels && settings.shake ? clamp(bike.speed / 40, 0, 1) : 0;
+      model.rider.head.getWorldPosition(headPos);
+      rig.update(dt, bike, camPos, bodyQuat, look, { boost: inp.boost, stickX: inp.lookX, stickY: inp.lookY, rumble, head: bike.crashed ? null : headPos, lean: bike.lean });
     }
     const radial = post.composite.uniforms.uRadial;
     radial.value += ((inp.boost && playing ? 0.8 : 0) - radial.value) * (1 - Math.exp(-dt * 5));
 
-    // Shadow camera over the truck, snapped to texels to stop shimmering.
+    // Shadow camera over the bike, snapped to texels to stop shimmering.
     const sc = sun.shadow.camera;
     const texel = (sc.right - sc.left) / sun.shadow.mapSize.x;
     sun.target.position.set(Math.round(bodyPos.x / texel) * texel, bodyPos.y, Math.round(bodyPos.z / texel) * texel);
     sun.position.copy(sun.target.position).addScaledVector(atmo.sunDir, 600);
 
-    fx.truck(dt, vehicle, bodyQuat, inp.boost);
+    fx.bike(dt, bike, bodyQuat);
     gates.update(dt);
 
     // HUD.
@@ -525,28 +600,26 @@ async function boot() {
         nav = { angle: -angDiff(gateYaw, camYaw), dist: Math.hypot(tmpV.x, tmpV.z) };
       }
       hud.update({
-        speed: vehicle.speed, gear: vehicle.gear, rpm: vehicle.rpm, boost: G.boost, style: stunts.total,
+        speed: bike.speed, power: bike.power, kw: (bike.power * spec.power) / 1000, boosting: inp.boost && playing, boost: G.boost, style: stunts.total,
         time: race.state === 'countdown' ? 0 : race.time, cp: race.next, cpTotal: gates.gates.length, nav,
-        x: vehicle.pos.x, z: vehicle.pos.z, heading: vehicle.heading,
+        x: bike.pos.x, z: bike.pos.z, heading: bike.heading, pitch: bike.wheelieAngle, wheelie: stunts.wheelie,
       });
     }
 
     // Sound.
     let loose = 0, slip = 0, wet = false;
-    for (const w of vehicle.wheels) {
+    for (const w of bike.wheels) {
       if (!w.contact || !w.surface) continue;
-      loose += (w.surface.dust || 0) * 0.25;
-      slip = Math.max(slip, w.slipLong, Math.min(1, w.slipLat / 6));
+      loose += (w.surface.dust || 0) * 0.5;
+      slip = Math.max(slip, w.slipLong, Math.min(1, w.slipLat / 5));
       if (w.surface.name === 'water') wet = true;
     }
     audio.update(dt, {
-      running: true,
-      rpm: vehicle.rpm, throttle: vehicle.throttleInput || 0, speed: vehicle.speed, grounded: vehicle.groundedWheels > 0,
-      loose: clamp(loose, 0, 1), slip, water: wet, boost: inp.boost && playing, air: vehicle.groundedWheels === 0,
-      limiter: vehicle.rpm > 6850 && (vehicle.throttleInput || 0) > 0.5, shifting: vehicle.shiftTimer > 0,
+      running: !bike.crashed,
+      motor: bike.motorOmega, power: Math.max(0, bike.power), throttle: bike.throttle || 0, speed: bike.speed, grounded: bike.groundedWheels > 0,
+      loose: clamp(loose, 0, 1), slip, water: wet, boost: inp.boost && playing, air: bike.groundedWheels === 0,
     });
   }
-  vehicle.onShift = (d) => { if (d > 0) audio.shift(); };
 
   // Second pass into the same HDR target: soft particles and water, which read the scene depth.
   function renderExtras() {
@@ -587,9 +660,11 @@ async function boot() {
   }
 
   // ---- Start.
+  if (params.has('bike')) setBike(+params.get('bike'));
   const initialState = params.get('state');
   if (initialState === 'race') startRace();
   else if (initialState === 'free') startFree();
+  else if (initialState === 'wheelie') startWheelie();
   else toMenu();
   if (params.has('sim')) {
     const secs = +params.get('sim');
@@ -616,8 +691,8 @@ async function boot() {
   requestAnimationFrame(frame);
 
   window.__canyon = {
-    renderer, scene, camera, terrain, world, atmo, post, sun, THREE, baked, vehicle, truck, rig, phys, route, auto, scatter, fx, water,
-    gates, race, stunts, hud, G, update, render, startRace, startFree, toMenu,
+    renderer, scene, camera, terrain, world, atmo, post, sun, THREE, baked, bike, model, rig, phys, route, auto, scatter, fx, water,
+    gates, race, stunts, hud, input, G, update, render, startRace, startFree, startWheelie, toMenu, setBike: (i) => setBike(i),
     renderOnce: () => render(0.016),
     stepFrames: (n = 1, dt = 1 / 60) => { for (let i = 0; i < n; i++) { update(dt); render(dt); } },
   };

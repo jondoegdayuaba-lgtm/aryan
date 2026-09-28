@@ -3,7 +3,7 @@
 //    its colour from the sky (warm toward the sun, cool away from it).
 //  - Baked terrain lighting: materials that opt in (useTerrainLight) are shaded
 //    by the canyon walls and mesas using the baked sun-visibility / sky-visibility
-//    maps, so a truck driving into a canyon's shadow goes dark.
+//    maps, so a bike riding into a canyon's shadow goes dark.
 import * as THREE from 'three';
 
 export const terrainLightUniforms = {

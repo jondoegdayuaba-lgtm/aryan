@@ -4,15 +4,16 @@ Two 3D browser games made with plain HTML, CSS and JavaScript and [three.js](htt
 
 ## Canyon Rush
 
-A trophy-truck rally through a red-rock desert at golden hour. Race a 4 km loop through a canyon, across a dry lake, over dunes and through an oasis, with 12 checkpoints, big jumps and medal times to beat. Or drive anywhere in free roam.
+An e-bike rally through a red-rock desert at golden hour. Pick one of three electric dirt bikes and race a 4 km loop through a canyon, across a dry lake, over dunes and through an oasis. Pull wheelies, backflip off the jumps, or see how far you can ride on the back wheel in the wheelie challenge.
 
 What's in it:
 
-- **A generated desert you can drive anywhere in, about 2 km across, with terrain running out to the horizon.** Mesas with layered sandstone, buttes, a canyon, dunes, a cracked dry lake and an oasis pond. Terrain detail streams in around you, from 1 m near the truck to 64 m on the skyline.
+- **Three e-bikes.** The Volt LX is light and the easiest to wheelie, the Sting R is quicker everywhere, and the Storm MX is a full-size electric motocross bike: the fastest, and the hardest to hold up.
+- **Real wheelie physics.** Each bike has a balance point, the angle where its weight sits right over the back axle. Hold a wheelie with the throttle and the rear brake. Go past the balance point and you loop out.
+- **A simulated bike.** Long-travel suspension on both wheels, a motor with full torque from a standstill, and tyres that grip differently on packed dirt, gravel, sand, the dry lake and in water. The bike leans into turns, and the rider stands up over jumps, hangs back in wheelies and gets thrown clear in a crash.
+- **A generated desert you can ride anywhere in, about 2 km across, with terrain running out to the horizon.** Mesas with layered sandstone, buttes, a canyon, dunes, a cracked dry lake and an oasis pond. Terrain detail streams in around you, from 1 m near the bike to 64 m on the skyline.
 - **Physically based lighting.** A simulated sky (sun, haze and clouds) lights the scene, and the terrain's soft shadows are computed on the GPU when the game loads. Four times of day: golden hour, morning, midday and sunset.
-- **A simulated truck.** Long-travel suspension on each wheel, tyres that grip differently on packed dirt, gravel, sand, the dry lake and in water, a six-speed gearbox and a synthesised V8. Chassis damage is not modelled, so drive it hard.
-- **Scenery you can hit.** Saguaros break when you smash through them; boulders, palms and dead trees don't.
-- **Dust, tyre tracks, splashes and flying debris.**
+- **Dust, dirt flung off the back tyre, tyre tracks, splashes, and cacti that break when you ride through them.**
 
 ### Play it
 
@@ -26,44 +27,50 @@ The desert is built when the game starts, which takes a few seconds. Graphics qu
 | Action | Keyboard | Phone | Gamepad |
 | --- | --- | --- | --- |
 | Throttle | W / ↑ | Gas | Right trigger |
-| Brake, hold to reverse | S / ↓ | Brake | Left trigger |
+| Brake | S / ↓ | Brake | Left trigger |
 | Steer | A D / ← → | ◀ ▶ | Left stick |
-| Handbrake (slides) | Space | E-brake | A or RB |
+| Wheelie (hold) | Space | Wheelie | A or RB |
 | Boost | Shift | Boost | B or LB |
-| Change camera | C | | Y |
-| Recover the truck | R | Circular-arrow button | Back |
+| Change camera (chase, wide, helmet, front) | C | | Y |
+| Back on the road | R | Circular-arrow button | Back |
 | Look around | Drag with the mouse | Drag on the screen | Right stick |
 | Pause | Esc / P | Pause button | Start |
 | Mute | M | | |
 
-In the air, throttle lifts the nose and brake drops it. Hold the handbrake in the air to flip and roll with the throttle, brake and steering.
+**Wheelies:** hold Space to pull the front up. While it's up, throttle lifts it higher and the brake brings it down. Keep the needle on the wheelie meter in the green, near the balance point, for bonus points. Let go of Space to set the front down. Boosting in a wheelie is the quickest way to loop out.
 
-### Rally and medals
+**In the air:** hold Space for a backflip, hold A or D to turn the bike, all the way round for a 360. Let go and the rider lines the bike up for landing. Land upside down or sideways and you crash.
 
-Go through the 12 checkpoints in order; the timer shows your split against your best run at each one. Finish under **2:08** for gold, **2:25** for silver and **2:50** for bronze. Your best time is saved in the browser.
+Brake while steering at speed to slide the back out. Hold the brake at a standstill to walk the bike backwards.
 
-Style points come from air time, flips and barrel rolls, clean landings, drifts, splashing through the oasis and smashing cacti. Chaining tricks within four seconds raises the multiplier (up to ×5), and every trick tops up the boost bar.
+### Modes and medals
 
-The garage has four liveries.
+- **Rally:** go through the 12 checkpoints in order; the timer shows your split against your best run at each one. Each bike has its own medal times: gold is 2:43 on the Volt, 2:24 on the Sting and 2:06 on the Storm.
+- **Wheelie challenge:** start on the dry lake and wheelie as far as you can. Bronze at 100 m, silver at 250 m, gold at 500 m.
+- **Free ride:** the whole desert, no clock.
+
+Style points come from wheelies, air time, backflips, 360s, clean landings, slides, splashing through the oasis and smashing cacti. Chaining tricks within four seconds raises the multiplier (up to ×5), and every trick tops up the boost bar. A crash resets the multiplier. Best laps and longest wheelies are saved in the browser, per bike.
 
 ### Files
 
 | File | What it does |
 | --- | --- |
-| `canyon-rush/js/main.js` | Game states, loop, menus, rally flow |
+| `canyon-rush/js/main.js` | Game states, loop, menus, garage, rally and wheelie challenge |
+| `canyon-rush/js/game/bike.js` | E-bike physics: suspension, motor, tyres, wheelies, air control, crashes; the three bikes' specs |
+| `canyon-rush/js/game/bikemodel.js` | The bikes' 3D models and colours |
+| `canyon-rush/js/game/rider.js` | The rider, posed with IK |
+| `canyon-rush/js/game/stunts.js` | Style points and tricks |
 | `canyon-rush/js/world/` | The stage layout, the road route and the terrain generator |
 | `canyon-rush/js/render/terrain.js` | Streaming terrain and its desert surface shader |
 | `canyon-rush/js/render/atmosphere.js` | Sky simulation, sun, image-based lighting |
 | `canyon-rush/js/render/bake.js` | Soft terrain shadows and sky occlusion, baked on the GPU |
 | `canyon-rush/js/render/post.js` | HDR, bloom, exposure and tone mapping |
 | `canyon-rush/js/render/scatter.js` | Rocks, cacti, scrub, grass and palms |
-| `canyon-rush/js/render/effects.js` | Dust, splashes, debris and tyre tracks |
+| `canyon-rush/js/render/effects.js` | Dust, roost, splashes, debris and tyre tracks |
 | `canyon-rush/js/render/water.js` | The oasis pond |
-| `canyon-rush/js/game/vehicle.js` | Truck physics |
-| `canyon-rush/js/game/truck.js` | Truck model and liveries |
-| `canyon-rush/js/game/audio.js` | Synthesised engine, gravel, wind and splash sounds |
+| `canyon-rush/js/game/audio.js` | Synthesised motor, chain, tyres, wind and crash sounds |
 
-To change the stage, edit `canyon-rush/js/world/stage.js`: the road's control points, jumps, checkpoints, mesas and buttes all live there. Medal times are in `canyon-rush/js/game/race.js`.
+To change the stage, edit `canyon-rush/js/world/stage.js`: the road's control points, jumps, checkpoints, mesas and buttes all live there. Medal times are in `canyon-rush/js/game/race.js`; bike power, weight and wheelie handling are in `canyon-rush/js/game/bike.js`.
 
 After changing the code, rebuild the one-file versions of both games with:
 

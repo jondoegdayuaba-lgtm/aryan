@@ -1,11 +1,15 @@
 // Rally logic: countdown, checkpoints in order, split times against your best,
 // medals, and a progress tracker along the route (also used for respawning).
 
-export const MEDALS = [
-  { name: 'Gold', time: 128 },
-  { name: 'Silver', time: 145 },
-  { name: 'Bronze', time: 170 },
-];
+// Medal times for each bike (seconds for a lap).
+export const MEDALS = {
+  volt: [{ name: 'Gold', time: 163 }, { name: 'Silver', time: 181 }, { name: 'Bronze', time: 210 }],
+  sting: [{ name: 'Gold', time: 144 }, { name: 'Silver', time: 160 }, { name: 'Bronze', time: 185 }],
+  storm: [{ name: 'Gold', time: 126 }, { name: 'Silver', time: 140 }, { name: 'Bronze', time: 162 }],
+};
+
+// Wheelie challenge: metres on one wheel.
+export const WHEELIE_MEDALS = [{ name: 'Gold', dist: 500 }, { name: 'Silver', dist: 250 }, { name: 'Bronze', dist: 100 }];
 
 export function formatTime(t, showMs = true) {
   if (!isFinite(t)) return '--:--.--';
@@ -49,7 +53,7 @@ export class Race {
     this.progressS = n.s;
     this.lateral = n.d;
     // Remember recent safe spots on the road for respawning.
-    if (n.d < 6 && vehicle.groundedWheels >= 3 && vehicle.speed > 3 && !vehicle.upsideDown) this.lastSafe = n.s;
+    if (n.d < 6 && vehicle.groundedWheels === vehicle.wheels.length && vehicle.speed > 3 && !vehicle.crashed && !vehicle.upsideDown) this.lastSafe = n.s;
 
     if (this.state === 'countdown') {
       const before = Math.ceil(this.countdown);
@@ -95,8 +99,13 @@ export class Race {
     return this.gates.gates[this.next] || null;
   }
 
-  medalFor(t) {
-    for (const m of MEDALS) if (t <= m.time) return m.name;
+  medalFor(t, bikeId) {
+    for (const m of MEDALS[bikeId] || MEDALS.volt) if (t <= m.time) return m.name;
+    return null;
+  }
+
+  static wheelieMedal(d) {
+    for (const m of WHEELIE_MEDALS) if (d >= m.dist) return m.name;
     return null;
   }
 }

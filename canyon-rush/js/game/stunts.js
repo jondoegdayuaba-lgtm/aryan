@@ -1,13 +1,15 @@
-// Style points: big air, flips and rolls, drifts, perfect landings, splashes and
-// flattened cacti. Chaining tricks inside a few seconds builds a multiplier.
+// Style points: wheelies (by the metre, more near the balance point), big air,
+// backflips and 360s, clean landings, slides, splashes and flattened cacti.
+// Chaining tricks inside a few seconds builds a multiplier; a crash resets it.
 import * as THREE from 'three';
+
+const TAU = Math.PI * 2;
 
 export class Stunts {
   constructor() {
-    this.reset();
-    this._v = new THREE.Vector3();
     this._r = new THREE.Vector3();
     this._f = new THREE.Vector3();
+    this.reset();
   }
 
   reset() {
@@ -16,88 +18,147 @@ export class Stunts {
     this.comboTimer = 0;
     this.air = 0;
     this.pitchAcc = 0;
-    this.rollAcc = 0;
-    this.drift = 0;
-    this.driftTime = 0;
-    this.driftCool = 0;
+    this.yawAcc = 0;
     this.wasAir = false;
+    this.slide = 0;
+    this.slideTime = 0;
+    this.slideCool = 0;
+    this.sliding = 0;
     this.inWater = false;
-    this.best = { air: 0, drift: 0 };
+    this.crashes = 0;
+    this.wheelie = { active: false, dist: 0, time: 0, sweet: 0, last: 0, lastT: 99 };
+    this.best = { air: 0, wheelie: 0, slide: 0 };
   }
 
-  _award(events, label, points, sub = '') {
+  _award(events, label, points, sub = '', extra = {}) {
     const pts = Math.round(points * this.combo);
     this.total += pts;
-    events.push({ type: 'stunt', label, points: pts, combo: this.combo, sub });
+    events.push({ type: 'stunt', label, points: pts, combo: this.combo, sub, ...extra });
     this.combo = Math.min(5, this.combo + 1);
     this.comboTimer = 4;
   }
 
-  update(dt, v) {
+  update(dt, bike) {
     const ev = [];
     this.comboTimer -= dt;
     if (this.comboTimer <= 0) this.combo = 1;
-    const up = this._v.set(0, 1, 0).applyQuaternion(v.quat);
-    const right = this._r.set(1, 0, 0).applyQuaternion(v.quat);
-    const fwd = this._f.set(0, 0, -1).applyQuaternion(v.quat);
-    const air = v.groundedWheels === 0;
+    this.wheelie.lastT += dt;
+    if (bike.crashed) return ev;
+    const right = this._r.set(1, 0, 0).applyQuaternion(bike.quat);
+    const air = bike.groundedWheels === 0;
 
+    // ---- Air, flips and spins.
     if (air) {
       this.air += dt;
-      this.pitchAcc += v.angVel.dot(right) * dt;
-      this.rollAcc += v.angVel.dot(fwd) * dt;
+      this.pitchAcc += bike.angVel.dot(right) * dt;
+      this.yawAcc += bike.angVel.y * dt;
       this.wasAir = true;
     } else if (this.wasAir) {
-      // Landed.
       const t = this.air;
-      const flips = Math.floor(Math.abs(this.pitchAcc) / (Math.PI * 1.7));
-      const rolls = Math.floor(Math.abs(this.rollAcc) / (Math.PI * 1.7));
-      const upright = up.y > 0.85;
+      const flips = Math.floor(Math.abs(this.pitchAcc) / (TAU * 0.85));
+      const spins = Math.floor(Math.abs(this.yawAcc) / (TAU * 0.85));
       if (t > 0.55) {
         this.best.air = Math.max(this.best.air, t);
-        const label = t > 2.6 ? 'HUGE AIR' : t > 1.5 ? 'BIG AIR' : 'AIR';
-        this._award(ev, label, t * 120, `${t.toFixed(1)} s`);
+        this._award(ev, t > 2.4 ? 'HUGE AIR' : t > 1.4 ? 'BIG AIR' : 'AIR', t * 120, `${t.toFixed(1)} s`);
       }
-      if (upright && (flips || rolls)) {
-        if (flips) this._award(ev, this.pitchAcc > 0 ? 'BACKFLIP' : 'FRONTFLIP', 600 * flips);
-        if (rolls) this._award(ev, 'BARREL ROLL', 500 * rolls);
-      }
-      if (t > 0.8 && upright && v.groundedWheels === 4 && Math.abs(v.angVel.dot(right)) < 0.8) this._award(ev, 'CLEAN LANDING', 100);
+      if (flips) this._award(ev, (this.pitchAcc > 0 ? 'BACKFLIP' : 'FRONTFLIP') + (flips > 1 ? ` x${flips}` : ''), 700 * flips);
+      if (spins) this._award(ev, spins > 1 ? `${spins * 360}` : '360', 500 * spins);
+      if (t > 0.8 && bike.groundedWheels === 2 && Math.abs(bike.angVel.dot(right)) < 1) this._award(ev, 'CLEAN LANDING', 100);
       this.air = 0;
       this.pitchAcc = 0;
-      this.rollAcc = 0;
+      this.yawAcc = 0;
       this.wasAir = false;
     }
 
-    // Drifting: sliding sideways at speed.
-    const hs = Math.hypot(v.vel.x, v.vel.z);
-    let slip = 0;
-    if (hs > 11 && !air) {
-      const vf = v.vel.dot(fwd) / (v.vel.length() || 1);
-      slip = Math.acos(Math.min(1, Math.max(-1, vf)));
+    // ---- Wheelies: distance on the back wheel, with a bonus for time spent near the balance point.
+    // A short hop off a bump (back wheel briefly off the ground, nose still up)
+    // doesn't end it.
+    const W = this.wheelie;
+    const hop = W.active && air && bike.wheelieAngle > 0.2;
+    if ((bike.inWheelie && !air) || hop) {
+      W.grace = hop ? (W.grace || 0) + dt : 0;
+      if (W.grace > 0.3) this._endWheelie(ev);
+      else {
+        W.active = true;
+        W.dist += bike.speed * dt;
+        W.time += dt;
+        // The green band on the wheelie meter: just under the balance point.
+        const off = bike.wheelieAngle - bike.balanceAngle;
+        if (off > -0.28 && off < 0.05) W.sweet += dt;
+      }
+    } else if (W.active) {
+      W.grace = (W.grace || 0) + dt;
+      if (W.grace > 0.12 || bike.wheels[0].contact) this._endWheelie(ev);
     }
-    if (slip > 0.3 && slip < 1.9 && !air) {
-      this.drift += dt * (slip * 90 + hs * 3);
-      this.driftTime += dt;
-      this.driftCool = 0.45;
-    } else if (this.driftTime > 0) {
-      this.driftCool -= dt;
-      if (this.driftCool <= 0 || air) {
-        if (this.driftTime > 0.9 && this.drift > 60) {
-          this.best.drift = Math.max(this.best.drift, this.drift);
-          this._award(ev, this.drift > 900 ? 'MEGA DRIFT' : 'DRIFT', this.drift, `${this.driftTime.toFixed(1)} s`);
+
+    // ---- Slides: rear stepped out at speed.
+    const hs = Math.hypot(bike.vel.x, bike.vel.z);
+    let slip = 0;
+    if (hs > 8 && !air) {
+      const f = this._f.set(0, 0, -1).applyQuaternion(bike.quat);
+      f.y = 0;
+      slip = Math.acos(THREE.MathUtils.clamp((f.x * bike.vel.x + f.z * bike.vel.z) / (hs * (f.length() || 1)), -1, 1));
+    }
+    if (slip > 0.35 && slip < 1.6) {
+      this.slide += dt * (slip * 110 + hs * 4);
+      this.slideTime += dt;
+      this.slideCool = 0.4;
+    } else if (this.slideTime > 0) {
+      this.slideCool -= dt;
+      if (this.slideCool <= 0 || air) {
+        if (this.slideTime > 0.7 && this.slide > 60) {
+          this.best.slide = Math.max(this.best.slide, this.slide);
+          this._award(ev, this.slide > 800 ? 'MEGA SLIDE' : 'SLIDE', this.slide, `${this.slideTime.toFixed(1)} s`);
         }
-        this.drift = 0;
-        this.driftTime = 0;
+        this.slide = 0;
+        this.slideTime = 0;
       }
     }
-    this.drifting = this.driftTime > 0.5 ? this.drift : 0;
+    this.sliding = this.slideTime > 0.4 ? this.slide : 0;
 
-    // Splash through the oasis.
-    const wet = (v.inWater || 0) > 0.05;
-    if (wet && !this.inWater && v.speed > 12) this._award(ev, 'SPLASH', 150);
+    // ---- Splashing through the oasis.
+    const wet = (bike.inWater || 0) > 0.02;
+    if (wet && !this.inWater && bike.speed > 10) this._award(ev, 'SPLASH', 150);
     this.inWater = wet;
     return ev;
+  }
+
+  _endWheelie(ev) {
+    const W = this.wheelie;
+    if (W.dist >= 8) {
+      const sweet = W.time > 0 ? W.sweet / W.time : 0;
+      const label = W.dist > 300 ? 'MONSTER WHEELIE' : W.dist > 120 ? 'MEGA WHEELIE' : W.dist > 40 ? 'BIG WHEELIE' : 'WHEELIE';
+      this.best.wheelie = Math.max(this.best.wheelie, W.dist);
+      this._award(ev, label, W.dist * 4 * (1 + sweet), `${Math.round(W.dist)} m${sweet > 0.5 ? ' · balanced' : ''}`);
+      ev.push({ type: 'wheelieEnd', wheelie: W.dist, crashed: false });
+      W.last = W.dist;
+      W.lastT = 0;
+    }
+    W.active = false;
+    W.dist = 0;
+    W.time = 0;
+    W.sweet = 0;
+    W.grace = 0;
+  }
+
+  // Crashing cancels whatever was in progress and resets the multiplier.
+  crash(ev) {
+    this.combo = 1;
+    this.comboTimer = 0;
+    const W = this.wheelie;
+    if (W.active && W.dist >= 8) {
+      // A wheelie that ends in a loop-out still measures as far as it got (no points).
+      W.last = W.dist;
+      W.lastT = 0;
+      this.best.wheelie = Math.max(this.best.wheelie, W.dist);
+      ev?.push({ type: 'wheelieEnd', wheelie: W.dist, crashed: true });
+    }
+    W.active = false;
+    W.dist = W.time = W.sweet = 0;
+    this.air = this.pitchAcc = this.yawAcc = 0;
+    this.wasAir = false;
+    this.slide = this.slideTime = 0;
+    this.crashes++;
   }
 
   cactus(ev) {

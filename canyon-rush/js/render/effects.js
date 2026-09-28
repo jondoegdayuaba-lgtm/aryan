@@ -1,5 +1,5 @@
 // Particles and decals: dust plumes lit by the low sun (they glow when you look
-// toward it), wheel spray, water splashes, cactus debris, exhaust flames, and
+// toward it), dirt roost off the back tyre, water splashes, cactus debris, and
 // tyre tracks pressed into the ground.
 import * as THREE from 'three';
 import { makePuffTexture, canvasTexture } from './textures.js';
@@ -238,7 +238,7 @@ class Tracks {
       fog: true,
     });
     this.wheels = [];
-    for (let w = 0; w < 4; w++) {
+    for (let w = 0; w < 2; w++) {
       const n = this.segs * 2;
       const geo = new THREE.BufferGeometry();
       const pos = new Float32Array(n * 3), uv = new Float32Array(n * 2), alpha = new Float32Array(n);
@@ -397,8 +397,8 @@ export class Effects {
     this.tracks = new Tracks(scene, heightAt);
     this.debris = new Debris(scene, heightAt);
     this.wind = new THREE.Vector3(2.2, 0, 0.6);
-    this.acc = [0, 0, 0, 0];
-    this.exhaustAcc = 0;
+    this.acc = [0, 0];
+    this.roostAcc = 0;
     this._v = new THREE.Vector3();
     this._w = new THREE.Vector3();
     this._s = new THREE.Vector3();
@@ -407,83 +407,76 @@ export class Effects {
     };
   }
 
-  // Per-frame emitters for the truck.
-  truck(dt, vehicle, bodyQuat, boost) {
+  // Per-frame emitters for the bike: dust, roost off the back wheel, spray, tracks.
+  bike(dt, bike, bodyQuat) {
     const P = this.particles;
-    const up = this._v.set(0, 1, 0).applyQuaternion(bodyQuat);
-    vehicle.wheels.forEach((w, i) => {
+    const sp = bike.speed;
+    const fwd = this._s.set(0, 0, -1).applyQuaternion(bodyQuat);
+    bike.wheels.forEach((w, i) => {
       if (!w.contact) {
         this.tracks.lift(i);
         return;
       }
       const surf = w.surface;
-      const sp = vehicle.speed;
-      // Tyre tracks: deeper on sand, faint on packed road, none in water.
+      // Tyre tracks: deep in sand, faint on packed road, none in water.
       if (surf.name !== 'water') {
         const side = this._w.set(1, 0, 0).applyQuaternion(bodyQuat);
         side.y = 0;
         side.normalize();
-        const s = surf.name === 'sand' ? 0.8 : surf.name === 'playa' ? 0.55 : surf.name === 'rock' ? 0.15 : surf.name === 'road' ? 0.3 : 0.45;
-        this.tracks.add(i, w.point, side, 0.34, clamp(s + w.slipLong * 0.3 + Math.min(1, w.slipLat / 6) * 0.3, 0, 1));
+        const s = surf.name === 'sand' ? 0.85 : surf.name === 'playa' ? 0.6 : surf.name === 'rock' ? 0.15 : surf.name === 'road' ? 0.35 : 0.5;
+        this.tracks.add(i, w.point, side, w.front ? 0.11 : 0.13, clamp(s + w.slipLong * 0.3 + Math.min(1, w.slipLat / 5) * 0.3, 0, 1));
       } else this.tracks.lift(i);
 
       if (surf.name === 'water') {
-        // Spray.
-        const rate = clamp(sp / 4, 0, 6) * 14;
+        const rate = clamp(sp / 4, 0, 6) * 10;
         this.acc[i] += rate * dt;
         while (this.acc[i] > 1) {
           this.acc[i] -= 1;
           P.spawn({
-            x: w.point.x + (Math.random() - 0.5) * 0.5, y: w.point.y + 0.2, z: w.point.z + (Math.random() - 0.5) * 0.5,
-            vx: vehicle.vel.x * 0.5 + (Math.random() - 0.5) * 3, vy: 1.5 + Math.random() * 3 + sp * 0.12, vz: vehicle.vel.z * 0.5 + (Math.random() - 0.5) * 3,
-            drag: 0.8, gravity: 9, buoy: 0, life: 0.7 + Math.random() * 0.6, size0: 0.4, size1: 1.8 + sp * 0.06,
+            x: w.point.x + (Math.random() - 0.5) * 0.3, y: w.point.y + 0.15, z: w.point.z + (Math.random() - 0.5) * 0.3,
+            vx: bike.vel.x * 0.5 + (Math.random() - 0.5) * 2.5, vy: 1.2 + Math.random() * 2.5 + sp * 0.12, vz: bike.vel.z * 0.5 + (Math.random() - 0.5) * 2.5,
+            drag: 0.8, gravity: 9, buoy: 0, life: 0.6 + Math.random() * 0.5, size0: 0.3, size1: 1.3 + sp * 0.05,
             alpha: 0.5, r: 0.85, g: 0.9, b: 0.95, rot: Math.random() * 6, spin: 0.5, fadeIn: 0.05,
           });
         }
         return;
       }
       // Dust: more with speed, wheelspin and sliding, and on loose ground.
-      const slip = w.slipLong * 2.2 + Math.min(1.5, w.slipLat / 5);
-      const rear = w.front ? 0.6 : 1;
-      const rate = surf.dust * rear * (clamp((sp - 2) / 22, 0, 1.5) * 16 + slip * 22);
+      const slip = w.slipLong * 2.2 + Math.min(1.5, w.slipLat / 4);
+      const rear = w.front ? 0.45 : 1;
+      const rate = surf.dust * rear * (clamp((sp - 2) / 20, 0, 1.5) * 12 + slip * 18);
       this.acc[i] += rate * dt;
       const col = this.dustColors[surf.name] || this.dustColors.dirt;
       while (this.acc[i] > 1) {
         this.acc[i] -= 1;
         const big = Math.random() < 0.45;
-        const vy = 0.6 + Math.random() * 1.4 + slip * 1.4;
-        // Dust is dragged along in the truck's wake before it settles.
         const kick = 0.35 + Math.random() * 0.25 + w.slipLong * 0.15;
         P.spawn({
-          x: w.point.x + (Math.random() - 0.5) * 0.6, y: w.point.y + 0.35, z: w.point.z + (Math.random() - 0.5) * 0.6,
-          vx: vehicle.vel.x * kick + (Math.random() - 0.5) * 1.8, vy, vz: vehicle.vel.z * kick + (Math.random() - 0.5) * 1.8,
-          drag: 1.1, gravity: 0.15, buoy: 0.35, life: big ? 4 + Math.random() * 3.5 : 1.5 + Math.random(),
-          size0: 1.4, size1: big ? 7 + sp * 0.16 : 3.2, alpha: (big ? 0.5 : 0.6) * clamp(0.4 + surf.dust * 0.5, 0.3, 1.1),
+          x: w.point.x + (Math.random() - 0.5) * 0.35, y: w.point.y + 0.25, z: w.point.z + (Math.random() - 0.5) * 0.35,
+          vx: bike.vel.x * kick + (Math.random() - 0.5) * 1.5, vy: 0.5 + Math.random() * 1.2 + slip * 1.2, vz: bike.vel.z * kick + (Math.random() - 0.5) * 1.5,
+          drag: 1.1, gravity: 0.15, buoy: 0.35, life: big ? 3.5 + Math.random() * 3 : 1.4 + Math.random(),
+          size0: 1, size1: big ? 5 + sp * 0.12 : 2.4, alpha: (big ? 0.45 : 0.55) * clamp(0.4 + surf.dust * 0.5, 0.3, 1.1),
           r: col[0] * (0.9 + Math.random() * 0.2), g: col[1] * (0.9 + Math.random() * 0.2), b: col[2] * (0.9 + Math.random() * 0.2),
           rot: Math.random() * 6, spin: (Math.random() - 0.5) * 0.6, fadeIn: 0.2, fadePow: 1.2,
         });
       }
-    });
-
-    // Exhaust: flames when boosting, a puff of smoke otherwise.
-    if (boost || vehicle.throttleInput > 0.8) {
-      this.exhaustAcc += dt * (boost ? 60 : 8);
-      while (this.exhaustAcc > 1) {
-        this.exhaustAcc -= 1;
-        for (const sx of [-0.55, 0.55]) {
-          const p = this._s.set(sx, -0.16 - 0.3, 2.95).applyQuaternion(bodyQuat).add(vehicle.pos);
-          const back = this._w.set(0, 0, 1).applyQuaternion(bodyQuat);
+      // Roost: the spinning back tyre flings clods of dirt out behind.
+      if (!w.front && surf.name !== 'rock' && surf.name !== 'road') {
+        const roost = (w.slipLong * 1.5 + clamp(bike.power * 1.2, 0, 1) * clamp(1 - sp / 25, 0, 1)) * surf.dust;
+        this.roostAcc += roost * 70 * dt;
+        while (this.roostAcc > 1) {
+          this.roostAcc -= 1;
+          const v = 5 + Math.random() * 6;
           P.spawn({
-            x: p.x, y: p.y, z: p.z,
-            vx: vehicle.vel.x + back.x * 6, vy: vehicle.vel.y + 0.4, vz: vehicle.vel.z + back.z * 6,
-            drag: 3, gravity: 0, buoy: 0.5, life: boost ? 0.12 : 0.6, size0: boost ? 0.35 : 0.25, size1: boost ? 0.7 : 1.2,
-            alpha: boost ? 1 : 0.18, r: boost ? 3.5 : 0.2, g: boost ? 1.4 : 0.18, b: boost ? 0.5 : 0.16,
-            rot: Math.random() * 6, spin: 2, kind: boost ? 1 : 0, fadeIn: 0.02,
+            x: w.point.x, y: w.point.y + 0.1, z: w.point.z,
+            vx: bike.vel.x * 0.6 - fwd.x * v + (Math.random() - 0.5) * 2, vy: 2 + Math.random() * 3.5, vz: bike.vel.z * 0.6 - fwd.z * v + (Math.random() - 0.5) * 2,
+            drag: 0.6, gravity: 9.5, buoy: 0, life: 0.6 + Math.random() * 0.4, size0: 0.07 + Math.random() * 0.08, size1: 0.12,
+            alpha: 0.95, r: col[0] * 0.55, g: col[1] * 0.55, b: col[2] * 0.55, rot: Math.random() * 6, spin: 4, fadeIn: 0.01, fadePow: 0.5,
+            floor: w.point.y + 0.02,
           });
         }
       }
-    }
-    void up;
+    });
   }
 
   // A cloud of dust when landing hard or hitting something.

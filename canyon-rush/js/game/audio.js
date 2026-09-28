@@ -1,6 +1,6 @@
-// All sound is synthesised with the Web Audio API (no audio files):
-// a lumpy cross-plane V8 with exhaust crackle on lift-off, wind, gravel crunch,
-// tyre slide, splashes, landing thumps and UI chimes.
+// All sound is synthesised with the Web Audio API (no audio files): the
+// electric motor's whine, chain and knobbly tyres, wind, gravel, slides,
+// splashes, landings, crashes and UI chimes.
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 export class Audio {
@@ -8,9 +8,6 @@ export class Audio {
     this.ctx = null;
     this.muted = false;
     this.volume = 0.8;
-    this.lastThrottle = 0;
-    this.crackle = 0;
-    this.crackleTimer = 0;
   }
 
   // Browsers only allow audio after a click / tap / key press.
@@ -46,7 +43,7 @@ export class Audio {
       for (let i = 0; i < dur; i++) g[at + i] += (Math.random() * 2 - 1) * amp * Math.exp(-i / (dur * 0.25));
     }
 
-    this._engine();
+    this._motor();
     this.wind = this._noiseLayer(this.white, 'bandpass', 500, 0.6);
     this.gravelLayer = this._noiseLayer(this.gravel, 'bandpass', 2200, 0.5);
     this.slide = this._noiseLayer(this.white, 'bandpass', 900, 2.2);
@@ -76,66 +73,58 @@ export class Audio {
     return { src, filter: f, gain };
   }
 
-  _engine() {
+  // Electric drivetrain: the motor's whirr and whine rising with speed, the
+  // inverter's buzz under load, the chain, and the hum of knobbly tyres.
+  _motor() {
     const ctx = this.ctx;
-    const E = (this.engine = {});
-    E.saw = ctx.createOscillator();
-    E.saw.type = 'sawtooth';
-    E.sub = ctx.createOscillator();
-    E.sub.type = 'square';
-    E.lope = ctx.createOscillator();
-    E.lope.type = 'sine';
-    const sawG = ctx.createGain(); sawG.gain.value = 0.55;
-    const subG = ctx.createGain(); subG.gain.value = 0.32;
-    const lopeG = ctx.createGain(); lopeG.gain.value = 0.4;
-    // Amplitude wobble at a quarter of the firing rate gives the V8 burble.
-    E.am = ctx.createOscillator();
-    E.am.type = 'sine';
-    E.amDepth = ctx.createGain();
-    E.amDepth.gain.value = 0.25;
-    const body = ctx.createGain();
-    body.gain.value = 0.75;
-    E.am.connect(E.amDepth).connect(body.gain);
-    E.saw.connect(sawG).connect(body);
-    E.sub.connect(subG).connect(body);
-    E.lope.connect(lopeG).connect(body);
-    // Exhaust hiss riding on the pulses.
-    const hiss = this._loop(this.white);
-    const hissF = ctx.createBiquadFilter();
-    hissF.type = 'bandpass';
-    hissF.frequency.value = 1400;
-    hissF.Q.value = 0.7;
-    E.hissG = ctx.createGain();
-    E.hissG.gain.value = 0.08;
-    hiss.connect(hissF).connect(E.hissG).connect(body);
-    // Grit.
-    const shaper = ctx.createWaveShaper();
-    const curve = new Float32Array(1024);
-    for (let i = 0; i < 1024; i++) {
-      const x = (i / 1023) * 2 - 1;
-      curve[i] = Math.tanh(x * 2.4) / Math.tanh(2.4);
-    }
-    shaper.curve = curve;
-    shaper.oversample = '2x';
-    // Fixed resonances of the exhaust and intake.
-    const peak = (f, g, q) => {
-      const b = ctx.createBiquadFilter();
-      b.type = 'peaking';
-      b.frequency.value = f;
-      b.gain.value = g;
-      b.Q.value = q;
-      return b;
-    };
-    E.lp = ctx.createBiquadFilter();
-    E.lp.type = 'lowpass';
-    E.lp.frequency.value = 900;
-    E.lp.Q.value = 0.9;
-    E.out = ctx.createGain();
-    E.out.gain.value = 0;
-    E.limiter = ctx.createGain();
-    E.limiter.gain.value = 1;
-    body.connect(shaper).connect(peak(115, 7, 1.2)).connect(peak(430, 4, 1.4)).connect(peak(1150, 2.5, 1.6)).connect(E.lp).connect(E.limiter).connect(E.out).connect(this.master);
-    for (const o of [E.saw, E.sub, E.lope, E.am]) o.start();
+    const E = (this.motor = {});
+    const out = (E.out = ctx.createGain());
+    out.gain.value = 0;
+    out.connect(this.master);
+    E.whirr = ctx.createOscillator();
+    E.whirr.type = 'sawtooth';
+    E.whirrF = ctx.createBiquadFilter();
+    E.whirrF.type = 'lowpass';
+    E.whirrF.Q.value = 2.5;
+    E.whirrG = ctx.createGain();
+    E.whirr.connect(E.whirrF).connect(E.whirrG).connect(out);
+    E.whine = ctx.createOscillator();
+    E.whine.type = 'sine';
+    E.whineG = ctx.createGain();
+    E.whine.connect(E.whineG).connect(out);
+    E.whine2 = ctx.createOscillator();
+    E.whine2.type = 'triangle';
+    E.whine2G = ctx.createGain();
+    E.whine2.connect(E.whine2G).connect(out);
+    // Inverter buzz: a rough high tone that shows up when pulling hard from low speed.
+    E.buzz = ctx.createOscillator();
+    E.buzz.type = 'square';
+    E.buzz.frequency.value = 2150;
+    const buzzF = ctx.createBiquadFilter();
+    buzzF.type = 'bandpass';
+    buzzF.frequency.value = 2300;
+    buzzF.Q.value = 3;
+    E.buzzG = ctx.createGain();
+    E.buzzG.gain.value = 0;
+    E.buzz.connect(buzzF).connect(E.buzzG).connect(this.master);
+    // Knobbly tyre hum: low noise chopped at the rate the knobs hit the ground.
+    E.knobG = ctx.createGain();
+    E.knobG.gain.value = 0;
+    E.knobAm = ctx.createOscillator();
+    E.knobAm.type = 'square';
+    const amDepth = ctx.createGain();
+    amDepth.gain.value = 0.5;
+    const knobBody = ctx.createGain();
+    knobBody.gain.value = 0.5;
+    E.knobAm.connect(amDepth).connect(knobBody.gain);
+    const knobSrc = this._loop(this.white);
+    const knobF = ctx.createBiquadFilter();
+    knobF.type = 'bandpass';
+    knobF.frequency.value = 260;
+    knobF.Q.value = 1.2;
+    knobSrc.connect(knobF).connect(knobBody).connect(E.knobG).connect(this.master);
+    for (const o of [E.whirr, E.whine, E.whine2, E.buzz, E.knobAm]) o.start();
+    this.chain = this._noiseLayer(this.white, 'bandpass', 1400, 1.6);
   }
 
   setMuted(m) {
@@ -148,48 +137,38 @@ export class Audio {
     if (this.master && !this.muted) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
   }
 
-  // Called every frame with the truck's state.
+  // Called every frame with the bike's state.
   update(dt, s) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const E = this.engine;
-    const rpm = s.running ? clamp(s.rpm, 700, 7400) : 0;
-    const fire = (rpm / 60) * 4;
-    const th = s.running ? s.throttle : 0;
+    const E = this.motor;
     const set = (param, v, tc = 0.03) => param.setTargetAtTime(v, t, tc);
-    set(E.saw.frequency, Math.max(20, fire));
-    set(E.sub.frequency, Math.max(10, fire * 0.5));
-    set(E.lope.frequency, Math.max(8, fire * 0.25 + Math.sin(t * 7) * 1.5));
-    set(E.am.frequency, Math.max(4, fire * 0.125));
-    set(E.amDepth.gain, 0.12 + 0.28 * (1 - clamp(rpm / 4000, 0, 1)));
-    set(E.lp.frequency, 380 + th * 2600 + rpm * 0.28);
-    set(E.hissG.gain, 0.04 + th * 0.14);
-    const load = 0.28 + 0.72 * th;
-    set(E.out.gain, s.running ? (0.1 + 0.2 * (rpm / 7000)) * load * (s.shifting ? 0.45 : 1) : 0, 0.05);
-    // Rev limiter stutter.
-    if (s.limiter) E.limiter.gain.setValueAtTime(Math.sin(t * 130) > 0 ? 1 : 0.25, t);
-    else set(E.limiter.gain, 1, 0.01);
-
-    // Crackle when lifting off at high revs.
-    if (this.lastThrottle > 0.6 && th < 0.2 && rpm > 3500) this.crackle = 1.1;
-    this.lastThrottle = th;
-    if (this.crackle > 0) {
-      this.crackle -= dt;
-      this.crackleTimer -= dt;
-      if (this.crackleTimer <= 0) {
-        this.crackleTimer = 0.03 + Math.random() * 0.12;
-        this.pop(0.25 + Math.random() * 0.35);
-      }
-    }
+    const w = Math.abs(s.motor || 0);                 // rear wheel, rad/s
+    const load = s.running ? clamp(s.power * 1.3 + s.throttle * 0.25, 0, 1.2) : 0;
+    const f = 38 + w * 6.2;
+    set(E.whirr.frequency, f);
+    set(E.whirrF.frequency, 300 + f * 2.2 + load * 900);
+    set(E.whine.frequency, f * 3.02);
+    set(E.whine2.frequency, f * 5.5);
+    const spin = clamp(w / 20, 0, 1);
+    set(E.whirrG.gain, (0.05 + 0.2 * load) * (0.3 + 0.7 * spin));
+    set(E.whineG.gain, (0.012 + 0.07 * load) * spin);
+    set(E.whine2G.gain, 0.02 * load * spin);
+    set(E.out.gain, s.running ? 0.9 : 0, 0.08);
+    set(E.buzzG.gain, s.running ? clamp(s.throttle * (1 - s.speed / 12), 0, 1) * 0.022 : 0, 0.05);
+    set(E.knobAm.frequency, Math.max(5, s.speed / 0.06));
+    set(E.knobG.gain, s.grounded ? clamp(s.speed / 18, 0, 1) * (0.07 + 0.1 * (1 - s.loose)) : 0, 0.05);
+    set(this.chain.gain.gain, s.running ? clamp(w / 70, 0, 1) * (0.03 + 0.05 * load) : 0, 0.05);
+    set(this.chain.filter.frequency, 900 + w * 14, 0.1);
 
     const sp = s.speed;
-    set(this.wind.gain.gain, clamp((sp / 55) ** 2, 0, 1) * 0.28 + (s.air ? 0.05 : 0), 0.15);
-    set(this.wind.filter.frequency, 300 + sp * 22, 0.2);
-    set(this.gravelLayer.gain.gain, s.grounded ? clamp(sp / 20, 0, 1) * (0.05 + 0.2 * s.loose) : 0, 0.05);
+    set(this.wind.gain.gain, clamp((sp / 45) ** 2, 0, 1) * 0.3 + (s.air ? 0.05 : 0), 0.15);
+    set(this.wind.filter.frequency, 300 + sp * 24, 0.2);
+    set(this.gravelLayer.gain.gain, s.grounded ? clamp(sp / 18, 0, 1) * (0.03 + 0.14 * s.loose) : 0, 0.05);
     set(this.gravelLayer.filter.frequency, 1300 + sp * 30, 0.1);
-    set(this.slide.gain.gain, s.grounded ? clamp(s.slip, 0, 1) * 0.22 : 0, 0.06);
-    set(this.splash.gain.gain, s.water ? clamp(sp / 12, 0, 1) * 0.5 : 0, 0.05);
-    set(this.boostLayer.gain.gain, s.boost ? 0.1 : 0, 0.08);
+    set(this.slide.gain.gain, s.grounded ? clamp(s.slip, 0, 1) * 0.18 : 0, 0.06);
+    set(this.splash.gain.gain, s.water ? clamp(sp / 10, 0, 1) * 0.45 : 0, 0.05);
+    set(this.boostLayer.gain.gain, s.boost ? 0.08 : 0, 0.08);
   }
 
   pop(amp = 0.4) {
@@ -231,6 +210,12 @@ export class Audio {
     this._burst(0.4, 'lowpass', 300, 0.25);
   }
 
+  crash(strength = 1) {
+    this.thump(strength);
+    this._burst(0.5 * strength, 'bandpass', 900, 0.6);     // sliding along the dirt
+    this._burst(0.35 * strength, 'highpass', 3000, 0.25);  // plastic and metal
+  }
+
   _burst(amp, type, freq, dur) {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
@@ -270,5 +255,4 @@ export class Audio {
   finish() { this._tones([523, 659, 784, 1047, 1319, 1568], { dur: 0.3, gap: 0.09, vol: 0.2 }); }
   stunt() { this._tones([988, 1319], { dur: 0.12, gap: 0.06, vol: 0.12 }); }
   click() { this._tones([900], { dur: 0.05, vol: 0.08 }); }
-  shift() { this.pop(0.18); }
 }

@@ -1,11 +1,11 @@
-// Keyboard, gamepad and touch controls, merged into one set of driving inputs.
+// Keyboard, gamepad and touch controls, merged into one set of riding inputs.
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 export class Input {
   constructor(canvas) {
     this.canvas = canvas;
     this.keys = new Set();
-    this.touch = { steer: 0, throttle: 0, brake: 0, handbrake: false, boost: false };
+    this.touch = { steer: 0, throttle: 0, brake: 0, lean: false, boost: false };
     this.look = { x: 0, y: 0, active: false };
     this.onKey = null;
     this.onPad = null;
@@ -23,10 +23,10 @@ export class Input {
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => {
       this.keys.clear();
-      Object.assign(this.touch, { steer: 0, throttle: 0, brake: 0, handbrake: false, boost: false });
+      Object.assign(this.touch, { steer: 0, throttle: 0, brake: 0, lean: false, boost: false });
     });
 
-    // Drag on the view (mouse or a spare finger) to look around the truck.
+    // Drag on the view (mouse or a spare finger) to look around the bike.
     let dragId = null, lastX = 0, lastY = 0;
     canvas.addEventListener('pointerdown', (e) => {
       if (dragId !== null) return;
@@ -69,7 +69,7 @@ export class Input {
     hold(q('[data-touch=right]'), () => { T.right = true; }, () => { T.right = false; });
     hold(q('[data-touch=gas]'), () => { T.throttle = 1; }, () => { T.throttle = 0; });
     hold(q('[data-touch=brake]'), () => { T.brake = 1; }, () => { T.brake = 0; });
-    hold(q('[data-touch=handbrake]'), () => { T.handbrake = true; }, () => { T.handbrake = false; });
+    hold(q('[data-touch=lean]'), () => { T.lean = true; }, () => { T.lean = false; });
     hold(q('[data-touch=boost]'), () => { T.boost = true; }, () => { T.boost = false; });
   }
 
@@ -82,13 +82,13 @@ export class Input {
     return null;
   }
 
-  // Current driving inputs: throttle/brake 0..1, steer -1..1 (right positive).
+  // Current inputs: throttle/brake 0..1, steer -1..1 (right positive), lean back (wheelie), boost.
   read() {
     const k = this.keys;
     let throttle = k.has('KeyW') || k.has('ArrowUp') ? 1 : 0;
     let brake = k.has('KeyS') || k.has('ArrowDown') ? 1 : 0;
     let steer = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
-    let handbrake = k.has('Space');
+    let lean = k.has('Space');
     let boost = k.has('ShiftLeft') || k.has('ShiftRight') || k.has('KeyN');
     let lookX = 0, lookY = 0;
 
@@ -96,7 +96,7 @@ export class Input {
     throttle = Math.max(throttle, T.throttle);
     brake = Math.max(brake, T.brake);
     if (T.left || T.right) steer = (T.right ? 1 : 0) - (T.left ? 1 : 0);
-    handbrake ||= T.handbrake;
+    lean ||= T.lean;
     boost ||= T.boost;
 
     const pad = this._pad();
@@ -108,7 +108,7 @@ export class Input {
       const rt = b(7).value, lt = b(6).value;
       if (rt > 0.02) { throttle = Math.max(throttle, rt); this.usingPad = true; }
       if (lt > 0.02) brake = Math.max(brake, lt);
-      if (b(0).pressed || b(5).pressed) handbrake = true;
+      if (b(0).pressed || b(5).pressed) lean = true;
       if (b(1).pressed || b(4).pressed) boost = true;
       lookX = dz(pad.axes[2] || 0, 0.2);
       lookY = dz(pad.axes[3] || 0, 0.2);
@@ -119,7 +119,7 @@ export class Input {
         this.padPrev[i] = now;
       }
     }
-    return { throttle: clamp(throttle, 0, 1), brake: clamp(brake, 0, 1), steer: clamp(steer, -1, 1), handbrake, boost, lookX, lookY };
+    return { throttle: clamp(throttle, 0, 1), brake: clamp(brake, 0, 1), steer: clamp(steer, -1, 1), lean, boost, lookX, lookY };
   }
 
   consumeLook() {

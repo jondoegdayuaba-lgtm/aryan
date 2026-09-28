@@ -1,4 +1,4 @@
-// What the truck's physics needs to know about the world: ground height and
+// What the bike's physics needs to know about the world: ground height and
 // slope, what the surface is made of, where the water is, and the obstacles.
 import * as THREE from 'three';
 
