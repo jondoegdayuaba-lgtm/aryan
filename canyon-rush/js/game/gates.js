@@ -87,7 +87,7 @@ export class Gates {
     this.footMat = useTerrainLight(new THREE.MeshStandardMaterial({ color: 0x222226, roughness: 0.8 }));
     this.beamMat = new THREE.ShaderMaterial({
       vertexShader: BEAM_VERT, fragmentShader: BEAM_FRAG,
-      uniforms: { uColor: { value: new THREE.Color(3.5, 1.6, 0.4) }, uHeight: { value: 260 }, uTime: { value: 0 } },
+      uniforms: { uColor: { value: new THREE.Color(2.2, 0.75, 0.12) }, uHeight: { value: 260 }, uTime: { value: 0 } },
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     });
     const beamGeo = new THREE.CylinderGeometry(2.6, 2.6, 260, 24, 1, true);

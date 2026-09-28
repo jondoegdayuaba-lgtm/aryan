@@ -71,6 +71,7 @@ html, body {
 }
 .brand { font-size: clamp(44px, 9vw, 84px); text-shadow: 0 6px 30px rgba(255, 110, 40, 0.35); }
 .brand em, .logo em { color: var(--accent); font-style: italic; }
+.brand em { margin-left: 0.18em; }
 .bar {
   margin: 28px auto 12px;
   height: 6px;
@@ -156,7 +157,7 @@ html, body {
 .btn.small { font-size: 15px; padding: 11px 10px; justify-content: center; text-align: center; }
 .panel.slim .btn { justify-content: center; text-align: center; margin-top: 10px; }
 .btn-row { display: flex; gap: 8px; margin-top: 4px; }
-.btn-row .btn { justify-content: center; text-align: center; }
+.btn-row .btn { justify-content: center; text-align: center; white-space: nowrap; font-size: 18px; padding-left: 10px; padding-right: 10px; }
 
 .menu-foot {
   margin-top: 20px;
@@ -441,9 +442,9 @@ html, body {
 body.touch .icon-btn.recover { display: grid; }
 
 /* ---------- Touch controls ---------- */
-.touch { display: none; }
-body.touch .touch { display: block; }
-.touch button {
+.touch-ui { display: none; }
+body.touch .touch-ui { display: block; }
+.touch-ui button {
   pointer-events: auto;
   font-family: var(--display);
   font-weight: 800;
@@ -457,7 +458,7 @@ body.touch .touch { display: block; }
   -webkit-user-select: none;
   user-select: none;
 }
-.touch button.on { background: rgba(255, 122, 47, 0.55); border-color: rgba(255, 190, 140, 0.8); }
+.touch-ui button.on { background: rgba(255, 122, 47, 0.55); border-color: rgba(255, 190, 140, 0.8); }
 .touch-left {
   position: absolute;
   left: calc(14px + var(--safe-l));
@@ -476,6 +477,7 @@ body.touch .touch { display: block; }
   gap: 10px;
 }
 .touch-right .small { font-size: 13px; }
+.touch-right button { font-size: 16px; padding: 0 4px; }
 .touch-right .gas { background: rgba(60, 180, 90, 0.45); }
 body.touch .speedo { right: auto; left: 50%; transform: translateX(-50%) scale(0.72); transform-origin: bottom center; bottom: calc(6px + var(--safe-b)); }
 body.touch .boost { display: none; }
@@ -494,6 +496,31 @@ body.touch .icon-btn { top: calc(140px + var(--safe-t)); }
   .panel { padding: 22px 18px 18px; }
   .logo { font-size: 50px; }
   .tag { margin: 8px 0 16px; }
+}
+@media (max-width: 480px) {
+  .btn-row .btn { font-size: 14px; padding: 11px 4px; letter-spacing: 0.02em; }
+  .btn small { display: none; }
+  .panel { width: 100%; }
+  .stats dd { font-size: 18px; }
+  .result-time { font-size: 50px; }
+}
+.rotate-hint { display: none; }
+@media (orientation: portrait) {
+  body.touch .rotate-hint {
+    display: block;
+    position: absolute;
+    left: 50%;
+    top: 42%;
+    transform: translateX(-50%);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px 16px;
+    font-weight: 600;
+    text-align: center;
+    width: max-content;
+    max-width: 80vw;
+  }
 }
 @media (max-height: 500px) {
   .screen { align-items: center; }

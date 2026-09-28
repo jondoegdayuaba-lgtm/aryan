@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { canvasTexture } from '../render/textures.js';
 import { useTerrainLight } from '../render/shaderpatch.js';
+import { mergeGeometries } from '../render/geomutil.js';
 
 export const LIVERIES = [
   { name: 'Desert Fox', base: '#eeebe4', stripe: '#ff5f14', stripe2: '#1a1a1d', number: '27', flare: '#1a1a1d', metal: 0.05, sponsor: 'DUNE FUEL' },
@@ -235,6 +236,8 @@ export class TruckModel {
     this._buildSuspension();
     this.setLivery(liveryIndex);
 
+    this._mergeStatic();
+    for (const w of this.wheels) this._mergeGroup(w.spinner);
     this.root.traverse((o) => {
       if (o.isMesh) {
         o.castShadow = true;
@@ -243,6 +246,47 @@ export class TruckModel {
     });
     this._v = { a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), d: new THREE.Vector3() };
     this.flagPhase = 0;
+  }
+
+  // Fewer draw calls: bake every static part of the body into one mesh per
+  // material. Moving parts (wheels, suspension, antenna) are left alone.
+  _mergeStatic() {
+    const moving = new Set();
+    for (const w of this.wheels) moving.add(w.pivot);
+    for (const s of this.struts) moving.add(s.mesh);
+    for (const f of this.front) moving.add(f.coil);
+    for (const c of this.rear.coils) moving.add(c);
+    moving.add(this.rear.diff);
+    moving.add(this.whip);
+    this._mergeGroup(this.body, moving);
+  }
+
+  _mergeGroup(group, skip = new Set()) {
+    group.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+    const byMat = new Map();
+    const remove = [];
+    const visit = (o) => {
+      if (skip.has(o)) return;
+      if (o.isMesh && !o.isInstancedMesh) {
+        const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+        g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+        if (!g.attributes.normal) g.computeVertexNormals();
+        if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+        for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+        if (!byMat.has(o.material)) byMat.set(o.material, []);
+        byMat.get(o.material).push(g);
+        remove.push(o);
+      }
+      for (const c of o.children) visit(c);
+    };
+    for (const c of group.children) visit(c);
+    for (const o of remove) o.parent.remove(o);
+    for (const [mat, list] of byMat) {
+      const merged = mergeGeometries(list);
+      merged.computeBoundingSphere();
+      group.add(new THREE.Mesh(merged, mat));
+    }
   }
 
   setLivery(i) {
@@ -483,18 +527,16 @@ export class TruckModel {
       lugs.push([a + Math.PI / N, -(W / 2 - 0.045), 0.1, 0.036, 0.1, -0.05]);
     }
     const lugGeo = new THREE.BoxGeometry(1, 1, 1);
-    const inst = new THREE.InstancedMesh(lugGeo, M.tread, lugs.length);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), sc = new THREE.Vector3();
-    lugs.forEach(([a, x, w, h, l, skew], i) => {
+    const lugParts = lugs.map(([a, x, w, h, l, skew]) => {
       const r = carcass + h / 2 - 0.006;
       p.set(x, Math.cos(a) * r, Math.sin(a) * r);
       e.set(a, skew, 0, 'XYZ');
       q.setFromEuler(e);
       sc.set(w, h, l);
-      m4.compose(p, q, sc);
-      inst.setMatrixAt(i, m4);
+      return lugGeo.clone().applyMatrix4(m4.compose(p, q, sc));
     });
-    g.add(inst);
+    this.add(g, mergeGeometries(lugParts), M.tread);
 
     // Beadlock wheel: barrel, spoked face, bolt ring, cap.
     const barrel = new THREE.CylinderGeometry(0.215, 0.215, 0.3, 32, 1, true);
@@ -519,13 +561,12 @@ export class TruckModel {
     this.add(g, ring, M.alu);
     const boltGeo = new THREE.CylinderGeometry(0.009, 0.009, 0.02, 6);
     boltGeo.rotateZ(Math.PI / 2);
-    const bolts = new THREE.InstancedMesh(boltGeo, M.alu, 24);
+    const boltParts = [];
     for (let i = 0; i < 24; i++) {
       const a = (i / 24) * Math.PI * 2;
-      m4.makeTranslation(0.17, Math.cos(a) * 0.228, Math.sin(a) * 0.228);
-      bolts.setMatrixAt(i, m4);
+      boltParts.push(boltGeo.clone().applyMatrix4(m4.makeTranslation(0.17, Math.cos(a) * 0.228, Math.sin(a) * 0.228)));
     }
-    g.add(bolts);
+    this.add(g, mergeGeometries(boltParts), M.alu);
     const cap = new THREE.CylinderGeometry(0.055, 0.06, 0.05, 16);
     cap.rotateZ(Math.PI / 2);
     cap.translate(0.09, 0, 0);
