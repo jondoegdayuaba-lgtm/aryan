@@ -113,6 +113,7 @@ export class Vehicle {
     this.boost = false;
     this.reverseHold = 0;
     this.airTime = 0;
+    this.landAssist = 0;
     this.groundedWheels = 0;
     this.speed = 0;
     this.forwardSpeed = 0;
@@ -446,25 +447,40 @@ export class Vehicle {
     // ---- Air control: nudge pitch and roll to land jumps.
     if (grounded === 0) {
       this.airTime += dt;
-      const ac = S.airControl;
-      // Pitch with throttle/brake, yaw with steering; roll levels itself.
-      const pitchIn = this.throttleInput - this.brakeInput;
+      // In the air: gas lifts the nose and brake drops it (as spinning the wheels
+      // up or stopping them would); on its own the truck levels itself for landing.
+      // Holding the handbrake switches to trick mode for flips and rolls.
       const w = this.angVel;
       const pitchRate = w.dot(right), yawRate = w.dot(up), rollRate = w.dot(fwd);
-      // With no pitch input the nose eases toward the flight path, like a dart.
-      const vh = Math.hypot(this.vel.x, this.vel.z);
-      const pathPitch = Math.atan2(this.vel.y, vh) * 0.6;
+      const pitchIn = this.throttleInput - this.brakeInput;
       const noseUp = Math.asin(clamp(fwd.y, -1, 1));
-      const auto = pitchIn === 0 && vh > 5 ? (pathPitch - noseUp) * 2.2 : 0;
-      const T1 = T.a.copy(right).multiplyScalar((pitchIn * -ac + auto - pitchRate * (pitchIn === 0 ? 2.4 : 0.8)) * S.inertia.x);
-      T1.addScaledVector(up, (-this.steerInput * ac * 0.6 - yawRate * 0.8) * S.inertia.y);
-      // Roll: angle of the right axis above the horizon, pulled back toward level.
       const roll = Math.asin(clamp(right.y, -1, 1));
-      T1.addScaledVector(fwd, (-roll * 5.5 - rollRate * 2.6) * S.inertia.z * (up.y > 0 ? 1 : 0.4));
-      this._torque.add(T1);
+      let tp, tr, ty;
+      if (this.handbrake) {
+        tp = pitchIn * 5.5 - pitchRate * 0.25;
+        tr = this.steerInput * 5.5 - rollRate * 0.25;
+        ty = -yawRate * 0.5;
+      } else {
+        const vh = Math.hypot(this.vel.x, this.vel.z);
+        const target = clamp(Math.atan2(this.vel.y, vh) * 0.3, -0.22, 0.22) + pitchIn * 0.3;
+        tp = vh > 5 ? (target - noseUp) * 4.5 - pitchRate * 5 : -pitchRate * 2;
+        tr = (-roll * 8 - rollRate * 4) * (up.y > 0 ? 1 : 0.4);
+        ty = -this.steerInput * S.airControl * 0.6 - yawRate * 0.8;
+      }
+      this._torque.addScaledVector(right, tp * S.inertia.x).addScaledVector(fwd, tr * S.inertia.z).addScaledVector(up, ty * S.inertia.y);
     } else {
-      if (wasAir && this.airTime > 0.3) this.lastAirTime = this.airTime;
+      if (wasAir && this.airTime > 0.3) {
+        this.lastAirTime = this.airTime;
+        this.landAssist = 0.45;
+      }
       this.airTime = 0;
+    }
+    // Just after a big landing, calm pitch and roll so the truck settles instead of tumbling.
+    if (this.landAssist > 0) {
+      this.landAssist -= dt;
+      const k = Math.exp(-dt * 7);
+      const pr = this.angVel.dot(right), rr = this.angVel.dot(fwd);
+      this.angVel.addScaledVector(right, pr * (k - 1)).addScaledVector(fwd, rr * (k - 1));
     }
 
     // ---- Integrate.

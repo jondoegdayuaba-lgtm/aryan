@@ -144,4 +144,54 @@ export class CameraRig {
   kick(amount) {
     this.shake = Math.max(this.shake, amount);
   }
+
+  // TV-style shots for the title screen: a roadside camera ahead of the truck
+  // that tracks it going past, then cuts to the next one.
+  cinematic(dt, vehicle, bodyPos, route, s) {
+    const cam = this.camera;
+    const C = this.cine || (this.cine = { t: 99, pos: new THREE.Vector3(), shot: 0 });
+    C.t += dt;
+    const d = C.pos.distanceTo(bodyPos);
+    if (C.t > 9 || (C.t > 2 && d > 70) || !this.initialized) {
+      C.shot++;
+      C.t = 0;
+      const ahead = 30 + vehicle.speed * 1.1 + Math.random() * 20;
+      const p = route.pos(route.wrapS(s + ahead));
+      const t = route.tangent(route.wrapS(s + ahead));
+      const side = (C.shot % 2 ? 1 : -1) * (9 + Math.random() * 8);
+      C.pos.set(p.x - t.z * side, 0, p.z + t.x * side);
+      C.pos.y = this.heightAt(C.pos.x, C.pos.z) + (C.shot % 3 === 0 ? 7 : 1.3 + Math.random() * 1.5);
+      C.fov = 38 + Math.random() * 14;
+      this.initialized = true;
+    }
+    cam.position.copy(C.pos);
+    cam.up.set(0, 1, 0);
+    this.look.copy(bodyPos);
+    this.look.y += 0.6;
+    cam.lookAt(this.look);
+    if (Math.abs(cam.fov - C.fov) > 0.01) {
+      cam.fov = C.fov;
+      cam.updateProjectionMatrix();
+    }
+    this.fov = cam.fov;
+    cam.updateMatrixWorld();
+  }
+
+  // Slow orbit around the parked truck (garage).
+  orbit(dt, bodyPos) {
+    const cam = this.camera;
+    this.orbitT = (this.orbitT || 0) + dt * 0.25;
+    const a = this.orbitT;
+    cam.position.set(bodyPos.x + Math.sin(a) * 8.5, bodyPos.y + 1.6, bodyPos.z + Math.cos(a) * 8.5);
+    const g = this.heightAt(cam.position.x, cam.position.z) + 0.8;
+    if (cam.position.y < g) cam.position.y = g;
+    cam.up.set(0, 1, 0);
+    cam.lookAt(bodyPos.x, bodyPos.y + 0.2, bodyPos.z);
+    if (Math.abs(cam.fov - 42) > 0.01) {
+      cam.fov = 42;
+      cam.updateProjectionMatrix();
+    }
+    cam.updateMatrixWorld();
+    this.initialized = false;
+  }
 }

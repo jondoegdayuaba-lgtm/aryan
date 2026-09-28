@@ -16,6 +16,168 @@
 <body>
   <canvas id="game" aria-label="Game view"></canvas>
 
+  <!-- In-race HUD -->
+  <div id="hud" hidden>
+    <div class="hud-top">
+      <div class="hud-chip" id="chip-cp"><span class="label">Checkpoint</span><span id="cp" class="num">0 / 12</span></div>
+      <div class="hud-timer">
+        <span id="timer" class="num">0:00.00</span>
+        <span id="split" class="split"></span>
+      </div>
+      <div class="hud-chip"><span class="label">Style</span><span id="style" class="num">0</span></div>
+    </div>
+    <div id="nav" class="nav" aria-hidden="true">
+      <svg viewBox="0 0 40 40"><path d="M20 4 L32 30 L20 24 L8 30 Z"/></svg>
+      <span id="nav-dist" class="num"></span>
+    </div>
+    <canvas id="minimap" width="200" height="200" aria-hidden="true"></canvas>
+    <div id="popups" aria-live="polite"></div>
+    <div id="countdown" class="countdown" aria-live="assertive"></div>
+    <div id="message" class="message" hidden></div>
+    <div class="speedo" aria-hidden="true">
+      <svg viewBox="0 0 200 200" class="rpm">
+        <path class="rpm-track" d="M 43.4 156.6 A 80 80 0 1 1 156.6 156.6" />
+        <path class="rpm-red" d="M 179 112.5 A 80 80 0 0 1 156.6 156.6" />
+        <path id="rpm-fill" class="rpm-fill" d="M 43.4 156.6 A 80 80 0 1 1 156.6 156.6" />
+      </svg>
+      <div class="speed"><span id="speed" class="num">0</span><span id="unit" class="unit">km/h</span></div>
+      <div class="gear"><span id="gear">1</span></div>
+      <div class="boost"><span class="label">Boost</span><div class="boost-bar"><div id="boost-fill"></div></div></div>
+    </div>
+    <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+    </button>
+    <button id="btn-recover" class="icon-btn recover" type="button" aria-label="Recover truck">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5a7 7 0 1 1-6.3 4H3l3.5-4 3.5 4H7.8A5 5 0 1 0 12 7z"/></svg>
+    </button>
+    <div id="touch" class="touch">
+      <div class="touch-left">
+        <button data-touch="left" type="button" aria-label="Steer left">&#9664;</button>
+        <button data-touch="right" type="button" aria-label="Steer right">&#9654;</button>
+      </div>
+      <div class="touch-right">
+        <button data-touch="boost" class="small" type="button">Boost</button>
+        <button data-touch="handbrake" class="small" type="button">E-brake</button>
+        <button data-touch="brake" type="button">Brake</button>
+        <button data-touch="gas" class="gas" type="button">Gas</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Title -->
+  <section id="menu" class="screen" hidden>
+    <div class="panel">
+      <h1 class="logo"><span>CANYON</span> <em>RUSH</em></h1>
+      <p class="tag">Trophy-truck rally through the red rock desert</p>
+      <div class="menu-buttons">
+        <button id="btn-rally" class="btn primary" type="button">Rally <small>12 checkpoints</small></button>
+        <button id="btn-free" class="btn" type="button">Free roam <small>jumps, drifts, dunes</small></button>
+        <div class="btn-row">
+          <button id="btn-garage" class="btn small" type="button">Garage</button>
+          <button id="btn-settings" class="btn small" type="button">Settings</button>
+          <button id="btn-help" class="btn small" type="button">Controls</button>
+        </div>
+      </div>
+      <div class="menu-foot">
+        <span>Best time <strong id="best" class="num">--</strong></span>
+        <span id="best-medal" class="medal-chip" hidden></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="garage" class="screen screen-bottom" hidden>
+    <div class="panel slim">
+      <span class="label">Livery</span>
+      <div class="picker">
+        <button id="liv-prev" class="arrow" type="button" aria-label="Previous livery">&#8249;</button>
+        <div class="picker-name" id="liv-name">Desert Fox</div>
+        <button id="liv-next" class="arrow" type="button" aria-label="Next livery">&#8250;</button>
+      </div>
+      <button id="garage-done" class="btn primary" type="button">Done</button>
+    </div>
+  </section>
+
+  <section id="settings" class="screen" hidden>
+    <div class="panel">
+      <h2 class="title">Settings</h2>
+      <div class="form">
+        <label>Graphics
+          <select id="set-quality">
+            <option value="auto">Auto</option>
+            <option value="low">Low (phones)</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="ultra">Ultra</option>
+          </select>
+        </label>
+        <label>Time of day
+          <select id="set-time">
+            <option value="golden">Golden hour</option>
+            <option value="morning">Morning</option>
+            <option value="midday">Midday</option>
+            <option value="sunset">Sunset</option>
+          </select>
+        </label>
+        <label>Speed units
+          <select id="set-units">
+            <option value="kmh">km/h</option>
+            <option value="mph">mph</option>
+          </select>
+        </label>
+        <label>Volume <input id="set-volume" type="range" min="0" max="1" step="0.05"></label>
+        <label class="check"><input id="set-shake" type="checkbox"> Camera shake</label>
+      </div>
+      <p class="hint" id="set-hint">Graphics and time of day apply after a quick reload.</p>
+      <div class="btn-row">
+        <button id="set-apply" class="btn primary" type="button">Apply</button>
+        <button id="set-back" class="btn" type="button">Back</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="help" class="screen" hidden>
+    <div class="panel">
+      <h2 class="title">Controls</h2>
+      <dl class="controls">
+        <div><dt>W / &uarr;</dt><dd>Throttle</dd></div>
+        <div><dt>S / &darr;</dt><dd>Brake, hold to reverse</dd></div>
+        <div><dt>A D / &larr; &rarr;</dt><dd>Steer</dd></div>
+        <div><dt>Space</dt><dd>Handbrake (slides)</dd></div>
+        <div><dt>Shift</dt><dd>Boost</dd></div>
+        <div><dt>C</dt><dd>Change camera</dd></div>
+        <div><dt>R</dt><dd>Recover truck</dd></div>
+        <div><dt>Esc / P</dt><dd>Pause</dd></div>
+        <div><dt>Mouse drag</dt><dd>Look around</dd></div>
+        <div><dt>In the air</dt><dd>W lifts the nose, S drops it</dd></div>
+        <div><dt>Space + W A S D</dt><dd>In the air: flips and rolls</dd></div>
+      </dl>
+      <p class="hint">Gamepads work too: triggers to drive, left stick to steer, A handbrake, B boost, Y camera.</p>
+      <button id="help-back" class="btn primary" type="button">Back</button>
+    </div>
+  </section>
+
+  <section id="pause" class="screen" hidden>
+    <div class="panel slim">
+      <h2 class="title">Paused</h2>
+      <button id="btn-resume" class="btn primary" type="button">Resume</button>
+      <button id="btn-restart" class="btn" type="button">Restart</button>
+      <button id="btn-quit" class="btn" type="button">Main menu</button>
+    </div>
+  </section>
+
+  <section id="results" class="screen" hidden>
+    <div class="panel">
+      <div id="res-medal" class="medal"></div>
+      <h2 id="res-title" class="title">Stage complete</h2>
+      <div id="res-time" class="result-time num">0:00.00</div>
+      <dl id="res-stats" class="stats"></dl>
+      <div class="btn-row">
+        <button id="btn-again" class="btn primary" type="button">Race again</button>
+        <button id="btn-menu" class="btn" type="button">Main menu</button>
+      </div>
+    </div>
+  </section>
+
   <div id="loading" class="loading">
     <div class="loading-inner">
       <div class="brand"><span>CANYON</span><em>RUSH</em></div>

@@ -155,10 +155,10 @@ function surfaceGLSL(stage) {
   // Banded sandstone: mostly one warm orange-red, with a few paler and darker
   // layers at set heights (as real strata are), wandering slightly.
   vec3 strata(float y, vec2 xz, float n0, float n1) {
-    float h = y + n0 * 8.0 + n1 * 2.0;
-    vec3 c = mix(${lin('#a1502f')}, ${lin('#b25d37')}, 0.5 + 0.5 * sin(h * 0.21));
-    c = mix(c, ${lin('#c4916a')}, smoothstep(0.93, 1.0, 0.5 + 0.5 * sin(h * 0.083 + 1.7)) * 0.45);
-    c = mix(c, ${lin('#83402a')}, smoothstep(0.9, 1.0, 0.5 + 0.5 * sin(h * 0.37 + 0.4)) * 0.3);
+    float h = y + n0 * 10.0 + n1 * 1.5;
+    vec3 c = mix(${lin('#9a4d31')}, ${lin('#ad5c39')}, 0.5 + 0.5 * sin(h * 0.16));
+    c = mix(c, ${lin('#bf8c68')}, smoothstep(0.9, 1.0, 0.5 + 0.5 * sin(h * 0.055 + 1.7)) * 0.3);
+    c = mix(c, ${lin('#7e3f2b')}, smoothstep(0.85, 1.0, 0.5 + 0.5 * sin(h * 0.29 + 0.4)) * 0.2);
     return c;
   }
 

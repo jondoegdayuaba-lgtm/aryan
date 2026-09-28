@@ -41,7 +41,7 @@ export const STAGE = {
     { type: 'level', from: [8, -40], to: [12, 30], h: 'bridge', blend: 60 },
     { type: 'whoops', from: [8, 10], to: [12, -20], amp: 1.6, wavelength: 85 },
     // Climb up onto the ledge, then launch off it.
-    { type: 'level', from: [13, -10], to: [14, 0], h: 14, blendIn: 75, blendOut: 42 },
+    { type: 'level', from: [13, -10], to: [14, 0], h: 14, blendIn: 115, blendOut: 85 },
     { type: 'kicker', at: [14, 0], height: 1.2, up: 16, down: 10 },
     // Water crossing at the oasis.
     { type: 'level', from: [6, -12], to: [6, 12], h: 'water', blend: 22 },
