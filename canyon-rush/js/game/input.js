@@ -74,7 +74,9 @@ export class Input {
   }
 
   _pad() {
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let pads = [];
+    // Embedded pages (iframes) can be denied gamepad access, which throws.
+    try { pads = navigator.getGamepads?.() || []; } catch { return null; }
     for (const p of pads) if (p && p.connected && p.mapping === 'standard') return p;
     for (const p of pads) if (p && p.connected) return p;
     return null;

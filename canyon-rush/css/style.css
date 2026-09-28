@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --ink: #fff7ee;
   --dim: rgba(255, 238, 222, 0.72);
   --faint: rgba(255, 238, 222, 0.45);
