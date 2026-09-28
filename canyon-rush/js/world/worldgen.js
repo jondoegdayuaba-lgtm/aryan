@@ -524,6 +524,11 @@ function makeScatter(stage, near, splat, field) {
   const roadDist = (x, z) => Math.sqrt(field.dist[cell(x, z)]);
   const oasis = stage.oasis;
   const out = { boulders: [], rocks: [], cacti: [], bushes: [], grass: [], palms: [], deadTrees: [] };
+  // Under (or right at the edge of) the oasis water.
+  const wet = (x, z) => {
+    const ox = x - oasis.x, oz = z - oasis.z;
+    return ox * ox + oz * oz < (oasis.r * 1.8) ** 2 && near.sample(x, z) < oasis.level + 0.35;
+  };
   const lim = PLAY_RADIUS + 60;
   const inside = (x, z) => x * x + z * z < (PLAY_RADIUS + 120) * (PLAY_RADIUS + 120);
 
@@ -538,9 +543,19 @@ function makeScatter(stage, near, splat, field) {
 
   // Boulders gather at the foot of cliffs; a few lie out on the plain.
   // Stride 8: x, y, z, size, rotY, tiltA, tiltB, variant
+  // Height above the lowest ground nearby: small at the foot of a slope, large on a rim.
+  const aboveLow = (x, z, h) => {
+    let lo = h;
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      lo = Math.min(lo, near.sample(x + Math.cos(a) * 14, z + Math.sin(a) * 14));
+    }
+    return h - lo;
+  };
   scan(9, (x, z) => {
     const s = slopeAt(near, x, z);
-    if (roadDist(x, z) < 9 || maskAt(x, z, 3) > 0.3) return;
+    if (roadDist(x, z) < 9 || maskAt(x, z, 3) > 0.3 || wet(x, z)) return;
+    if (aboveLow(x, z, near.sample(x, z)) > (s > 0.25 ? 3.5 : 1.5)) return;
     const cliffFoot = s > 0.25 && s < 1.1;
     if (r() > (cliffFoot ? 0.55 : s < 0.25 ? 0.02 : 0)) return;
     const size = 0.6 + Math.pow(r(), 2.2) * (cliffFoot ? 4.2 : 1.8);
@@ -549,7 +564,7 @@ function makeScatter(stage, near, splat, field) {
 
   // Small scattered stones: visual only. Same stride.
   scan(5, (x, z) => {
-    if (roadDist(x, z) < 5.5 || maskAt(x, z, 3) > 0.5 || maskAt(x, z, 2) > 0.5) return;
+    if (roadDist(x, z) < 5.5 || maskAt(x, z, 3) > 0.5 || maskAt(x, z, 2) > 0.5 || wet(x, z)) return;
     if (r() > 0.28) return;
     out.rocks.push(x, near.sample(x, z), z, 0.12 + Math.pow(r(), 2) * 0.45, r() * 6.28, r(), r(), (r() * 4) | 0);
   });
@@ -564,7 +579,7 @@ function makeScatter(stage, near, splat, field) {
 
   // Desert scrub everywhere it can grow.
   scan(7, (x, z) => {
-    if (slopeAt(near, x, z) > 0.5 || roadDist(x, z) < 6 || maskAt(x, z, 3) > 0.4) return;
+    if (slopeAt(near, x, z) > 0.5 || roadDist(x, z) < 6 || maskAt(x, z, 3) > 0.4 || wet(x, z)) return;
     if (r() > 0.42 * (1 - 0.85 * maskAt(x, z, 2))) return;
     out.bushes.push(x, near.sample(x, z), z, 0.5 + Math.pow(r(), 1.6) * 1.1, r() * 6.28, (r() * 4) | 0);
   });
@@ -572,7 +587,7 @@ function makeScatter(stage, near, splat, field) {
   // Dry grass tufts, densest along the road verges.
   scan(3.2, (x, z) => {
     const rd = roadDist(x, z);
-    if (rd < 5 || slopeAt(near, x, z) > 0.45 || maskAt(x, z, 3) > 0.25) return;
+    if (rd < 5 || slopeAt(near, x, z) > 0.45 || maskAt(x, z, 3) > 0.25 || wet(x, z)) return;
     if (r() > (rd < 18 ? 0.5 : 0.16) * (1 - 0.7 * maskAt(x, z, 2))) return;
     out.grass.push(x, near.sample(x, z), z, 0.6 + r() * 0.7, r() * 6.28, (r() * 3) | 0);
   });
@@ -589,7 +604,7 @@ function makeScatter(stage, near, splat, field) {
   // A few dead trees for character.
   scan(120, (x, z) => {
     if (r() > 0.35) return;
-    if (slopeAt(near, x, z) > 0.2 || roadDist(x, z) < 10 || maskAt(x, z, 3) > 0.2 || maskAt(x, z, 2) > 0.3) return;
+    if (slopeAt(near, x, z) > 0.2 || roadDist(x, z) < 10 || maskAt(x, z, 3) > 0.2 || maskAt(x, z, 2) > 0.3 || wet(x, z)) return;
     out.deadTrees.push(x, near.sample(x, z), z, 0.8 + r() * 0.5, r() * 6.28, (r() * 3) | 0);
   });
 

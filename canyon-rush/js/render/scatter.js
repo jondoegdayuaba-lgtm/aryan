@@ -103,41 +103,51 @@ function grassTexture() {
 
 function frondTexture() {
   const r = rng(53);
-  return canvasTexture(256, 1024, (g, W, H) => {
+  // Left half: a live green frond; right half: a dead, dry one. Canvas top is the
+  // frond tip (v = 1), the bottom its base.
+  return canvasTexture(512, 1024, (g, W, H) => {
     g.clearRect(0, 0, W, H);
-    // Leaflets along a central rib (rib runs top to bottom = base to tip).
-    for (let i = 0; i < 120; i++) {
-      const t = i / 120;
-      const y = t * H;
-      const len = W * 0.5 * Math.sin(Math.min(1, t * 1.25) * Math.PI * 0.95) * (0.8 + r() * 0.3);
-      for (const s of [-1, 1]) {
-        g.strokeStyle = `rgb(${60 + r() * 30},${95 + r() * 30},${45 + r() * 15})`;
-        g.lineWidth = 3 + r() * 2;
-        g.beginPath();
-        g.moveTo(W / 2, y);
-        g.quadraticCurveTo(W / 2 + s * len * 0.5, y + 10, W / 2 + s * len, y + 30 + r() * 20);
-        g.stroke();
+    for (const dead of [false, true]) {
+      const cx = dead ? W * 0.75 : W * 0.25;
+      const n = 150;
+      for (let i = 0; i < n; i++) {
+        const t = 0.06 + (i / n) * 0.92;              // 0 at the base, 1 at the tip
+        const y = (1 - t) * H;
+        const len = W * 0.29 * Math.pow(Math.sin(Math.min(1, t * 1.15) * Math.PI), 0.6) * (0.85 + r() * 0.25);
+        for (const s of [-1, 1]) {
+          const ang = (dead ? 0.42 : 0.62) + (r() - 0.5) * 0.2;   // angle away from the rib, toward the tip
+          const ex = cx + s * Math.sin(ang) * len, ey = y - Math.cos(ang) * len;
+          g.strokeStyle = dead
+            ? `rgb(${135 + r() * 40},${105 + r() * 30},${62 + r() * 20})`
+            : `rgb(${58 + r() * 34},${92 + r() * 36},${38 + r() * 18})`;
+          g.lineWidth = 5 + r() * 3;
+          g.lineCap = 'round';
+          g.beginPath();
+          g.moveTo(cx, y);
+          g.quadraticCurveTo(cx + s * Math.sin(ang) * len * 0.55, y - Math.cos(ang) * len * 0.3, ex, ey + (dead ? 18 : 6));
+          g.stroke();
+        }
       }
+      g.strokeStyle = dead ? 'rgb(150,125,85)' : 'rgb(125,125,72)';
+      g.lineWidth = 7;
+      g.beginPath();
+      g.moveTo(cx, H);
+      g.lineTo(cx, H * 0.02);
+      g.stroke();
     }
-    g.strokeStyle = 'rgb(120,120,70)';
-    g.lineWidth = 6;
-    g.beginPath();
-    g.moveTo(W / 2, 0);
-    g.lineTo(W / 2, H);
-    g.stroke();
   }, { repeat: false });
 }
 
 function barkTexture() {
   const r = rng(61);
   return canvasTexture(256, 512, (g, W, H) => {
-    g.fillStyle = '#6e5a45';
+    g.fillStyle = '#806b56';
     g.fillRect(0, 0, W, H);
     // Palm trunk: overlapping leaf-base scales in a diamond pattern.
     for (let y = 0; y < H + 32; y += 28) {
       for (let x = (y / 28) % 2 ? 0 : 16; x < W + 32; x += 32) {
-        const l = 70 + r() * 40;
-        g.fillStyle = `rgb(${l + 30},${l + 12},${l - 10})`;
+        const l = 92 + r() * 42;
+        g.fillStyle = `rgb(${l + 28},${l + 14},${l - 6})`;
         g.beginPath();
         g.moveTo(x, y - 14);
         g.lineTo(x + 16, y);
@@ -145,7 +155,7 @@ function barkTexture() {
         g.lineTo(x - 16, y);
         g.closePath();
         g.fill();
-        g.strokeStyle = 'rgba(30,22,15,0.8)';
+        g.strokeStyle = 'rgba(45,34,24,0.75)';
         g.lineWidth = 3;
         g.stroke();
       }
@@ -300,24 +310,29 @@ function palmGeometry(seed) {
   const uv = trunk.attributes.uv;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getY(i), uv.getX(i) * H / 1.2);
   const top = spine.getPoint(1);
+  // The crown sits on a bulky boot of old leaf bases.
+  const boot = new THREE.CylinderGeometry(0.48, 0.24, 1.6, 12, 2, true);
+  boot.translate(top.x, top.y - 0.75, top.z);
+  const trunkAll = mergeGeometries([trunk, boot]);
 
   const fronds = [];
-  const count = 20;
+  const count = 28;
   for (let i = 0; i < count; i++) {
-    const dead = i >= 15;
-    const ang = (i / count) * TAU * 1.618 * 3 + r() * 0.3;
-    const len = dead ? 2.4 + r() : 3.6 + r() * 1.4;
-    const rise = dead ? -1.1 : 0.55 + r() * 0.5;
+    const dead = i >= 22;
+    const young = i < 6;
+    const ang = i * 2.39996 + r() * 0.3;
+    const len = dead ? 2.4 + r() : young ? 2.8 + r() : 3.6 + r() * 1.4;
+    const rise = dead ? -1.1 : young ? 1.3 + r() * 0.5 : 0.5 + r() * 0.5;
     const segs = 8;
-    const geo = new THREE.PlaneGeometry(1.1, len, 1, segs);
+    const geo = new THREE.PlaneGeometry(1.3, len, 2, segs);
     const p = geo.attributes.position;
     for (let k = 0; k < p.count; k++) {
       const along = (p.getY(k) + len / 2) / len;
       const x = p.getX(k);
       const d = along * len;
-      const droop = dead ? -d * 0.9 : rise * d - 0.22 * d * d;
-      const fold = Math.abs(x) * 0.35;
-      p.setXYZ(k, x * (1 - along * 0.5), droop + fold, d);
+      const droop = dead ? -d * 0.9 : rise * d - (young ? 0.12 : 0.22) * d * d;
+      const fold = Math.abs(x) * 0.45;
+      p.setXYZ(k, x * (1 - along * 0.45), droop + fold, d);
     }
     geo.rotateY(ang);
     geo.translate(top.x, top.y - 0.2, top.z);
@@ -333,7 +348,7 @@ function palmGeometry(seed) {
     const v = new THREE.Vector3(fn.getX(i), Math.abs(fn.getY(i)) + 0.6, fn.getZ(i)).normalize();
     fn.setXYZ(i, v.x, v.y, v.z);
   }
-  return { trunk, frond, height: H };
+  return { trunk: trunkAll, frond, height: H };
 }
 
 // Gnarled dead tree: recursive branches of tapering tubes.
@@ -401,16 +416,19 @@ function rockMaterial(tex) {
         vec4 rb = tri(tNoise, vSWorld, tw, 0.9);
         vec4 rc = tri(tCell, vSWorld, tw, 0.35);
         float hy = vSWorld.y + (ra.r - 0.5) * 3.0;
-        vec3 rock = mix(${lin('#a1502f')}, ${lin('#b8683f')}, 0.5 + 0.5 * sin(hy * 0.21));
-        rock = mix(rock, ${lin('#c9a07a')}, smoothstep(0.7, 0.95, ra.a) * 0.35);
-        rock *= 0.8 + 0.35 * rb.r;
-        rock *= 1.0 - 0.3 * (1.0 - smoothstep(0.0, 0.06, rc.g));
+        vec3 rock = mix(${lin('#8e5438')}, ${lin('#a66a45')}, 0.5 + 0.5 * sin(hy * 0.21));
+        rock = mix(rock, ${lin('#bf9d7c')}, smoothstep(0.7, 0.95, ra.a) * 0.35);
+        rock *= 0.76 + 0.42 * rb.r;
+        // Desert varnish: a dark patina streaking the steep sides.
+        float varnish = smoothstep(0.4, 0.8, ra.g + (rb.b - 0.5) * 0.3) * (1.0 - smoothstep(0.2, 0.75, vSNormal.y));
+        rock = mix(rock, ${lin('#3b2a21')}, varnish * 0.5);
+        rock *= 1.0 - 0.35 * (1.0 - smoothstep(0.0, 0.06, rc.g));
         // Dust settles on top surfaces.
         rock = mix(rock, ${lin('#c29563')}, smoothstep(0.55, 0.9, vSNormal.y + (rb.g - 0.5) * 0.4) * 0.55);
         diffuseColor.rgb *= rock * mix(0.55, 1.0, vAO);
         float rockH = (ra.g * 0.6 + rb.b * 0.4 + rc.r * 0.3);`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        normal = perturbNormalH(-vViewPosition, normal, vec2(dFdx(rockH), dFdy(rockH)) * 1.4, faceDirection);`);
+        normal = perturbNormalH(-vViewPosition, normal, vec2(dFdx(rockH), dFdy(rockH)) * 2.4, faceDirection);`);
   };
   m.customProgramCacheKey = () => 'rock';
   return useTerrainLight(m);
@@ -448,7 +466,7 @@ function cactusMaterial(tex) {
 }
 
 // Foliage cards: alpha-tested, wind-swayed, and glowing a little when backlit by the sun.
-function foliageMaterial(map, shared, { sway = 0.08, backlight = 0.5, key }) {
+function foliageMaterial(map, shared, { sway = 0.08, backlight = 0.5, mipAlpha = 0, key }) {
   const m = new THREE.MeshStandardMaterial({ map, alphaTest: 0.45, alphaToCoverage: true, side: THREE.DoubleSide, roughness: 0.9, metalness: 0 });
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = shared.uTime;
@@ -470,6 +488,16 @@ function foliageMaterial(map, shared, { sway = 0.08, backlight = 0.5, key }) {
         ` + WPOS_VERT);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform vec3 uSunDir;\nuniform vec3 uSunCol;\nvarying vec3 vSWorld;\nvarying vec3 vSNormal;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        #if defined(USE_MAP) && ${mipAlpha > 0 ? 1 : 0}
+        {
+          // Mipmapping averages thin leaves away; scale alpha back up with the mip level.
+          vec2 tsz = vec2(textureSize(map, 0));
+          vec2 ddx = dFdx(vMapUv * tsz), ddy = dFdy(vMapUv * tsz);
+          float mip = max(0.0, 0.5 * log2(max(dot(ddx, ddx), dot(ddy, ddy))));
+          diffuseColor.a *= 1.0 + mip * ${mipAlpha.toFixed(2)};
+        }
+        #endif`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         {
           vec3 vdir = normalize(vSWorld - cameraPosition);
@@ -619,18 +647,20 @@ export class Scatter {
         { geometry: rockLo[k], material: rockMat, maxDist: 650 * q.dist, shadow: false },
       ], Float32Array.from(list.flat()), null, { radius: 1.3 }));
     });
-    const pebbleMats = [];
+    const pebbleMats = [], pebbleCols = [];
+    const stoneTints = [[0.78, 0.74, 0.72], [0.55, 0.5, 0.48], [0.95, 0.9, 0.86], [0.7, 0.62, 0.56]];
     for (let i = 0; i < S.rocks.length; i += 8) {
       if (q.density < 1 && (i / 8) % 2) continue;
       const R = S.rocks;
       const size = R[i + 3];
       e.set(R[i + 5] * 2, R[i + 4], R[i + 6] * 2);
       q4.setFromEuler(e);
-      v.set(R[i], R[i + 1] + size * 0.1, R[i + 2]);
-      s.set(size, size * 0.8, size);
+      v.set(R[i], R[i + 1] - size * 0.04, R[i + 2]);
+      s.set(size, size * 0.7, size);
       pebbleMats.push(...m4.compose(v, q4, s).toArray());
+      pebbleCols.push(...stoneTints[R[i + 7] & 3]);
     }
-    this.layers.push(new Layer(scene, [{ geometry: rockLo[1], material: rockMat, maxDist: 70 * q.dist, shadow: false }], Float32Array.from(pebbleMats), null, { radius: 1.2 }));
+    this.layers.push(new Layer(scene, [{ geometry: rockLo[1], material: rockMat, maxDist: 70 * q.dist, shadow: false }], Float32Array.from(pebbleMats), Float32Array.from(pebbleCols), { radius: 1.2 }));
 
     // --- Saguaros: five shapes, detailed up close and simple further out.
     const cactusMat = cactusMaterial(tex);
@@ -688,7 +718,7 @@ export class Scatter {
     this.layers.push(new Layer(scene, [{ geometry: bushGeo, material: bushMat, maxDist: 320 * q.dist, shadow: false }], Float32Array.from(bm), Float32Array.from(bc), { radius: 1.2 }));
 
     // --- Dry grass tufts near the camera.
-    const grassMat = foliageMaterial(grassTexture(), this.shared, { sway: 0.18, backlight: 0.9, key: 'grass' });
+    const grassMat = foliageMaterial(grassTexture(), this.shared, { sway: 0.18, backlight: 0.9, mipAlpha: 0.1, key: 'grass' });
     const gm = [];
     for (let i = 0; i < S.grass.length; i += 6) {
       if (q.density < 1 && (i / 6) % 2) continue;
@@ -706,7 +736,7 @@ export class Scatter {
     useTerrainLight(bark);
     const frondTex = frondTexture();
     frondTex.wrapS = THREE.ClampToEdgeWrapping;
-    const frondMat = foliageMaterial(frondTex, this.shared, { sway: 0.03, backlight: 0.7, key: 'frond' });
+    const frondMat = foliageMaterial(frondTex, this.shared, { sway: 0.03, backlight: 0.7, mipAlpha: 0.3, key: 'frond' });
     frondMat.color.set(0xffffff);
     for (let i = 0; i < S.palms.length; i += 6) {
       const P = S.palms;

@@ -214,11 +214,17 @@ function surfaceGLSL(stage) {
     ground *= 0.9 + 0.2 * n2.r;
     vec4 cl = texture2D(tCell, xz * 0.38);
     vec4 cl2 = texture2D(tCell, xz * 0.93 + 0.37);
-    float pebA = smoothstep(0.3, 0.16, cl.r) * step(0.62, cl.b);
-    float pebB = smoothstep(0.26, 0.12, cl2.r) * step(0.7, cl2.b);
-    float peb = max(pebA, pebB * 0.8) * clamp(smoothstep(0.35, 0.85, n2.g + 0.25 * n1.r) + pave, 0.0, 1.0) * (1.0 - sandW * 0.85);
-    vec3 pebCol = mix(${lin('#5f4a3d')}, ${lin('#a9876a')}, fract(cl.b * 7.13 + cl2.b));
-    ground = mix(ground, pebCol, peb * 0.45 * detail);
+    // Gravel: stones of mixed size and tone (some varnished dark, some pale),
+    // in drifts rather than evenly sprinkled, fading out before they alias.
+    float pebA = smoothstep(0.3, 0.16, cl.r) * step(0.66, cl.b);
+    float pebB = smoothstep(0.24, 0.12, cl2.r) * step(0.74, cl2.b) * 0.6;
+    float clump = smoothstep(0.42, 0.8, n2.g + 0.3 * n1.r - 0.15 * n3.b);
+    float peb = max(pebA, pebB) * clamp(clump + pave * 0.7, 0.0, 1.0) * (1.0 - sandW * 0.9);
+    float pebFade = 1.0 - smoothstep(0.35, 0.9, length(fwidth(xz * 0.38 * 16.0)));
+    peb *= pebFade;
+    float pebTone = fract(cl.b * 7.13 + cl2.b * 3.1);
+    vec3 pebCol = ground * mix(0.62, 1.28, pebTone) * mix(vec3(1.0), vec3(0.92, 0.95, 1.04), step(0.8, pebTone));
+    ground = mix(ground, pebCol, peb * 0.55 * detail);
 
     // ---- Rock: cliffs by slope, caprock on high ground. Triplanar, so vertical
     // faces aren't stretched.
@@ -256,7 +262,7 @@ function surfaceGLSL(stage) {
     vec3 road = mix(${lin('#9b7555')}, ${lin('#7f5f45')}, ruts * 0.75);
     road = mix(road, ${lin('#b39272')}, clamp(loose, 0.0, 1.0) * 0.55);
     road *= 0.9 + 0.2 * n3.r;
-    road = mix(road, pebCol, peb * 0.3 * detail * (1.0 - ruts));
+    road = mix(road, road * mix(0.7, 1.2, pebTone), peb * 0.35 * detail * (1.0 - ruts));
 
     // ---- Oasis shore: wet, dark sand.
     float od = length(xz - OASIS.xy);
