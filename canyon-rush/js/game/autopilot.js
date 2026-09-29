@@ -1,19 +1,22 @@
 // Rides the bike along the route by itself: used for the menu's attract mode
-// (which throws in the odd wheelie on the straights) and for automated testing.
+// (which shows off: wheelies on the straights, tricks off the jumps) and for
+// automated testing.
 import * as THREE from 'three';
 
 const clamp = THREE.MathUtils.clamp;
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 
 export class Autopilot {
-  constructor(route, { maxSpeed = 30, aggression = 1, wheelies = false } = {}) {
+  constructor(route, { maxSpeed = 30, aggression = 1, showOff = false } = {}) {
     this.route = route;
     this.s = null;
     this.maxSpeed = maxSpeed;
     this.aggression = aggression;
-    this.wheelies = wheelies;
+    this.showOff = showOff;
     this.wheelieT = 0;
     this.nextWheelie = 3;
+    this.trickPick = 0;
+    this.trickLeft = 0;
     this._r = new THREE.Vector3();
   }
 
@@ -33,7 +36,7 @@ export class Autopilot {
     // Aim back toward the centre line when off to one side.
     const desired = Math.atan2(-(t.x - p.x), -(t.z - p.z));
     const err = angDiff(desired, bike.heading);
-    const steer = bike.groundedWheels > 0 ? clamp(-err * 2.4, -1, 1) : 0;
+    const steer = bike.groundedWheels > 0 ? clamp(-err * 4, -1, 1) : 0;
 
     // Slow for bends ahead.
     let bend = 0;
@@ -50,7 +53,7 @@ export class Autopilot {
 
     // Show-off wheelies on the straights: balance on the throttle and rear brake.
     let lean = false;
-    if (this.wheelies && !bike.crashed) {
+    if (this.showOff && !bike.crashed) {
       this.nextWheelie -= dt;
       const straight = bend < 0.12 && Math.abs(err) < 0.12 && n.d < 4;
       if (this.wheelieT > 0) {
@@ -69,6 +72,17 @@ export class Autopilot {
         this.nextWheelie = 6 + Math.random() * 6;
       }
     }
-    return { throttle, brake, steer, lean, boost: false, lookX: 0, lookY: 0 };
+    // ...and a trick off every big jump, let go in good time for the landing.
+    let trick = 0;
+    if (this.showOff && !bike.crashed && bike.groundedWheels === 0) {
+      if (!this.trickPick && bike.airTime > 0.15) {
+        const left = bike.airLeft();
+        this.trickPick = left > 0.95 ? 1 + Math.floor(Math.random() * 5) : -1;
+        this.trickLeft = left - 0.5;
+      }
+      this.trickLeft -= dt;
+      if (this.trickPick > 0 && this.trickLeft > 0) trick = this.trickPick;
+    } else if (bike.groundedWheels > 0) this.trickPick = 0;
+    return { throttle, brake, steer, lean, boost: false, trick, lookX: 0, lookY: 0 };
   }
 }

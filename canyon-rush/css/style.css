@@ -423,6 +423,79 @@ html, body {
 .popup .sub { display: block; text-align: center; font-size: 16px; color: var(--dim); letter-spacing: 0.06em; }
 .popup.cp { font-size: 26px; }
 .popup.bad { color: #ff7a5c; font-size: 40px; }
+/* Trick in progress, and the reminder of the trick keys while in the air. */
+.trick-now {
+  position: absolute;
+  left: 50%;
+  top: 19%;
+  transform: translateX(-50%) scale(0.8);
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.12s, transform 0.12s;
+  pointer-events: none;
+}
+.trick-now.show { opacity: 1; transform: translateX(-50%) scale(1); }
+.trick-now.warn #trick-name { color: #ff5a4a; }
+.trick-now.warn .trick-hold { display: none; }
+.trick-now.warn::after {
+  content: 'Let go!';
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 22px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: #e8402f;
+  border-radius: 8px;
+  padding: 1px 12px;
+  animation: blink 0.25s steps(2) infinite;
+}
+@keyframes blink { 50% { opacity: 0.35; } }
+#trick-name {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 800;
+  font-size: 44px;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  text-shadow: 0 3px 16px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+}
+.trick-hold { width: 160px; height: 7px; border-radius: 4px; background: rgba(20, 12, 8, 0.6); border: 1px solid var(--line); overflow: hidden; }
+#trick-fill { height: 100%; width: 100%; background: linear-gradient(90deg, var(--accent), #fff1a8); transform-origin: left; transform: scaleX(0); }
+.trick-keys {
+  position: absolute;
+  left: 50%;
+  bottom: calc(150px + var(--safe-b));
+  transform: translateX(-50%) translateY(8px);
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.15s;
+  display: flex;
+  gap: 6px 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: max-content;
+  max-width: 92vw;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 7px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
+.trick-keys.show { opacity: 1; transform: translateX(-50%); }
+.trick-keys kbd {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--accent-2);
+  margin-right: 5px;
+}
+body.touch .trick-keys { display: none; }
 @keyframes pop {
   0% { opacity: 0; transform: translateY(12px) scale(0.85); }
   12% { opacity: 1; transform: translateY(0) scale(1.06); }
@@ -513,9 +586,11 @@ body.touch .touch-ui { display: block; }
   bottom: calc(16px + var(--safe-b));
   display: grid;
   grid-template-columns: 76px 96px;
-  grid-template-rows: 54px 96px;
+  grid-template-rows: 46px 54px 96px;
   gap: 10px;
 }
+.touch-right .trick { grid-column: 1 / -1; background: rgba(170, 90, 255, 0.4); display: grid; align-content: center; line-height: 1; }
+.touch-right .trick small { font-size: 11px; letter-spacing: 0.04em; color: var(--dim); text-transform: none; font-weight: 600; }
 .touch-right .small { font-size: 13px; }
 .touch-right button { font-size: 16px; padding: 0 4px; }
 .touch-right .gas { background: rgba(60, 180, 90, 0.45); }
@@ -572,7 +647,7 @@ body.touch .icon-btn { top: calc(140px + var(--safe-t)); }
   .tag { margin: 6px 0 12px; }
   .btn { padding: 10px 14px; font-size: 18px; }
   .touch-left button { width: 70px; height: 70px; }
-  .touch-right { grid-template-columns: 68px 84px; grid-template-rows: 46px 84px; }
+  .touch-right { grid-template-columns: 68px 84px; grid-template-rows: 40px 46px 84px; }
 }
 
 /* ---------- Garage ---------- */

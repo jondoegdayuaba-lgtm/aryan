@@ -8,12 +8,20 @@
 // and shown by the model (`lean`). Pitch is fully simulated, which is where
 // wheelies, jumps, flips and loop-outs come from. A crash lets go of all that:
 // the bike tumbles freely and the rider is thrown off.
+//
+// In the air the rider can also throw freestyle tricks (see tricks.js): only
+// the pose changes, but still being stretched out when the wheels touch down
+// means a bail.
 import * as THREE from 'three';
+import { TRICK_OUT, TRICK_IN, TRICK_BAIL } from './tricks.js';
 
 const V = () => new THREE.Vector3();
 const clamp = THREE.MathUtils.clamp;
 const GRAVITY = 9.81;
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
+// Tyres grip harder sideways than straight on: game tyres, so the bikes corner
+// hard and forgive a lot.
+const CORNER_GRIP = 1.3;
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 
 // Masses include the rider. Lengths in metres, forces in newtons, power in watts.
@@ -176,6 +184,14 @@ export class Bike {
     this.popTimer = 0;
     this.leanBlocked = false;
     this.airSteerHold = 0;
+    this.trick = 0;             // index into TRICKS, 0 when not doing one
+    this.trickExt = 0;          // 0 on the bike .. 1 fully stretched out
+    this.trickHeld = 0;         // seconds held at full stretch
+    this.trickCount ??= 0;      // tricks started so far (tells repeats apart; never goes back)
+    this.trickInput = 0;
+    this.trickBlocked = false;
+    this.yawI = 0;
+    this.slideAngle = 0;
     this.reverseHold = 0;
     this.reversing = false;
     this.inWater = 0;
@@ -229,8 +245,9 @@ export class Bike {
     this.throttleInput = input.throttle;
     this.throttle += (input.throttle - this.throttle) * k(input.throttle > this.throttle ? 7 : 12);
     this.brake += (input.brake - this.brake) * k(10);
-    this.steerInput += (input.steer - this.steerInput) * k(Math.abs(input.steer) > Math.abs(this.steerInput) ? 6 : 10);
+    this.steerInput += (input.steer - this.steerInput) * k(Math.abs(input.steer) > Math.abs(this.steerInput) ? 9 : 12);
     this.leanInput = input.lean ? 1 : 0;
+    this.trickInput = input.trick || 0;
     this.boost = !!input.boost;
     this.holding = !!input.hold;        // held on the brakes (start line, garage): don't walk backwards
 
@@ -314,9 +331,12 @@ export class Bike {
 
     this.sliding = brake > 0.55 && Math.abs(this.steerInput) > 0.3 && Math.abs(vFwd) > 6;
 
-    // ---- Steering: lots of lock when slow, just what the tyres can use at speed.
-    const vAbs = Math.abs(vFwd);
-    const maxSteer = clamp((S.wheelbase * 8.5) / Math.max(vAbs * vAbs, 1) + 0.05, 0.06, 0.55);
+    // ---- Steering: full lock turns as quickly as the tyres can hold (a bit
+    // under the limit, so there's grip left for the gas and brakes): lots of
+    // lock when slow, just a touch at speed.
+    const muHere = S.grip * (this.wheels[0].surface?.mu ?? 0.9);
+    const rtMax = (0.9 * CORNER_GRIP * muHere * GRAVITY) / Math.max(hs, 3);
+    const maxSteer = Math.min(0.55, Math.atan((S.wheelbase * rtMax) / Math.max(Math.abs(vFwd), 1)));
     const steerTarget = -this.steerInput * maxSteer;
 
     // ---- Motor: full force from standstill, then limited by power and top speed.
@@ -365,9 +385,10 @@ export class Bike {
     this.groundedWheels = grounded;
     const [front, rear] = this.wheels;
 
-    // A landing that doesn't end well.
-    if (wasAir && grounded > 0 && this.airTime > 0.25) {
-      if (this._badLanding(right, up, fwd, pitch)) return;
+    // A landing that doesn't end well: still mid-trick, or at a bad angle.
+    if (wasAir && grounded > 0) {
+      if (this.trickExt > TRICK_BAIL) { this._crash('bail'); return; }
+      if (this.airTime > 0.25 && this._badLanding(right, up, fwd, pitch)) return;
     }
 
     // ---- Suspension and tyres.
@@ -411,6 +432,7 @@ export class Bike {
       const vLong = vc.dot(wf), vLat = vc.dot(ws);
       const surf = w.surface;
       const Fmax = S.grip * surf.mu * N;
+      const FmaxY = Fmax * CORNER_GRIP;
       const mEff = S.mass * 0.5;
       const stopLong = (Math.abs(vLong) * mEff) / dt;
 
@@ -423,19 +445,20 @@ export class Bike {
       Fx -= Math.sign(vLong) * Math.min(surf.roll * N, stopLong);
 
       const alpha = Math.atan2(vLat, Math.max(Math.abs(vLong), 1.5));
-      let Fy = -Math.sign(vLat) * Math.min(Fmax * lateralCurve(alpha), (Math.abs(vLat) * mEff) / dt);
+      let Fy = -Math.sign(vLat) * Math.min(FmaxY * lateralCurve(alpha), (Math.abs(vLat) * mEff) / dt);
       if (rearSlide) Fy *= 0.5;
       if (w.front && frontOnly) Fy *= 0.25;
 
-      // Friction circle, lateral grip first.
+      // Friction ellipse, lateral grip first.
       let spinning = 0;
-      if (Math.hypot(Fx, Fy) > Fmax) {
-        const fxRoom = Math.sqrt(Math.max(0, Fmax * Fmax - Math.min(Math.abs(Fy), Fmax) ** 2));
+      const ux = Fx / Fmax, uy = Fy / FmaxY;
+      if (ux * ux + uy * uy > 1) {
+        const fxRoom = Fmax * Math.sqrt(Math.max(0, 1 - Math.min(1, uy * uy)));
         const fxLimited = Math.max(fxRoom, Math.abs(Fx) * 0.35);
         spinning = clamp((Math.abs(Fx) - fxLimited) / (Fmax + 1), 0, 1);
         Fx = Math.sign(Fx) * Math.min(Math.abs(Fx), fxLimited);
-        const d = Math.hypot(Fx, Fy);
-        if (d > Fmax) { Fx *= Fmax / d; Fy *= Fmax / d; }
+        const e = Math.hypot(Fx / Fmax, Fy / FmaxY);
+        if (e > 1) { Fx /= e; Fy /= e; }
       }
       // Drive and brake forces act partway up toward the centre of mass: the
       // bike squats and dives, but only the rider pulls the front up (and the
@@ -459,18 +482,28 @@ export class Bike {
     this.power = power / S.power;
     this.motorOmega = rear.omega;
 
-    // The rider steers the bike where it's pointed: yaw follows the bars, which
-    // keeps it from swapping ends under braking. Loosened for deliberate slides,
-    // but caught before it goes fully sideways.
+    // The rider steers the bike where it's pointed: yaw follows the bars (never
+    // faster than the tyres can hold), and if the bike ends up pointing a
+    // different way from where it's going, the rider steers it back in line.
+    // That keeps it from swapping ends when you brake or let off mid-turn.
+    // Deliberate slides (brake hard while steering) get a lot more rope, but
+    // are caught before the bike goes fully sideways.
+    this.slideAngle = 0;
     if (grounded === 2 || frontOnly) {
-      // Turn rate from the bars, but never more than the tyres can hold.
-      const mu = S.grip * ((front.surface || rear.surface)?.mu ?? 0.9);
-      const rtMax = (mu * GRAVITY) / Math.max(Math.abs(vFwd), 3);
-      const rt = clamp((vFwd * Math.tan(front.steer)) / S.wheelbase, -rtMax, rtMax);
-      const slide = hs > 3 ? angDiff(Math.atan2(-this.vel.x, -this.vel.z), this.heading) : 0;
-      const kYaw = this.sliding && Math.abs(slide) < 0.75 ? 1.5 : 16;
-      this._torque.addScaledVector(WORLD_UP, clamp((rt - yawRate) * kYaw, -28, 28) * S.inertia.y);
-    }
+      const rtSteer = clamp((vFwd * Math.tan(front.steer)) / S.wheelbase, -rtMax, rtMax);
+      const slide = hs > 3 && vFwd > 0 ? angDiff(Math.atan2(-this.vel.x, -this.vel.z), this.heading) : 0;
+      this.slideAngle = slide;
+      const allow = this.sliding ? 0.7 : 0.1;
+      const excess = Math.sign(slide) * Math.max(0, Math.abs(slide) - allow);
+      const rt = rtSteer + excess * (this.sliding ? 6 : 4);
+      const loose = this.sliding && Math.abs(slide) < allow;
+      // Proportional plus a little integral, so weight shifts (the rear squats
+      // under power) don't leave it turning wider than the bars say.
+      const err = rt - yawRate;
+      this.yawI = loose ? 0 : clamp(this.yawI + err * dt, -0.15, 0.15);
+      const cmd = loose ? err * 2 : err * 40 + this.yawI * 250;
+      this._torque.addScaledVector(WORLD_UP, clamp(cmd, -80, 80) * S.inertia.y);
+    } else this.yawI = 0;
 
     // ---- Air resistance and water.
     const sp = this.speed;
@@ -502,12 +535,13 @@ export class Bike {
         ap = clamp(angDiff(target, pitch) * 7 - pitchRate * 5, -22, 22);
       } else ap = -pitchRate * 0.8;
       // Steering in the air: a gentle turn to line up, which winds up into a
-      // fast spin if you keep holding it.
+      // fast spin if you keep holding it (long enough that lining up for the
+      // landing doesn't set one off by accident).
       if (Math.abs(this.steerInput) > 0.5) this.airSteerHold += dt;
       else this.airSteerHold = 0;
       let ay;
       if (Math.abs(this.steerInput) > 0.05) {
-        const rate = -Math.sign(this.steerInput) * (1.6 + 6 * clamp((this.airSteerHold - 0.2) / 0.3, 0, 1)) * Math.min(1, Math.abs(this.steerInput) * 1.5);
+        const rate = -Math.sign(this.steerInput) * (1.6 + 6 * clamp((this.airSteerHold - 0.35) / 0.3, 0, 1)) * Math.min(1, Math.abs(this.steerInput) * 1.5);
         ay = clamp((rate - yawRate) * 9, -16, 16);
       } else if (hs > 4) ay = clamp(angDiff(Math.atan2(-this.vel.x, -this.vel.z), this.heading) * 7 - yawRate * 5, -24, 24);
       else ay = -yawRate * 1.5;
@@ -520,6 +554,7 @@ export class Bike {
       this.airTime = 0;
       this._rider(dt, front, rear, pitch, pitchRate, yawRate, right, vFwd);
     }
+    this._trick(dt, grounded === 0);
     if (this.landAssist > 0) {
       this.landAssist -= dt;
       const pr = this.angVel.dot(right);
@@ -561,6 +596,43 @@ export class Bike {
     targetLean = clamp(targetLean, -0.9, 0.9) * (this.inWheelie ? 0.5 : 1);
     this.lean += (targetLean - this.lean) * (1 - Math.exp(-dt * 7));
     this.wheelieAngle = pitch;
+  }
+
+  // Freestyle tricks: only in the air, one at a time, and only with time to
+  // finish it (not off every little bump). Holding the button keeps it out.
+  _trick(dt, air) {
+    const want = this.trickInput;
+    if (this.trick) {
+      const out = air && want === this.trick;
+      this.trickExt = out ? Math.min(1, this.trickExt + dt * TRICK_OUT) : Math.max(0, this.trickExt - dt * TRICK_IN);
+      if (this.trickExt > 0.9) this.trickHeld += dt;
+      if (this.trickExt === 0) this.trick = 0;
+    } else if (air && want && this.airTime > 0.1 && !this.trickBlocked) {
+      if (this.airLeft() > 0.45) {
+        this.trick = want;
+        this.trickExt = 0;
+        this.trickHeld = 0;
+        this.trickCount++;
+      } else this.trickBlocked = true;     // too late for this one: let go and try the next jump
+    }
+    if (!want || !air) this.trickBlocked = false;
+  }
+
+  // Seconds until the wheels come back down, flying ballistic from here (erring
+  // on the early side: the wheels hang down on their suspension, and whichever
+  // end is over higher ground touches first).
+  airLeft(maxT = 3) {
+    const p = this.pos, v = this.vel;
+    const clear = this.spec.cgHeight + 0.12;
+    const h = Math.hypot(v.x, v.z) || 1;
+    const ax = (v.x / h) * this.spec.wheelbase * 0.5, az = (v.z / h) * this.spec.wheelbase * 0.5;
+    const W = this.world;
+    for (let t = 0.025; t <= maxT; t += 0.025) {
+      const y = p.y + v.y * t - 0.5 * GRAVITY * t * t - clear;
+      const x = p.x + v.x * t, z = p.z + v.z * t;
+      if (y < Math.max(W.heightAt(x, z), W.heightAt(x + ax, z + az), W.heightAt(x - ax, z - az))) return t;
+    }
+    return maxT;
   }
 
   // The rider's pitch control on the ground: popping and holding wheelies.

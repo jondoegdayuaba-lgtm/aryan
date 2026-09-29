@@ -46,10 +46,21 @@ export const STAGE = {
     // Water crossing at the oasis.
     { type: 'level', from: [6, -12], to: [6, 12], h: 'water', blend: 22 },
     // Crest jumps.
-    { type: 'kicker', at: [1, 40], height: 2.0, up: 24, down: 20 },
-    { type: 'kicker', at: [4, 70], height: 2.4, up: 26, down: 22 },
+    { type: 'kicker', at: [1, 40], height: 2.3, up: 24, down: 20 },
+    { type: 'kicker', at: [4, 70], height: 2.6, up: 26, down: 22 },
     { type: 'kicker', at: [16, -30], height: 2.8, up: 26, down: 22 },
-    { type: 'kicker', at: [19, 30], height: 2.2, up: 22, down: 20 },
+    { type: 'kicker', at: [19, 30], height: 2.4, up: 22, down: 20 },
+    // Tabletops: a steep face, a flat top and a long landing. Plenty of air for tricks.
+    { type: 'jump', at: [0, 120], height: 2.4, up: 12, top: 8, down: 24 },
+    { type: 'jump', at: [3, -87], height: 3.4, up: 16, top: 14, down: 34 },
+    { type: 'jump', at: [3, 83], height: 2.8, up: 14, top: 10, down: 30 },
+    { type: 'jump', at: [6, 68], height: 2.2, up: 12, top: 6, down: 22 },
+    { type: 'jump', at: [14, 126], height: 2.6, up: 13, top: 8, down: 26 },
+    { type: 'jump', at: [15, 110], height: 3.0, up: 14, top: 12, down: 30 },
+    { type: 'jump', at: [16, 147], height: 2.4, up: 12, top: 8, down: 24 },
+    { type: 'jump', at: [17, 134], height: 3.2, up: 15, top: 12, down: 32 },
+    { type: 'jump', at: [18, 134], height: 2.4, up: 12, top: 8, down: 24 },
+    { type: 'jump', at: [20, 83], height: 2.8, up: 13, top: 10, down: 28 },
     // Rhythm section in the dunes.
     { type: 'whoops', from: [17, -60], to: [17, 60], amp: 0.55, wavelength: 13 },
   ],

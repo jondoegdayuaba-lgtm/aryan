@@ -1,11 +1,14 @@
 // Keyboard, gamepad and touch controls, merged into one set of riding inputs.
+import { TRICKS, PAD_TRICKS } from './tricks.js';
+
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 export class Input {
   constructor(canvas) {
     this.canvas = canvas;
     this.keys = new Set();
-    this.touch = { steer: 0, throttle: 0, brake: 0, lean: false, boost: false };
+    this.touch = { steer: 0, throttle: 0, brake: 0, lean: false, boost: false, trick: 0 };
+    this.touchTrickNext = 1;     // the touch Trick button runs through the tricks in turn
     this.look = { x: 0, y: 0, active: false };
     this.onKey = null;
     this.onPad = null;
@@ -18,12 +21,13 @@ export class Input {
       this.keys.add(e.code);
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) && e.target === document.body) e.preventDefault();
       this.usingTouch = false;
+      this.usingPad = false;
       this.onKey?.(e.code, e);
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => {
       this.keys.clear();
-      Object.assign(this.touch, { steer: 0, throttle: 0, brake: 0, lean: false, boost: false });
+      Object.assign(this.touch, { steer: 0, throttle: 0, brake: 0, lean: false, boost: false, trick: 0 });
     });
 
     // Drag on the view (mouse or a spare finger) to look around the bike.
@@ -71,6 +75,17 @@ export class Input {
     hold(q('[data-touch=brake]'), () => { T.brake = 1; }, () => { T.brake = 0; });
     hold(q('[data-touch=lean]'), () => { T.lean = true; }, () => { T.lean = false; });
     hold(q('[data-touch=boost]'), () => { T.boost = true; }, () => { T.boost = false; });
+    const trickBtn = q('[data-touch=trick]');
+    if (trickBtn) {
+      const label = trickBtn.querySelector('small');
+      const show = () => { if (label) label.textContent = TRICKS[this.touchTrickNext].name; };
+      show();
+      hold(trickBtn, () => { T.trick = this.touchTrickNext; }, () => {
+        if (T.trick) this.touchTrickNext = (this.touchTrickNext % (TRICKS.length - 1)) + 1;
+        T.trick = 0;
+        show();
+      });
+    }
   }
 
   _pad() {
@@ -82,7 +97,8 @@ export class Input {
     return null;
   }
 
-  // Current inputs: throttle/brake 0..1, steer -1..1 (right positive), lean back (wheelie), boost.
+  // Current inputs: throttle/brake 0..1, steer -1..1 (right positive), lean back
+  // (wheelie), boost, and the trick held in the air (index into TRICKS, 0 for none).
   read() {
     const k = this.keys;
     let throttle = k.has('KeyW') || k.has('ArrowUp') ? 1 : 0;
@@ -90,6 +106,8 @@ export class Input {
     let steer = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
     let lean = k.has('Space');
     let boost = k.has('ShiftLeft') || k.has('ShiftRight') || k.has('KeyN');
+    let trick = 0;
+    for (let i = 1; i < TRICKS.length && !trick; i++) if (TRICKS[i].codes.some((c) => k.has(c))) trick = i;
     let lookX = 0, lookY = 0;
 
     const T = this.touch;
@@ -98,6 +116,7 @@ export class Input {
     if (T.left || T.right) steer = (T.right ? 1 : 0) - (T.left ? 1 : 0);
     lean ||= T.lean;
     boost ||= T.boost;
+    if (T.trick) trick = T.trick;
 
     const pad = this._pad();
     if (pad) {
@@ -110,6 +129,7 @@ export class Input {
       if (lt > 0.02) brake = Math.max(brake, lt);
       if (b(0).pressed || b(5).pressed) lean = true;
       if (b(1).pressed || b(4).pressed) boost = true;
+      for (const [i, t] of Object.entries(PAD_TRICKS)) if (b(+i).pressed) { trick = t; this.usingPad = true; }
       lookX = dz(pad.axes[2] || 0, 0.2);
       lookY = dz(pad.axes[3] || 0, 0.2);
       // Edge-triggered buttons: 3 = camera (Y), 9 = start (pause), 8 = back (reset).
@@ -119,7 +139,7 @@ export class Input {
         this.padPrev[i] = now;
       }
     }
-    return { throttle: clamp(throttle, 0, 1), brake: clamp(brake, 0, 1), steer: clamp(steer, -1, 1), lean, boost, lookX, lookY };
+    return { throttle: clamp(throttle, 0, 1), brake: clamp(brake, 0, 1), steer: clamp(steer, -1, 1), lean, boost, trick, lookX, lookY };
   }
 
   consumeLook() {

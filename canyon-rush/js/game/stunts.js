@@ -1,7 +1,10 @@
 // Style points: wheelies (by the metre, more near the balance point), big air,
-// backflips and 360s, clean landings, slides, splashes and flattened cacti.
-// Chaining tricks inside a few seconds builds a multiplier; a crash resets it.
+// freestyle tricks, backflips and 360s, clean landings, slides, splashes and
+// flattened cacti. Everything done in one jump pays out together on landing
+// (nothing if you crash). Chaining tricks inside a few seconds builds a
+// multiplier; a crash resets it.
 import * as THREE from 'three';
+import { TRICKS } from './tricks.js';
 
 const TAU = Math.PI * 2;
 
@@ -20,6 +23,9 @@ export class Stunts {
     this.pitchAcc = 0;
     this.yawAcc = 0;
     this.wasAir = false;
+    this.jumpTricks = [];
+    this.trickN = -1;
+    this.tricksLanded = 0;
     this.slide = 0;
     this.slideTime = 0;
     this.slideCool = 0;
@@ -30,11 +36,11 @@ export class Stunts {
     this.best = { air: 0, wheelie: 0, slide: 0 };
   }
 
-  _award(events, label, points, sub = '', extra = {}) {
+  _award(events, label, points, sub = '', extra = {}, step = 1) {
     const pts = Math.round(points * this.combo);
     this.total += pts;
     events.push({ type: 'stunt', label, points: pts, combo: this.combo, sub, ...extra });
-    this.combo = Math.min(5, this.combo + 1);
+    this.combo = Math.min(5, this.combo + step);
     this.comboTimer = 4;
   }
 
@@ -47,7 +53,15 @@ export class Stunts {
     const right = this._r.set(1, 0, 0).applyQuaternion(bike.quat);
     const air = bike.groundedWheels === 0;
 
-    // ---- Air, flips and spins.
+    // ---- Air: tricks, flips and spins, paid out together on landing.
+    if (bike.trick) {
+      if (bike.trickCount !== this.trickN) {
+        this.trickN = bike.trickCount;
+        this.jumpTricks.push({ id: bike.trick, n: bike.trickCount, held: 0 });
+      }
+      const last = this.jumpTricks[this.jumpTricks.length - 1];
+      if (last && last.n === bike.trickCount) last.held = bike.trickHeld;
+    }
     if (air) {
       this.air += dt;
       this.pitchAcc += bike.angVel.dot(right) * dt;
@@ -57,17 +71,31 @@ export class Stunts {
       const t = this.air;
       const flips = Math.floor(Math.abs(this.pitchAcc) / (TAU * 0.85));
       const spins = Math.floor(Math.abs(this.yawAcc) / (TAU * 0.85));
+      const names = [];
+      let pts = 0;
+      // A trick counts once it's been held all the way out for a moment.
+      for (const tr of this.jumpTricks) {
+        if (tr.held < 0.08) continue;
+        const T = TRICKS[tr.id];
+        names.push(T.name.toUpperCase());
+        pts += T.base + T.rate * tr.held;
+        this.tricksLanded++;
+      }
+      if (flips) { names.push((this.pitchAcc > 0 ? 'BACKFLIP' : 'FRONTFLIP') + (flips > 1 ? ` x${flips}` : '')); pts += 700 * flips; }
+      if (spins) { names.push(spins > 1 ? `${spins * 360}` : '360'); pts += 500 * spins; }
       if (t > 0.55) {
         this.best.air = Math.max(this.best.air, t);
-        this._award(ev, t > 2.4 ? 'HUGE AIR' : t > 1.4 ? 'BIG AIR' : 'AIR', t * 120, `${t.toFixed(1)} s`);
+        pts += t * 120;
+        if (!names.length) names.push(t > 2.4 ? 'HUGE AIR' : t > 1.4 ? 'BIG AIR' : 'AIR');
       }
-      if (flips) this._award(ev, (this.pitchAcc > 0 ? 'BACKFLIP' : 'FRONTFLIP') + (flips > 1 ? ` x${flips}` : ''), 700 * flips);
-      if (spins) this._award(ev, spins > 1 ? `${spins * 360}` : '360', 500 * spins);
-      if (t > 0.8 && bike.groundedWheels === 2 && Math.abs(bike.angVel.dot(right)) < 1) this._award(ev, 'CLEAN LANDING', 100);
+      const clean = t > 0.8 && bike.groundedWheels === 2 && Math.abs(bike.angVel.dot(right)) < 1;
+      if (clean) pts += 100;
+      if (names.length) this._award(ev, names.join(' + '), pts, `${t.toFixed(1)} s${clean ? ' · clean landing' : ''}`, { tricks: names.length }, names.length);
       this.air = 0;
       this.pitchAcc = 0;
       this.yawAcc = 0;
       this.wasAir = false;
+      this.jumpTricks.length = 0;
     }
 
     // ---- Wheelies: distance on the back wheel, with a bonus for time spent near the balance point.
@@ -157,6 +185,7 @@ export class Stunts {
     W.dist = W.time = W.sweet = 0;
     this.air = this.pitchAcc = this.yawAcc = 0;
     this.wasAir = false;
+    this.jumpTricks.length = 0;
     this.slide = this.slideTime = 0;
     this.crashes++;
   }

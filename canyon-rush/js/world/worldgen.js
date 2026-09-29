@@ -324,6 +324,18 @@ function buildProfile(route, stage, nearGrid) {
         if (d >= -e.up && d <= 0) prof[i] += e.height * Math.pow((d + e.up) / e.up, 2);
         else if (d > 0 && d <= e.down) { const u = d / e.down; prof[i] += e.height * (1 - u * u * (3 - 2 * u)); }
       }
+    } else if (e.type === 'jump') {
+      // Tabletop: a take-off face that steepens up to the lip, a flat top, then
+      // a long landing slope down the far side.
+      const s0 = at(e.at);
+      const top = e.top ?? 0, pw = e.curve ?? 1.8;
+      for (let i = 0; i < n; i++) {
+        let d = fwd(s0, i * route.step);
+        if (d > route.length / 2) d -= route.length;
+        if (d >= -e.up && d <= 0) prof[i] += e.height * Math.pow((d + e.up) / e.up, pw);
+        else if (d > 0 && d <= top) prof[i] += e.height;
+        else if (d > top && d <= top + e.down) { const u = (d - top) / e.down; prof[i] += e.height * (1 - u * u * (3 - 2 * u)); }
+      }
     } else if (e.type === 'whoops') {
       const s0 = at(e.from), s1 = at(e.to);
       const span = fwd(s0, s1);
@@ -468,12 +480,14 @@ export function* generateWorld(stage) {
         const hiEnv = rh + 0.25 + 0.55 * Math.min(e, eT) + cs * Math.max(0, e - eT);
         const loEnv = rh - 0.1 - e * fs;
         let h = smin(smax(near.data[k], loEnv, 1.2), hiEnv, 1.5);
-        // Road surface: slight crown, two pairs of ruts.
+        // Road surface: slight crown and two worn wheel tracks. The ruts
+        // themselves are painted by the terrain shader: narrow grooves on a
+        // 1 m grid would come out as random bumps that shake the suspension.
         const u = lat / Math.max(2.5, hw);
         const crown = 0.07 * (1 - u * u);
         let ruts = 0;
-        for (const c of [-2.4, -0.7, 0.7, 2.4]) ruts += Math.exp(-((lat - c) * (lat - c)) / 0.18);
-        const surf = rh + crown - 0.05 * ruts;
+        for (const c of [-1.55, 1.55]) ruts += Math.exp(-((lat - c) * (lat - c)) / 0.5);
+        const surf = rh + crown - 0.025 * ruts;
         h = lerp(h, surf, 1 - smoothstep(hw - 0.6, hw + 1.0, d));
         near.data[k] = h;
         road = 1 - smoothstep(hw - 0.3, hw + 1.8 + 1.2 * edgeN, d);

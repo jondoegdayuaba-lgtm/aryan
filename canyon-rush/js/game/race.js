@@ -3,9 +3,9 @@
 
 // Medal times for each bike (seconds for a lap).
 export const MEDALS = {
-  volt: [{ name: 'Gold', time: 163 }, { name: 'Silver', time: 181 }, { name: 'Bronze', time: 210 }],
-  sting: [{ name: 'Gold', time: 144 }, { name: 'Silver', time: 160 }, { name: 'Bronze', time: 185 }],
-  storm: [{ name: 'Gold', time: 126 }, { name: 'Silver', time: 140 }, { name: 'Bronze', time: 162 }],
+  volt: [{ name: 'Gold', time: 165 }, { name: 'Silver', time: 183 }, { name: 'Bronze', time: 212 }],
+  sting: [{ name: 'Gold', time: 149 }, { name: 'Silver', time: 166 }, { name: 'Bronze', time: 192 }],
+  storm: [{ name: 'Gold', time: 138 }, { name: 'Silver', time: 154 }, { name: 'Bronze', time: 178 }],
 };
 
 // Wheelie challenge: metres on one wheel.

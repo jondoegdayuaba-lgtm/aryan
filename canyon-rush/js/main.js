@@ -154,7 +154,7 @@ async function boot() {
   const gates = new Gates(scene, route, STAGE, heightAt);
   const race = new Race(route, gates);
   const stunts = new Stunts();
-  const auto = new Autopilot(route, { maxSpeed: 30, wheelies: true });
+  const auto = new Autopilot(route, { maxSpeed: 30, showOff: true });
 
   const renderScale = params.has('scale') ? +params.get('scale') : Q.renderScale;
   const post = compat
@@ -202,6 +202,7 @@ async function boot() {
     recovers: 0,
     pausedFrom: null,
     crashes: 0,
+    trickHint: false,
   };
   const startPos = () => {
     const s = route.wrapS(-14);
@@ -357,6 +358,7 @@ async function boot() {
       ['Top speed', `${Math.round(G.topSpeed * speedK)} ${settings.units === 'mph' ? 'mph' : 'km/h'}`],
       ['Longest wheelie', `${Math.round(stunts.best.wheelie)} m`],
       ['Biggest air', `${stunts.best.air.toFixed(1)} s`],
+      ['Tricks landed', String(stunts.tricksLanded)],
       ['Crashes', String(G.crashes)],
     ];
     $('res-stats').innerHTML = stats.map(([k, v, good]) => `<div><dt>${k}</dt><dd class="${good ? 'good' : ''}">${v}</dd></div>`).join('');
@@ -533,7 +535,7 @@ async function boot() {
     G.time += dt;
     const S = G.state;
     let inp;
-    auto.wheelies = S === 'menu' || S === 'results';
+    auto.showOff = S === 'menu' || S === 'results';
     if (S === 'menu' || S === 'results') inp = auto.drive(bike, dt);
     else if (S === 'garage' || S === 'countdown') inp = HOLD;
     else {
@@ -566,7 +568,7 @@ async function boot() {
           const sev = [];
           stunts.crash(sev);
           handleEvents(sev);
-          hud.popup(e.reason === 'loop' ? 'Looped <em>out!</em>' : '<em>Crash!</em>', 'bad');
+          hud.popup(e.reason === 'loop' ? 'Looped <em>out!</em>' : e.reason === 'bail' ? 'Bailed!<span class="sub">Let go of the trick before you land</span>' : '<em>Crash!</em>', 'bad');
         }
         continue;
       }
@@ -633,6 +635,11 @@ async function boot() {
 
     // HUD.
     if (!$('hud').hidden) {
+      // In the air with time for a trick: remind which buttons do what.
+      const air = bike.groundedWheels === 0 && !bike.crashed;
+      if (!air || bike.trick) G.trickHint = false;
+      else if (!G.trickHint && bike.airTime > 0.1) G.trickHint = bike.airLeft() > 0.6;
+      hud.setTrickKeys(input.usingPad ? 'pad' : 'keys');
       let nav = null;
       const gate = race.nextGate();
       if (gate && G.mode === 'race') {
@@ -646,6 +653,8 @@ async function boot() {
         speed: bike.speed, power: bike.power, kw: (bike.power * spec.power) / 1000, boosting: inp.boost && playing, boost: G.boost, style: stunts.total,
         time: race.state === 'countdown' ? 0 : race.time, cp: race.next, cpTotal: gates.gates.length, nav,
         x: bike.pos.x, z: bike.pos.z, heading: bike.heading, pitch: bike.wheelieAngle, wheelie: stunts.wheelie,
+        trick: bike.trick, trickExt: bike.trickExt, trickHeld: bike.trickHeld, trickHint: G.trickHint && playing,
+        trickWarn: air && bike.trick && bike.trickExt > 0.3 && bike.airLeft() < 0.5,
       });
     }
 

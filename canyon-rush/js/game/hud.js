@@ -2,6 +2,7 @@
 // meter, race timer with split times, checkpoint count, a heading-up minimap,
 // a pointer to the next gate, stunt pop-ups and the start countdown.
 import { formatTime } from './race.js';
+import { TRICKS } from './tricks.js';
 
 const $ = (id) => document.getElementById(id);
 const ARC_LEN = 377;          // length of the 270 degree arc in the SVG
@@ -15,7 +16,9 @@ export class Hud {
       message: $('message'), nav: $('nav'), navArrow: document.querySelector('#nav svg'), navDist: $('nav-dist'),
       minimap: $('minimap'), chipCp: $('chip-cp'), chal: $('chal'), chalBest: $('chal-best'), chalNext: $('chal-next'),
       wheelie: $('wheelie'), wNeedle: $('wheelie-needle'), wDist: $('wheelie-dist'), wZones: $('wheelie-zones'),
+      trickNow: $('trick-now'), trickName: $('trick-name'), trickFill: $('trick-fill'), trickKeys: $('trick-keys'),
     };
+    this.setTrickKeys('keys');
     this.route = route;
     this.gates = gates;
     this.mapCtx = this.el.minimap.getContext('2d');
@@ -97,6 +100,14 @@ export class Hud {
     this.el.wZones.innerHTML = arc(4, b - 16, 'z-low') + arc(b - 16, b + 3, 'z-good') + arc(b + 3, b + 10, 'z-warn') + arc(b + 10, 88, 'z-bad');
   }
 
+  // The reminder of which button does which trick: keyboard or gamepad.
+  setTrickKeys(device) {
+    if (this.trickDevice === device) return;
+    this.trickDevice = device;
+    const pad = { 1: 'X', 2: 'D-pad \u2191', 3: '\u2192', 4: '\u2193', 5: '\u2190' };
+    this.el.trickKeys.innerHTML = TRICKS.slice(1).map((t, i) => `<span><kbd>${device === 'pad' ? pad[i + 1] : t.key}</kbd>${t.name}</span>`).join('');
+  }
+
   challenge(best, next) {
     this._text('chalBest', best > 0 ? `${Math.round(best)} m` : '--');
     this._text('chalNext', next);
@@ -126,6 +137,17 @@ export class Hud {
       this._text('navDist', s.nav.dist > 999 ? `${(s.nav.dist / 1000).toFixed(1)} km` : `${Math.round(s.nav.dist / 10) * 10} m`);
     } else E.nav.style.visibility = 'hidden';
     this._minimap(s);
+
+    // Trick being held: its name and how long it's been held out.
+    const tr = s.trick ? TRICKS[s.trick] : null;
+    E.trickNow.classList.toggle('show', !!tr && s.trickExt > 0.15);
+    E.trickNow.classList.toggle('warn', !!s.trickWarn);
+    if (tr) {
+      this._text('trickName', tr.name);
+      const f = `scaleX(${Math.min(1, s.trickHeld / 1.2).toFixed(3)})`;
+      if (this.cache.trickFill !== f) { this.cache.trickFill = f; E.trickFill.style.transform = f; }
+    }
+    E.trickKeys.classList.toggle('show', !!s.trickHint);
 
     // Wheelie meter: angle against the balance point, and the distance so far.
     const W = s.wheelie;

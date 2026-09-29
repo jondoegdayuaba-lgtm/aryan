@@ -7,6 +7,7 @@ import { canvasTexture } from '../render/textures.js';
 import { useTerrainLight } from '../render/shaderpatch.js';
 import { mergeGeometries } from '../render/geomutil.js';
 import { Rider } from './rider.js';
+import { TRICKS } from './tricks.js';
 
 // Colours and style for each bike (keyed by the physics spec's id).
 export const LOOKS = {
@@ -181,6 +182,13 @@ export class BikeModel {
     this.shared = { uDirt: { value: 0.05 }, uBodyInv: { value: new THREE.Matrix4() }, tNoise: { value: tex.noise } };
     this._v = Array.from({ length: 10 }, () => new THREE.Vector3());
     this._q = new THREE.Quaternion();
+    this._tv = new THREE.Vector3();
+    this._footQ = new THREE.Quaternion();
+    // Boot angles for tricks: toes pointed back (Superman), toes up (heel clicker).
+    this._trickFeet = {
+      superman: new THREE.Quaternion().setFromEuler(new THREE.Euler(2.6, 0, 0)),
+      heelclicker: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.9, 0, 0)),
+    };
     this.build(spec, look);
   }
 
@@ -709,13 +717,65 @@ export class BikeModel {
     // forward relative to the bike), arms straight, hanging just behind balance.
     const wk = THREE.MathUtils.clamp(this.wheelieT / 0.35, 0, 1);
     const ride = 0.45 + st * 0.35 + Math.min(0.15, bike.power * 0.1);
-    this.rider.pose({
+    const pose = {
       hip,
       torsoPitch: ride * (1 - wk) + (this.wheelieT - 0.12) * wk,
       torsoRoll: bike.lean * 0.25,
       headPitch: (0.1 + st * 0.2) * (1 - wk) + (this.wheelieT - 0.05) * wk,
-      handL, handR, footL, footR,
-    });
+      handL, handR, footL, footR, footQuat: null,
+    };
+    if (bike.trick && bike.trickExt > 0) this._trickPose(TRICKS[bike.trick].id, THREE.MathUtils.smoothstep(bike.trickExt, 0, 1), pose);
+    this.rider.pose(pose);
     void time;
+  }
+
+  // Blend the riding pose toward a freestyle trick; e runs from 0 (on the bike)
+  // to 1 (all the way out). Legs lift on the way so they swing clear of the bike.
+  _trickPose(id, e, P) {
+    const D = this.dims, T = this._tv;
+    const gy = (P.handL.y + P.handR.y) / 2, gz = (P.handL.z + P.handR.z) / 2;   // the grips
+    const lift = Math.sin(Math.PI * e);
+    const mix = (a, b) => a + (b - a) * e;
+    const to = (v, x, y, z) => v.lerp(T.set(x, y, z), e);
+    const seat = D.seatY, pz = D.pivot.z;
+    if (id === 'superman') {
+      // Flat out behind the bike, hanging on to the bars.
+      to(P.hip, 0, gy + 0.03, gz + 0.9);
+      P.torsoPitch = mix(P.torsoPitch, 1.35);
+      P.torsoRoll *= 1 - e;
+      P.headPitch = mix(P.headPitch, 0.55);
+      to(P.footL, -0.13, gy + 0.13, gz + 1.74).y += lift * 0.15;
+      to(P.footR, 0.13, gy + 0.13, gz + 1.74).y += lift * 0.15;
+    } else if (id === 'nohander') {
+      // Standing tall, knees gripping the seat, both arms out wide.
+      to(P.hip, 0, seat + 0.26, pz + 0.02);
+      P.torsoPitch = mix(P.torsoPitch, 0.12);
+      P.headPitch = mix(P.headPitch, -0.1);
+      to(P.handL, -0.72, seat + 0.88, pz + 0.04);
+      to(P.handR, 0.72, seat + 0.88, pz + 0.04);
+    } else if (id === 'heelclicker') {
+      // Sat back, both boots up over the bars, heels together.
+      to(P.hip, 0, seat + 0.16, pz + 0.16);
+      P.torsoPitch = mix(P.torsoPitch, -0.3);
+      P.headPitch = mix(P.headPitch, 0.05);
+      const out = lift * 0.26;
+      to(P.footL, -0.05, gy + 0.16, gz - 0.28).add(T.set(-out, lift * 0.25, 0));
+      to(P.footR, 0.05, gy + 0.16, gz - 0.28).add(T.set(out, lift * 0.25, 0));
+    } else if (id === 'nacnac') {
+      // Left leg swung over the back of the bike, both legs off the right side.
+      to(P.hip, 0.1, seat + 0.2, pz + 0.06);
+      P.torsoPitch = mix(P.torsoPitch, 0.45);
+      P.torsoRoll = mix(P.torsoRoll, 0.2);
+      P.headPitch = mix(P.headPitch, 0.2);
+      to(P.footL, 0.5, seat + 0.05, pz + 0.62).add(T.set(0, lift * 0.45, lift * 0.2));
+    } else if (id === 'cancan') {
+      // Left leg kicked over the top of the bike and out to the right, in front.
+      to(P.hip, 0.04, seat + 0.18, pz + 0.08);
+      P.torsoPitch = mix(P.torsoPitch, 0.3);
+      P.torsoRoll = mix(P.torsoRoll, -0.15);
+      to(P.footL, 0.48, seat + 0.3, pz - 0.55).y += lift * 0.35;
+    }
+    const fq = this._trickFeet[id];
+    if (fq) P.footQuat = this._footQ.identity().slerp(fq, e);
   }
 }

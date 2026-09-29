@@ -33,6 +33,8 @@
     </div>
     <canvas id="minimap" width="200" height="200" aria-hidden="true"></canvas>
     <div id="popups" aria-live="polite"></div>
+    <div id="trick-now" class="trick-now" aria-hidden="true"><span id="trick-name"></span><div class="trick-hold"><div id="trick-fill"></div></div></div>
+    <div id="trick-keys" class="trick-keys" aria-hidden="true"></div>
     <div id="countdown" class="countdown" aria-live="assertive"></div>
     <div id="message" class="message" hidden></div>
     <div class="rotate-hint">Turn your phone sideways to ride</div>
@@ -66,6 +68,7 @@
         <button data-touch="right" type="button" aria-label="Steer right">&#9654;</button>
       </div>
       <div class="touch-right">
+        <button data-touch="trick" class="small trick" type="button">Trick <small>Superman</small></button>
         <button data-touch="boost" class="small" type="button">Boost</button>
         <button data-touch="lean" class="small lean" type="button">Wheelie</button>
         <button data-touch="brake" type="button">Brake</button>
@@ -82,7 +85,7 @@
       <div class="menu-buttons">
         <button id="btn-rally" class="btn primary" type="button">Rally <small>12 checkpoints</small></button>
         <button id="btn-wheelie" class="btn" type="button">Wheelie challenge <small>how far?</small></button>
-        <button id="btn-free" class="btn" type="button">Free ride <small>jumps, dunes, canyon</small></button>
+        <button id="btn-free" class="btn" type="button">Free ride <small>jumps and tricks</small></button>
         <div class="btn-row">
           <button id="btn-garage" class="btn small" type="button">Garage</button>
           <button id="btn-settings" class="btn small" type="button">Settings</button>
@@ -168,13 +171,14 @@
         <div><dt>In a wheelie</dt><dd>W lifts the front, S brings it down. Too far back and you loop out!</dd></div>
         <div><dt>Space in the air</dt><dd>Backflip</dd></div>
         <div><dt>A / D in the air</dt><dd>Turn, hold for a 360</dd></div>
+        <div><dt>Q E F G X in the air</dt><dd>Hold for a trick: Superman, No Hander, Heel Clicker, Nac-Nac, Can-Can. Let go before you land!</dd></div>
         <div><dt>Shift</dt><dd>Boost</dd></div>
         <div><dt>C</dt><dd>Change camera</dd></div>
         <div><dt>R</dt><dd>Back on the road</dd></div>
         <div><dt>Esc / P</dt><dd>Pause</dd></div>
         <div><dt>Mouse drag</dt><dd>Look around</dd></div>
       </dl>
-      <p class="hint">Gamepads work too: triggers for throttle and brake, left stick to steer, A to wheelie, B to boost, Y camera.</p>
+      <p class="hint">Gamepads work too: triggers for throttle and brake, left stick to steer, A to wheelie, B to boost, Y camera, X and the D-pad for tricks. On a phone, hold the Trick button in the air; each press does the next trick.</p>
       <button id="help-back" class="btn primary" type="button">Back</button>
     </div>
   </section>

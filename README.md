@@ -4,13 +4,14 @@ Two 3D browser games made with plain HTML, CSS and JavaScript and [three.js](htt
 
 ## Canyon Rush
 
-An e-bike rally through a red-rock desert at golden hour. Pick one of three electric dirt bikes and race a 4 km loop through a canyon, across a dry lake, over dunes and through an oasis. Pull wheelies, backflip off the jumps, or see how far you can ride on the back wheel in the wheelie challenge.
+An e-bike rally through a red-rock desert at golden hour. Pick one of three electric dirt bikes and race a 4 km loop through a canyon, across a dry lake, over dunes and through an oasis. Pull wheelies, throw tricks and backflips off the jumps, or see how far you can ride on the back wheel in the wheelie challenge.
 
 What's in it:
 
 - **Three e-bikes.** The Volt LX is light and the easiest to wheelie, the Sting R is quicker everywhere, and the Storm MX is a full-size electric motocross bike: the fastest, and the hardest to hold up.
 - **Real wheelie physics.** Each bike has a balance point, the angle where its weight sits right over the back axle. Hold a wheelie with the throttle and the rear brake. Go past the balance point and you loop out.
 - **A simulated bike.** Long-travel suspension on both wheels, a motor with full torque from a standstill, and tyres that grip differently on packed dirt, gravel, sand, the dry lake and in water. The bike leans into turns, and the rider stands up over jumps, hangs back in wheelies and gets thrown clear in a crash.
+- **Fifteen jumps and five freestyle tricks.** Tabletops with a steep face, a flat top and a long landing give one to two and a half seconds of air. Up there the rider can throw a Superman, No Hander, Heel Clicker, Nac-Nac or Can-Can, on top of backflips and 360s.
 - **A generated desert you can ride anywhere in, about 2 km across, with terrain running out to the horizon.** Mesas with layered sandstone, buttes, a canyon, dunes, a cracked dry lake and an oasis pond. Terrain detail streams in around you, from 1 m near the bike to 64 m on the skyline.
 - **Physically based lighting.** A simulated sky (sun, haze and clouds) lights the scene, and the terrain's soft shadows are computed on the GPU when the game loads. Four times of day: golden hour, morning, midday and sunset.
 - **Dust, dirt flung off the back tyre, tyre tracks, splashes, and cacti that break when you ride through them.**
@@ -33,6 +34,7 @@ On graphics chips that can't run the full lighting pipeline, the game switches t
 | Steer | A D / ← → | ◀ ▶ | Left stick |
 | Wheelie (hold) | Space | Wheelie | A or RB |
 | Boost | Shift | Boost | B or LB |
+| Trick (hold, in the air) | Q Superman, E No Hander, F Heel Clicker, G Nac-Nac, X Can-Can (or 1 to 5) | Trick (each press does the next trick) | X, or the D-pad |
 | Change camera (chase, wide, helmet, front) | C | | Y |
 | Back on the road | R | Circular-arrow button | Back |
 | Look around | Drag with the mouse | Drag on the screen | Right stick |
@@ -43,15 +45,17 @@ On graphics chips that can't run the full lighting pipeline, the game switches t
 
 **In the air:** hold Space for a backflip, hold A or D to turn the bike, all the way round for a 360. Let go and the rider lines the bike up for landing. Land upside down or sideways and you crash.
 
+**Tricks:** hold a trick button in the air and the rider stretches out into it; the longer you hold it, the more it's worth. Let go in time to get back on the bike: still stretched out when the wheels touch down and you bail. The trick's name turns red with a **Let go!** warning just before landing. Tricks only start on jumps with enough air to finish them, and you can mix them with a backflip or a 360 in the same jump.
+
 Brake while steering at speed to slide the back out. Hold the brake at a standstill to walk the bike backwards.
 
 ### Modes and medals
 
-- **Rally:** go through the 12 checkpoints in order; the timer shows your split against your best run at each one. Each bike has its own medal times: gold is 2:43 on the Volt, 2:24 on the Sting and 2:06 on the Storm.
+- **Rally:** go through the 12 checkpoints in order; the timer shows your split against your best run at each one. Each bike has its own medal times: gold is 2:45 on the Volt, 2:29 on the Sting and 2:18 on the Storm.
 - **Wheelie challenge:** start on the dry lake and wheelie as far as you can. Bronze at 100 m, silver at 250 m, gold at 500 m.
 - **Free ride:** the whole desert, no clock.
 
-Style points come from wheelies, air time, backflips, 360s, clean landings, slides, splashing through the oasis and smashing cacti. Chaining tricks within four seconds raises the multiplier (up to ×5), and every trick tops up the boost bar. A crash resets the multiplier. Best laps and longest wheelies are saved in the browser, per bike.
+Style points come from wheelies, air time, tricks, backflips, 360s, clean landings, slides, splashing through the oasis and smashing cacti. Everything done in one jump pays out together when you land, and nothing if you crash. Chaining tricks within four seconds raises the multiplier (up to ×5), and every trick tops up the boost bar. A crash resets the multiplier. Best laps and longest wheelies are saved in the browser, per bike.
 
 ### Files
 
@@ -61,7 +65,8 @@ Style points come from wheelies, air time, backflips, 360s, clean landings, slid
 | `canyon-rush/js/game/bike.js` | E-bike physics: suspension, motor, tyres, wheelies, air control, crashes; the three bikes' specs |
 | `canyon-rush/js/game/bikemodel.js` | The bikes' 3D models and colours |
 | `canyon-rush/js/game/rider.js` | The rider, posed with IK |
-| `canyon-rush/js/game/stunts.js` | Style points and tricks |
+| `canyon-rush/js/game/stunts.js` | Style points |
+| `canyon-rush/js/game/tricks.js` | The freestyle tricks: names, buttons, points and timing |
 | `canyon-rush/js/world/` | The stage layout, the road route and the terrain generator |
 | `canyon-rush/js/render/terrain.js` | Streaming terrain and its desert surface shader |
 | `canyon-rush/js/render/atmosphere.js` | Sky simulation, sun, image-based lighting |
