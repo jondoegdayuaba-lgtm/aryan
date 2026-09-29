@@ -126,7 +126,7 @@ export async function generateWorld({ onProgress = () => {} } = {}) {
     const rim = smoothstep(0.6, 1.3, rr);
 
     // Valley walls: ridged crests that grow toward the rim.
-    const rid = ridged(wx * 0.0019 + 3.1, wz * 0.0019 - 7.7, 5);
+    const rid = 0.55 * ridged(wx * 0.0019 + 3.1, wz * 0.0019 - 7.7, 4) + 0.45 * (0.5 + 0.5 * fbm(wx * 0.0024 + 8, wz * 0.0024 - 3, 4));
     const mountains = Math.pow(rim, 1.35) * (60 + 330 * rid) + 46 * rim * fbm(wx * 0.0009 + 9, wz * 0.0009 + 2, 3);
 
     // Valley floor: a shallow basin rising away from the lake, with hills that grow with distance.

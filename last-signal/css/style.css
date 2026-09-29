@@ -1,0 +1,98 @@
+/* Field-notebook look: night-blue glass for the HUD, paper and ink for the map and journal,
+   and one signal-orange accent. Colours live here as tokens. */
+:root {
+  color-scheme: dark;
+  --night: #0d141c;
+  --night-glass: rgba(13, 20, 28, 0.72);
+  --pine: #2f4a3a;
+  --moss: #6e8a5c;
+  --paper: #e9dfc7;
+  --paper-dark: #cdbf9d;
+  --ink: #2a2118;
+  --signal: #ff6a2b;
+  --amber: #f2b84b;
+  --ice: #9fd3ff;
+  --danger: #ff4a3d;
+  --text: #eef2f4;
+  --text-dim: #9fb0bb;
+
+  --display: 'Oswald', 'Arial Narrow', 'Impact', system-ui, sans-serif;
+  --serif: 'Lora', Georgia, 'Times New Roman', serif;
+  --hand: 'Caveat', 'Segoe Print', 'Bradley Hand', cursive;
+  --ui: 'Oswald', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #000;
+  color: var(--text);
+  font-family: var(--ui);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#game {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+[hidden] { display: none !important; }
+
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+
+/* ---------- Loading ---------- */
+.loading {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(120% 90% at 50% 100%, #1c2a34 0%, #0d141c 60%, #060a0f 100%);
+  transition: opacity 0.8s ease;
+}
+.loading.done { opacity: 0; pointer-events: none; }
+.loading-inner { width: min(420px, 82vw); text-align: center; }
+.logo {
+  margin: 0 0 28px;
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: clamp(2.6rem, 9vw, 4.4rem);
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;
+  color: var(--text);
+}
+.logo em { font-style: normal; color: var(--signal); }
+.bar {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  overflow: hidden;
+}
+#loading-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--signal);
+  transition: width 0.25s ease;
+}
+#loading-text {
+  margin: 14px 0 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}

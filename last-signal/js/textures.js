@@ -102,7 +102,7 @@ function paintGrass(ac, hc, size) {
   });
   for (let i = 0; i < 9000; i++) {
     const x = r() * size, y = r() * size;
-    const a = -Math.PI / 2 + (r() - 0.5) * 1.1, len = 6 + r() * 10, w = 0.8 + r() * 1.1;
+    const a = -Math.PI / 2 + (r() - 0.5) * 2.4, len = 3 + r() * 6, w = 0.9 + r() * 1.0;
     const tint = mixRGB(mixRGB(dark, light, r()), dry, r() * 0.35);
     wrapDraw(size, x, y, 16, (px, py) => {
       ac.strokeStyle = rgb(tint, 0.75);
@@ -117,7 +117,7 @@ function paintGrass(ac, hc, size) {
 
 function paintForest(ac, hc, size) {
   const tn = createTileNoise(23), r = rng(23);
-  const humus = hex(0x352a1e), litter = hex(0x5a4430), moss = hex(0x3d5a2a);
+  const humus = hex(0x262619), litter = hex(0x40382a), moss = hex(0x39502a);
   fillPixels(ac, hc, size, (u, v, o) => {
     const macro = tn.fbm(u, v, 4, 4), m = tn.fbm(u + 0.2, v + 0.6, 14, 3);
     let c = mixRGB(humus, litter, saturate(0.5 + 0.6 * m));
@@ -125,7 +125,7 @@ function paintForest(ac, hc, size) {
     o.r = c[0]; o.g = c[1]; o.b = c[2];
     o.h = 0.45 + 0.25 * m;
   });
-  const needle = [hex(0x7a5634), hex(0x6a4a2c), hex(0x8f6640), hex(0x4c3822), hex(0x9c7448)];
+  const needle = [hex(0x5e4a30), hex(0x54432a), hex(0x6f5836), hex(0x3c3020), hex(0x7a6440)];
   for (let i = 0; i < 16000; i++) {
     const x = r() * size, y = r() * size, a = r() * Math.PI * 2, len = 6 + r() * 9;
     const col = needle[(r() * needle.length) | 0];

@@ -239,7 +239,7 @@ export class Atmosphere {
     // Cloud colours: lit side follows the sun (or moon), shadow side follows the sky.
     const lightCol = sunUp ? p.sun : this._tmp.set('#9fb4e6');
     const lightAmt = sunUp ? saturate(0.35 + p.sunI / 3.4) : 0.28;
-    this.cloudLit.copy(lightCol).multiplyScalar(0.7 + 1.5 * lightAmt * (1 - 0.7 * over));
+    this.cloudLit.copy(lightCol).multiplyScalar((0.7 + 1.5 * lightAmt * (1 - 0.7 * over)) * (1 - 0.85 * this.night));
     this.cloudDark.copy(this.zenith).lerp(this.away, 0.6).multiplyScalar(0.55 + 0.35 * (1 - storm));
     if (sunUp && this.elev < 14) this.cloudDark.lerp(this._tmp.set('#5d4a6c'), 0.25 * (1 - over) * (1 - this.elev / 14));
     this.cloudSilver.copy(p.sun).multiplyScalar(1.4 * (1 - over));
