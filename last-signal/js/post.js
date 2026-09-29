@@ -196,6 +196,12 @@ export class Post {
     if (changed) this.resize(this.width, this.height);
   }
 
+  setScale(s) {
+    if (Math.abs(s - this.scale) < 0.01) return;
+    this.scale = s;
+    this.resize(this.width, this.height);
+  }
+
   // width/height are the drawing buffer size in device pixels.
   resize(width, height) {
     this.width = width; this.height = height;

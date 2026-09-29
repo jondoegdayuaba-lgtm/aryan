@@ -170,11 +170,38 @@ game.update = update;
 game.frame = frame;
 
 let last = performance.now();
+// Keeps the frame rate up: lower the render resolution first, then the quality tier; creep back up when there is headroom.
+const perf = { t: 0, frames: 0, slowFor: 0, fastFor: 0, scale: 1, cooldown: 5 };
+function adapt(dt) {
+  if (game.play?.mode !== 'play') { perf.t = 0; perf.frames = 0; return; }
+  perf.t += dt; perf.frames++;
+  if (perf.t < 1.5) return;
+  const fps = perf.frames / perf.t;
+  perf.t = 0; perf.frames = 0;
+  perf.cooldown -= 1.5;
+  if (perf.cooldown > 0) return;
+  const q = game.quality;
+  if (fps < 38) {
+    perf.slowFor++; perf.fastFor = 0;
+    if (perf.slowFor >= 2) {
+      perf.slowFor = 0; perf.cooldown = 4;
+      if (game.post.scale > 0.6) game.post.setScale(Math.max(0.55, game.post.scale - 0.12));
+      else if (game.qualityName === 'high') { applyQuality('medium'); }
+      else if (game.qualityName === 'medium') { applyQuality('low'); }
+    }
+  } else if (fps > 57 && game.post.scale < q.scale) {
+    perf.fastFor++; perf.slowFor = 0;
+    if (perf.fastFor >= 4) { perf.fastFor = 0; perf.cooldown = 6; game.post.setScale(Math.min(q.scale, game.post.scale + 0.08)); }
+  } else { perf.slowFor = 0; perf.fastFor = 0; }
+}
+
 function loop(now) {
   requestAnimationFrame(loop);
   const dt = (now - last) / 1000;
   last = now;
-  if (!game.holdFrames) frame(dt);
+  if (game.holdFrames) return;
+  frame(dt);
+  if (!DEBUG) adapt(dt);
 }
 
 // ---------- Boot ----------

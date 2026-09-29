@@ -1,3 +1,71 @@
+# Last Signal
+
+A first-person survival adventure in a browser. Your bush plane went down on a wooded slope in the Kestrel Valley at the end of a golden afternoon. A storm is coming, the radio is dead, and the only long-range set is in a ranger cabin across the creek. Find a battery and an antenna, call for help, then hold out until a rescue helicopter finds your signal fire in the storm.
+
+It aims to look and feel realistic: a 2 km valley with a lake, a creek in a gorge, thousands of instanced trees, wildflower meadows, a day/night cycle with a moon and stars, and a storm with rain and lightning. Cold, hunger, thirst, wetness and dirty water are real problems, and fire, shelter and a flashlight are the tools.
+
+**Play it:** `desktop/last-signal.html` is the whole game in one file (about 4 MB). Save it and double-click it; it runs offline. To run the folder instead, serve the repo (ES modules do not load from `file://`):
+
+```sh
+python3 -m http.server 8000
+# then open http://localhost:8000/last-signal/
+```
+
+Best on a desktop GPU with headphones. It picks a graphics tier for you and lowers the render resolution if the frame rate drops; **Settings** lets you choose Low, Medium or High.
+
+## Controls
+
+| Key | Action |
+| --- | --- |
+| W A S D, mouse | Move, look (click the game to capture the mouse, Esc to release) |
+| Shift / C / Space | Run / crouch / jump (and swim up) |
+| E or click | Use, pick up, climb, drink (hold) |
+| Q | Fill the bottle at water, boil water at a fire |
+| F | Flashlight |
+| G | Build a campfire (3 firewood and a match) |
+| R (hold) | Rest by a fire, in the cabin or in the tent: time passes faster |
+| Tab / M / J | Backpack / map / journal |
+| P | Photo mode (hides the HUD) |
+
+On a phone or tablet, drag the left half of the screen to move and the right half to look; buttons appear on screen.
+
+## How a run goes
+
+1. Search your backpack in the wreckage.
+2. Climb Ridgeback Lookout for its spare antenna.
+3. Find a truck battery at Halloran Mine (dusk is falling, keep to the trail).
+4. Cross the creek bridge (two planks are missing) to Ranger Cabin and call for help.
+5. Light the signal fire on Sunday Meadow in the storm, fire a flare, and get aboard.
+
+Eight notes, a summit cache and a few surprises are scattered around the valley. Dying is not the end: you wake at your last camp.
+
+## How it is built
+
+- **Engine:** vanilla ES modules and the bundled [three.js](https://threejs.org) r186, no build step. Textures are drawn on canvases and every sound is synthesised with Web Audio, so the only binary assets are the models.
+- **Models:** the plane, cabin, tower, bridge, camp, mine, helicopter, props, trees and rocks were made in Blender by scripts in `tools/blender/` and exported to `last-signal/models/*.glb`. They carry geometry, UVs and baked ambient-occlusion vertex colours; materials are picked by name and textured procedurally in the game. To regenerate them: `pip install bpy==5.0.1` then `cd tools/blender && python3 build_flora.py && python3 build_wreck.py && python3 build_structures.py && python3 build_props.py && python3 build_heli.py`.
+- **Rendering:** a height-map world generator (`js/world.js`, also runs under Node), chunked terrain with level of detail, a sun-aware height fog patched into three's shaders, cascaded sun shadows (three's `SunLight` addon), planar-reflection water, GPU-driven grass, and an HDR post pass with bloom and filmic tone mapping.
+
+To rebuild the one-file version after changing the code:
+
+```sh
+npm install
+npm run build:last-signal
+```
+
+| File | What it does |
+| --- | --- |
+| `js/main.js` | Boot, render loop, quality scaling |
+| `js/play.js` | Gameplay: interactions, items, story, saving, menus, ending |
+| `js/world.js`, `terrain.js`, `water.js`, `sky.js`, `atmosphere.js`, `post.js` | The world and how it is drawn |
+| `js/flora.js`, `grass.js`, `structures.js`, `content.js` | Trees, grass, buildings and where they go |
+| `js/player.js`, `physics.js`, `input.js` | Walking, collision, controls |
+| `js/survival.js`, `fire.js`, `weather.js`, `heli.js` | Vitals, fire and light, the storm, the rescue |
+| `js/audio.js`, `map.js`, `hud.js`, `story.js`, `items.js` | Sound, the paper map, interface, notes, inventory |
+
+three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+---
+
 # Missile Run
 
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.
