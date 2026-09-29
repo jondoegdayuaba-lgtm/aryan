@@ -13,6 +13,8 @@ function specialMaterial(name) {
   else if (name === 'Rubber') m = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.95, vertexColors: true });
   else if (name === 'Rope') m = new THREE.MeshStandardMaterial({ color: 0x8a7654, roughness: 1, vertexColors: true });
   else if (name === 'Dark') m = new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 0.8, vertexColors: true });
+  else if (name === 'Sign') m = new THREE.MeshStandardMaterial({ color: 0xa98a5f, roughness: 0.9, vertexColors: true });
+  else if (name === 'Paper') m = new THREE.MeshStandardMaterial({ color: 0xf1e8d2, roughness: 0.95, vertexColors: true });
   if (m) { m.name = name; patchMaterial(m, 'special-' + name, null); }
   return (plain[name] = m);
 }
@@ -47,14 +49,8 @@ export class Structures {
 
     const anchors = {}, cols = [];
     const toRemove = [];
+    this.skin(scene, castShadow);
     scene.traverse((o) => {
-      if (o.isMesh) {
-        const mats = Array.isArray(o.material) ? o.material : [o.material];
-        const out = mats.map((m) => surfaceMaterial(m.name) || specialMaterial(m.name) || this._fallback(m));
-        o.material = Array.isArray(o.material) ? out : out[0];
-        o.castShadow = castShadow && this.shadows && out[0].name !== 'Glass';
-        o.receiveShadow = true;
-      }
       const n = o.name || '';
       if (n.startsWith('COL_')) {
         const wp = new THREE.Vector3(), wq = new THREE.Quaternion(), ws = new THREE.Vector3();
@@ -74,6 +70,18 @@ export class Structures {
     this.anchors[id] = anchors;
     this.placed[id] = root;
     return { root, anchors, colliders: cols };
+  }
+
+  // Swaps a model's placeholder materials for the game's textured ones.
+  skin(root, castShadow = true) {
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const out = mats.map((m) => surfaceMaterial(m.name) || specialMaterial(m.name) || this._fallback(m));
+      o.material = Array.isArray(o.material) ? out : out[0];
+      o.castShadow = castShadow && this.shadows && out[0].name !== 'Glass';
+      o.receiveShadow = true;
+    });
   }
 
   _fallback(m) {

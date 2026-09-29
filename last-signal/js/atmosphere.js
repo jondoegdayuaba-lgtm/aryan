@@ -105,9 +105,9 @@ export function patchMaterial(material, key, edit) {
 // ---------- Palette: keyed on the sun's elevation in degrees ----------
 const c = (hex) => new THREE.Color(hex);
 const KEYS = [
-  { e: -24, zenith: c('#02040c'), away: c('#070c1c'), sunside: c('#0b1226'), sun: c('#000000'), sunI: 0,   exposure: 4.6, glow: 0 },
-  { e: -12, zenith: c('#0a112c'), away: c('#1e2748'), sunside: c('#33305a'), sun: c('#000000'), sunI: 0,   exposure: 3.4, glow: 0.1 },
-  { e: -6,  zenith: c('#172352'), away: c('#3f4b78'), sunside: c('#94607a'), sun: c('#ff6a3a'), sunI: 0,   exposure: 2.4, glow: 0.35 },
+  { e: -24, zenith: c('#02040c'), away: c('#070c1c'), sunside: c('#0b1226'), sun: c('#000000'), sunI: 0,   exposure: 3.4, glow: 0 },
+  { e: -12, zenith: c('#0a112c'), away: c('#1e2748'), sunside: c('#33305a'), sun: c('#000000'), sunI: 0,   exposure: 2.9, glow: 0.1 },
+  { e: -6,  zenith: c('#172352'), away: c('#3f4b78'), sunside: c('#94607a'), sun: c('#ff6a3a'), sunI: 0,   exposure: 2.1, glow: 0.35 },
   { e: -2,  zenith: c('#2a3b76'), away: c('#767ba0'), sunside: c('#f08e66'), sun: c('#ff6a2a'), sunI: 0.1, exposure: 1.6, glow: 0.7 },
   { e: 1.5, zenith: c('#39508f'), away: c('#a5a2b4'), sunside: c('#ff9455'), sun: c('#ff8236'), sunI: 0.9, exposure: 1.25, glow: 0.85 },
   { e: 5,   zenith: c('#436aa4'), away: c('#b3b3bd'), sunside: c('#ffb473'), sun: c('#ff9c4c'), sunI: 1.9, exposure: 1.1, glow: 0.7 },
@@ -229,12 +229,12 @@ export class Atmosphere {
       this.keyDir.copy(this.moonDir);
       this.keyColor.set('#8ea6dc');
       const moonUp = smoothstep(-0.02, 0.2, this.moonDir.y);
-      this.keyIntensity = 0.5 * moonUp * (1 - 0.85 * over) * smoothstep(-3.5, -9, this.elev);
+      this.keyIntensity = 0.5 * moonUp * (1 - 0.6 * over) * smoothstep(-3.5, -9, this.elev);
     }
     this.keyIntensity = Math.max(this.keyIntensity, 0);
-    this.ambientFloor = 0.22 * this.night * (1 - 0.5 * over) + 0.04;
-    this.exposure = p.exposure * (1 + 0.3 * over + 0.28 * storm);
-    this.envIntensity = lerp(1, 0.55, this.night) * (1 + 0.15 * over);
+    this.ambientFloor = 0.34 * this.night * (1 - 0.25 * over) + 0.04;
+    this.exposure = p.exposure * (1 + (0.3 * over + 0.28 * storm) * (1 - 0.8 * this.night));
+    this.envIntensity = lerp(1, 0.9, this.night) * (1 + 0.15 * over);
 
     // Cloud colours: lit side follows the sun (or moon), shadow side follows the sky.
     const lightCol = sunUp ? p.sun : this._tmp.set('#9fb4e6');

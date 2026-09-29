@@ -12,6 +12,11 @@ import { Water } from './water.js';
 import { Flora } from './flora.js';
 import { Grass } from './grass.js';
 import { Structures } from './structures.js';
+import { Input } from './input.js';
+import { Collision } from './physics.js';
+import { Player } from './player.js';
+import { placeContent } from './content.js';
+import { Play } from './play.js';
 import { ATMO } from './atmosphere.js';
 
 const params = new URLSearchParams(location.search);
@@ -116,7 +121,7 @@ function updateLights() {
 const _v = new THREE.Vector3();
 const _uv = new THREE.Vector2();
 
-function frame(dt) {
+function update(dt) {
   const { renderer, scene, camera, atmo, sky, post, terrain, water } = game;
   dt = Math.min(dt, 0.1);
   game.time += dt;
@@ -125,6 +130,7 @@ function frame(dt) {
   const underwater = 0;
   atmo.update(dt, underwater);
   updateLights();
+  if (game.play?.mode === 'play' && game.player) game.player.update(dt);
   for (const s of game.systems) s.update?.(dt, game);
 
   terrain.update(camera);
@@ -134,6 +140,10 @@ function frame(dt) {
   water.update(atmo);
   sky.refreshEnvironment(scene, atmo);
 
+}
+
+function render() {
+  const { renderer, scene, camera, atmo, sky, post, terrain, water } = game;
   // Mirrored view of the valley for the lake. Shadow maps from the last frame are reused.
   renderer.shadowMap.autoUpdate = false;
   water.renderReflection(renderer, camera, (mirror) => {
@@ -155,6 +165,8 @@ function frame(dt) {
   post.u.uRayColor.value.copy(atmo.keyColor).multiplyScalar(0.9);
   post.finish({ time: game.time, exposure: atmo.exposure, sunUv: _uv, sunVisible: rays });
 }
+function frame(dt) { update(dt); render(); }
+game.update = update;
 game.frame = frame;
 
 let last = performance.now();
@@ -206,13 +218,11 @@ async function boot() {
   console.log(`flora: ${flora.items.length} items`);
   const structures = (game.structures = new Structures(game.world));
   game.scene.add(structures.group);
-  const wr = game.world.sites.wreck;
-  await structures.place('wreck', 'wreck', wr.x, wr.z, { yaw: 2.3, lift: 0.1, align: 0.8 });
-  const S = game.world.sites;
-  await structures.place('cabin', 'cabin', S.cabin.x, S.cabin.z, { yaw: Math.PI, lift: -0.05 });
-  await structures.place('tower', 'tower', S.tower.x, S.tower.z, { yaw: 0.4 });
-  const b = S.bridge;
-  await structures.place('bridge', 'bridge', b.x, b.z, { yaw: Math.atan2(b.nx, b.nz) + Math.PI / 2 * 0, y: b.deckY });
+  setLoading(0.7, 'Raising the cabin');
+  game.content = await placeContent(game);
+  game.coll = new Collision(flora.colliders, structures.colliders);
+  game.input = new Input($('game'));
+  game.player = new Player(game.world, game.coll, game.camera, game.input);
   game.grass = new Grass(game.terrain, game.world);
   game.scene.add(game.grass.group);
   game.camera.layers.enable(1);
@@ -226,6 +236,10 @@ async function boot() {
   game.camera.position.set(s.x, w.heightAt(s.x, s.z) + 1.7, s.z);
   game.camera.rotation.order = 'YXZ';
   game.camera.rotation.y = Math.PI * 0.75;
+  game.applyQuality = applyQuality;
+  setLoading(0.9, 'Loading the story');
+  game.play = new Play(game, game.content);
+  await game.play.init();
 
   setLoading(0.8, 'Warming up the sky');
   await nextFrame();

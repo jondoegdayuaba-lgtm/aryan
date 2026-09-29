@@ -27,7 +27,7 @@ export const SITE_DEFS = {
 
 // Game clock: how the day passes and when the story begins.
 export const TIME = {
-  startHour: 16.75,          // hours, 24h clock
+  startHour: 17.5,          // hours, 24h clock
   secondsPerMinute: 4.2,     // real seconds per in-game minute
   sunrise: 6.6,
   sunset: 18.7,
@@ -65,7 +65,7 @@ export const SURVIVAL = {
   healRate: 0.35,            // health per second when fed and warm
   starveDamage: 0.35,        // health per second when a need hits zero
   bodyTempMax: 100,
-  flashlightMinutes: 55,     // battery life in in-game minutes
+  flashlightMinutes: 100,     // battery life in in-game minutes
 };
 
 // Graphics tiers: the game starts on one of these and steps down if the frame rate drops.
