@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { createTileNoise } from './noise.js';
 import { rng, clamp, lerp, saturate, smoothstep } from './util.js';
+import { patchMaterial } from './atmosphere.js';
 
 export function makeCanvas(w, h = w) {
   const c = document.createElement('canvas');
@@ -457,4 +458,154 @@ export function makeRockTextures(size = 512) {
   const normalMap = dataTexture(p.normal, size, size);
   map.anisotropy = 4;
   return { map, normalMap };
+}
+
+// ---------- Man-made surfaces, keyed by the material names used in the Blender models ----------
+function planks(ac, hc, size, tint, seed, plankH = 0.2) {
+  const tn = createTileNoise(seed), r = rng(seed);
+  const rows = Math.round(1 / plankH), a = mixRGB(tint, [0, 0, 0], 0.35), b = mixRGB(tint, [255, 255, 255], 0.12);
+  const off = Array.from({ length: rows }, () => r());
+  fillPixels(ac, hc, size, (u, v, o) => {
+    const row = Math.floor(v * rows), fv = v * rows - row;
+    const grain = tn.fbm((u + off[row]) % 1, v, 3, 3, 0.5, 60);
+    const tone = tn.fbm(u + off[row], v, 5, 3);
+    let c = mixRGB(a, b, saturate(0.5 + 0.55 * grain + 0.3 * tone));
+    const seam = Math.min(fv, 1 - fv) < 0.035 ? 0.35 : 1;
+    const end = Math.abs(((u + off[row]) % 0.5) - 0.0) < 0.004 ? 0.4 : 1;
+    o.r = c[0] * seam * end; o.g = c[1] * seam * end; o.b = c[2] * seam * end;
+    o.h = 0.55 + 0.25 * grain - (seam < 1 ? 0.3 : 0) - (end < 1 ? 0.2 : 0);
+  });
+}
+
+function logs(ac, hc, size) {
+  const tn = createTileNoise(301);
+  fillPixels(ac, hc, size, (u, v, o) => {
+    const round = Math.sin(v * Math.PI * 2 * 3) * 0.5 + 0.5;          // three logs per tile height
+    const f = tn.fbm(u, v, 3, 4, 0.5, 40), bark = tn.fbm(u, v, 9, 3, 0.5, 60);
+    const c = mixRGB(hex(0x3a281a), hex(0x7a5a3c), saturate(0.45 + 0.6 * bark + 0.25 * f));
+    const k = 0.55 + 0.5 * Math.pow(round, 0.6);
+    o.r = c[0] * k; o.g = c[1] * k; o.b = c[2] * k;
+    o.h = 0.35 + 0.45 * round + 0.2 * bark;
+  });
+}
+
+function tin(ac, hc, size, rusty) {
+  const tn = createTileNoise(rusty ? 311 : 312);
+  fillPixels(ac, hc, size, (u, v, o) => {
+    const rib = Math.sin(u * Math.PI * 2 * 4) * 0.5 + 0.5;
+    const rust = smoothstep(0.35, 0.7, 0.5 + 0.7 * tn.fbm(u, v, 4, 5) + (rusty ? 0.25 : -0.1));
+    const streak = tn.fbm(u, v, 40, 3, 0.5, 3);
+    let c = mixRGB(hex(0x9aa0a4), hex(0x5c6266), 0.5 + 0.5 * streak);
+    c = mixRGB(c, mixRGB(hex(0x8a4a22), hex(0x5a2c14), 0.5 + 0.5 * streak), rust);
+    const k = 0.75 + 0.35 * rib;
+    o.r = c[0] * k; o.g = c[1] * k; o.b = c[2] * k;
+    o.h = 0.4 + 0.5 * rib;
+  });
+}
+
+function shingles(ac, hc, size) {
+  const tn = createTileNoise(321), r = rng(321);
+  const rows = 8, off = Array.from({ length: rows }, () => r());
+  fillPixels(ac, hc, size, (u, v, o) => {
+    const row = Math.floor(v * rows), fv = v * rows - row;
+    const col = Math.floor(((u + off[row] * 0.125) * 8)), fu = ((u + off[row] * 0.125) * 8) % 1;
+    const n = tn.fbm(u, v, 6, 4), moss = smoothstep(0.1, 0.6, tn.fbm(u + 0.3, v, 5, 3));
+    let c = mixRGB(hex(0x3a3630), hex(0x64594a), saturate(0.5 + 0.6 * n + 0.05 * ((col * 7 + row * 3) % 5)));
+    c = mixRGB(c, hex(0x4a5a34), moss * 0.35);
+    const edge = Math.min(fv * 1.6, 1) * (Math.min(fu, 1 - fu) < 0.04 ? 0.5 : 1);
+    o.r = c[0] * (0.55 + 0.45 * edge); o.g = c[1] * (0.55 + 0.45 * edge); o.b = c[2] * (0.55 + 0.45 * edge);
+    o.h = 0.3 + 0.6 * fv * (Math.min(fu, 1 - fu) < 0.04 ? 0.4 : 1);
+  });
+}
+
+function stone(ac, hc, size) {
+  const r = rng(331), tn = createTileNoise(331);
+  fillPixels(ac, hc, size, (u, v, o) => { o.r = 70; o.g = 68; o.b = 64; o.h = 0.2; });
+  for (let i = 0; i < 90; i++) {
+    const x = r() * size, y = r() * size, w = 26 + r() * 40, h = 16 + r() * 22;
+    const c = mixRGB(hex(0x6b6a66), hex(0xa39c90), r());
+    wrapDraw(size, x, y, w, (px, py) => {
+      ac.fillStyle = rgb(c);
+      ac.beginPath(); ac.ellipse(px, py, w / 2, h / 2, 0, 0, Math.PI * 2); ac.fill();
+      const g = hc.createRadialGradient(px, py, 0, px, py, w / 2);
+      g.addColorStop(0, gray(0.95)); g.addColorStop(1, gray(0.45));
+      hc.fillStyle = g; hc.beginPath(); hc.ellipse(px, py, w / 2, h / 2, 0, 0, Math.PI * 2); hc.fill();
+    });
+  }
+}
+
+function canvasWeave(ac, hc, size) {
+  const tn = createTileNoise(341);
+  fillPixels(ac, hc, size, (u, v, o) => {
+    const w = (Math.sin(u * 200) * Math.sin(v * 200)) * 0.5 + 0.5;
+    const n = tn.fbm(u, v, 6, 3);
+    const c = mixRGB(hex(0xa8531c), hex(0xd2732a), saturate(0.5 + 0.5 * n));
+    const k = 0.82 + 0.18 * w;
+    o.r = c[0] * k; o.g = c[1] * k; o.b = c[2] * k;
+    o.h = 0.5 + 0.2 * w;
+  });
+}
+
+function paintedMetal(ac, hc, size, base, seed) {
+  const tn = createTileNoise(seed), r = rng(seed);
+  fillPixels(ac, hc, size, (u, v, o) => {
+    const n = tn.fbm(u, v, 5, 5), s = tn.fbm(u, v, 30, 3, 0.5, 4);
+    let c = mixRGB(mixRGB(base, [0, 0, 0], 0.16), base, saturate(0.5 + 0.5 * n));
+    const soot = smoothstep(0.2, 0.7, tn.fbm(u + 0.5, v, 3, 3)) * 0.55;
+    c = mixRGB(c, hex(0x1d1a18), soot);
+    const scuff = smoothstep(0.55, 0.7, s);
+    c = mixRGB(c, hex(0x9b9b98), scuff * 0.5);
+    o.r = c[0]; o.g = c[1]; o.b = c[2];
+    o.h = 0.5 + 0.1 * n;
+  });
+  for (let i = 0; i < 24; i++) {
+    const x = r() * size, y = r() * size, l = 20 + r() * 60, a = r() * Math.PI;
+    ac.strokeStyle = 'rgba(60,54,48,0.5)'; ac.lineWidth = 1 + r() * 2;
+    ac.beginPath(); ac.moveTo(x, y); ac.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ac.stroke();
+  }
+}
+
+function rustMetal(ac, hc, size) {
+  const tn = createTileNoise(351);
+  fillPixels(ac, hc, size, (u, v, o) => {
+    const n = tn.fbm(u, v, 5, 5), s = tn.fbm(u, v, 30, 3, 0.5, 4);
+    const c = mixRGB(mixRGB(hex(0x4a2410), hex(0x2c2622), smoothstep(0.1, 0.6, s + n * 0.3)), hex(0xa4562a), saturate(0.4 + 0.7 * n));
+    o.r = c[0]; o.g = c[1]; o.b = c[2];
+    o.h = 0.5 + 0.35 * n;
+  });
+}
+
+const SURFACES = {
+  Wood_Planks: { paint: (a, h, s) => planks(a, h, s, hex(0x8a7355), 401), strength: 5, rough: 0.9 },
+  Wood_Old: { paint: (a, h, s) => planks(a, h, s, hex(0x5a5346), 402), strength: 6, rough: 0.95 },
+  Wood_Fresh: { paint: (a, h, s) => planks(a, h, s, hex(0xb8925c), 403), strength: 4, rough: 0.8 },
+  Wood_Log: { paint: logs, strength: 7, rough: 0.92 },
+  Roof_Tin: { paint: (a, h, s) => tin(a, h, s, true), strength: 8, rough: 0.55, metal: 0.55 },
+  Roof_Tin_Clean: { paint: (a, h, s) => tin(a, h, s, false), strength: 8, rough: 0.5, metal: 0.6 },
+  Roof_Shingle: { paint: shingles, strength: 7, rough: 0.95 },
+  Stone: { paint: stone, strength: 8, rough: 0.9 },
+  Fabric_Tent: { paint: canvasWeave, strength: 3, rough: 0.95 },
+  Metal_Paint_White: { paint: (a, h, s) => paintedMetal(a, h, s, hex(0xe6e3da), 411), strength: 2, rough: 0.5, metal: 0.35 },
+  Metal_Paint_Red: { paint: (a, h, s) => paintedMetal(a, h, s, hex(0xb02a24), 412), strength: 2, rough: 0.5, metal: 0.35 },
+  Metal_Paint_Olive: { paint: (a, h, s) => paintedMetal(a, h, s, hex(0x4b5a3c), 413), strength: 2, rough: 0.55, metal: 0.3 },
+  Metal_Rust: { paint: rustMetal, strength: 6, rough: 0.7, metal: 0.5 },
+};
+
+const surfaceCache = {};
+// Textured material for a Blender material name; unknown names fall back to a plain colour.
+export function surfaceMaterial(name, anisotropy = 4) {
+  if (surfaceCache[name]) return surfaceCache[name];
+  const def = SURFACES[name];
+  if (!def) return null;
+  const size = 256;
+  const [ac, actx] = makeCanvas(size), [hc, hctx] = makeCanvas(size);
+  def.paint(actx, hctx, size);
+  const p = packLayer(actx, hctx, size, { strength: def.strength, rough: def.rough, standard: true });
+  const map = dataTexture(p.albedo, size, size, { srgb: true });
+  const normalMap = dataTexture(p.normal, size, size);
+  map.anisotropy = anisotropy;
+  const m = new THREE.MeshStandardMaterial({ map, normalMap, roughness: def.rough, metalness: def.metal || 0, vertexColors: true });
+  m.name = name;
+  patchMaterial(m, 'surface', null);
+  return (surfaceCache[name] = m);
 }

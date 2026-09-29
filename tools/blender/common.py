@@ -167,3 +167,65 @@ def export(name, objs=None, animations=False):
 
 def rng(seed):
     return random.Random(seed)
+
+
+class Part:
+    """Geometry that shares one material. Add boxes and cylinders, then finish() to get an object."""
+
+    def __init__(self, mat_name, name=None, color=(0.5, 0.5, 0.5, 1), rough=0.8, metal=0.0):
+        self.name = name or mat_name
+        self.mat = material(mat_name, color, rough, metal)
+        self.bm = bmesh.new()
+
+    def _xf(self, verts, loc, rot):
+        m = Matrix.Translation(loc)
+        if rot:
+            m = m @ Matrix.Rotation(rot[2], 4, 'Z') @ Matrix.Rotation(rot[1], 4, 'Y') @ Matrix.Rotation(rot[0], 4, 'X')
+        return m
+
+    def box(self, size, loc=(0, 0, 0), rot=None, bevel=0.0):
+        verts = bmesh.ops.create_cube(self.bm, size=1.0)['verts']
+        m = self._xf(verts, loc, rot) @ Matrix.Diagonal((size[0], size[1], size[2], 1.0))
+        bmesh.ops.transform(self.bm, matrix=m, verts=verts)
+        if bevel > 0:
+            edges = list({e for v in verts for e in v.link_edges})
+            bmesh.ops.bevel(self.bm, geom=edges, offset=bevel, segments=2, affect='EDGES')
+        return verts
+
+    def cyl(self, r0, r1, length, loc=(0, 0, 0), rot=None, segs=10, cap=True):
+        verts = bmesh.ops.create_cone(self.bm, cap_ends=cap, cap_tris=False, segments=segs, radius1=r0, radius2=r1, depth=length)['verts']
+        bmesh.ops.transform(self.bm, matrix=self._xf(verts, loc, rot), verts=verts)
+        return verts
+
+    def between(self, a, b, r0, r1=None, segs=8):
+        """A tapered cylinder from point a to point b."""
+        a, b = Vector(a), Vector(b)
+        d = b - a
+        verts = bmesh.ops.create_cone(self.bm, cap_ends=True, cap_tris=False, segments=segs, radius1=r0, radius2=r0 if r1 is None else r1, depth=d.length)['verts']
+        rot = Vector((0, 0, 1)).rotation_difference(d.normalized()).to_matrix().to_4x4()
+        bmesh.ops.transform(self.bm, matrix=Matrix.Translation((a + b) / 2) @ rot, verts=verts)
+        return verts
+
+    def finish(self, ao=None, uv_scale=1.0, smooth=False, name=None):
+        self.bm.normal_update()
+        box_uv(self.bm, uv_scale)
+        set_ao(self.bm, ao or (lambda p, n: 0.7 + 0.3 * max(0.0, n.z)))
+        return new_obj(name or self.name, self.bm, self.mat, smooth=smooth)
+
+
+def loft(bm, rings, segs=14, bottom_flat=0.85):
+    """Skin a body through cross-section rings [(y, half_width, half_height, z_centre)]. Returns vertex rows."""
+    rows = []
+    for (y, w, h, zc) in rings:
+        row = []
+        for k in range(segs):
+            a = math.tau * k / segs
+            s = math.sin(a)
+            row.append(bm.verts.new((w * math.cos(a), y, zc + h * (s if s > 0 else s * bottom_flat))))
+        rows.append(row)
+    faces = []
+    for i in range(len(rows) - 1):
+        for k in range(segs):
+            k2 = (k + 1) % segs
+            faces.append(bm.faces.new((rows[i][k], rows[i][k2], rows[i + 1][k2], rows[i + 1][k])))
+    return rows, faces

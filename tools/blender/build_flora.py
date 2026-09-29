@@ -77,9 +77,7 @@ def pine(seed, lod, height):
             rad = lerp(height * 0.19, height * 0.05, t)
             zc = lerp(height * 0.16, height * 0.9, t)
             h = height * lerp(0.36, 0.22, t)
-            n0 = len(far.verts)
-            bmesh.ops.create_cone(far, cap_ends=False, segments=7, radius1=rad, radius2=0.02, depth=h)
-            vs = far.verts[n0:]
+            vs = bmesh.ops.create_cone(far, cap_ends=False, segments=7, radius1=rad, radius2=0.02, depth=h)['verts']
             bmesh.ops.translate(far, verts=vs, vec=(0, 0, zc + h * 0.5))
         for f in far.faces:
             for l in f.loops:
@@ -140,15 +138,15 @@ def leafy(seed, lod, height, autumn=True):
                 r0, r1 = lerp(0.08, 0.02, k / seg) * height / 9, lerp(0.08, 0.02, (k + 1) / seg) * height / 9
                 dirv = (b0 - a0)
                 ln = dirv.length
-                n0 = len(tbm.verts)
-                bmesh.ops.create_cone(tbm, cap_ends=False, segments=5, radius1=r0, radius2=r1, depth=ln)
-                vs = tbm.verts[n0:]
+                res = bmesh.ops.create_cone(tbm, cap_ends=False, segments=5, radius1=r0, radius2=r1, depth=ln)
+                vs = res['verts']
                 rot = Vector((0, 0, 1)).rotation_difference(dirv.normalized()).to_matrix().to_4x4()
                 bmesh.ops.transform(tbm, matrix=Matrix.Translation((a0 + b0) / 2) @ rot, verts=vs)
-                for f in tbm.faces[-5:]:
-                    for l in f.loops:
-                        l[tuv].uv = (0.2, 0.2)
-                        l[tao] = (0.8, 0.8, 0.8, 1.0)
+                for vv in vs:
+                    for f in vv.link_faces:
+                        for l in f.loops:
+                            l[tuv].uv = (0.2, 0.2)
+                            l[tao] = (0.8, 0.8, 0.8, 1.0)
         tip = pts[-1]
         for c in range(clusters):
             cen = tip - d * (L * 0.16 * c) + Vector((r.uniform(-0.6, 0.6), r.uniform(-0.6, 0.6), r.uniform(-0.2, 0.7)))
@@ -175,15 +173,14 @@ def snag(seed, lod, height):
         z = height * r.uniform(0.35, 0.9)
         d = Vector((math.cos(a), math.sin(a), r.uniform(0.15, 0.5))).normalized()
         L = r.uniform(1.0, 2.6) * (1.1 - z / height * 0.5)
-        n0 = len(tbm.verts)
-        bmesh.ops.create_cone(tbm, cap_ends=True, segments=4, radius1=0.06, radius2=0.012, depth=L)
-        vs = tbm.verts[n0:]
+        vs = bmesh.ops.create_cone(tbm, cap_ends=True, segments=4, radius1=0.06, radius2=0.012, depth=L)['verts']
         rot = Vector((0, 0, 1)).rotation_difference(d).to_matrix().to_4x4()
         bmesh.ops.transform(tbm, matrix=Matrix.Translation(Vector((0, 0, z)) + d * (L / 2)) @ rot, verts=vs)
-        for f in tbm.faces[-6:]:
-            for l in f.loops:
-                l[tuv].uv = (0.3, 0.3)
-                l[tao] = (0.9, 0.9, 0.9, 1.0)
+        for vv in vs:
+            for f in vv.link_faces:
+                for l in f.loops:
+                    l[tuv].uv = (0.3, 0.3)
+                    l[tao] = (0.9, 0.9, 0.9, 1.0)
     return [new_obj('trunk', tbm, material('Bark_Dead', (0.32, 0.29, 0.26, 1)))]
 
 

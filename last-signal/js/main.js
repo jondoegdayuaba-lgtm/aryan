@@ -11,6 +11,7 @@ import { Terrain } from './terrain.js';
 import { Water } from './water.js';
 import { Flora } from './flora.js';
 import { Grass } from './grass.js';
+import { Structures } from './structures.js';
 import { ATMO } from './atmosphere.js';
 
 const params = new URLSearchParams(location.search);
@@ -203,6 +204,15 @@ async function boot() {
   flora.index();
   game.scene.add(flora.group);
   console.log(`flora: ${flora.items.length} items`);
+  const structures = (game.structures = new Structures(game.world));
+  game.scene.add(structures.group);
+  const wr = game.world.sites.wreck;
+  await structures.place('wreck', 'wreck', wr.x, wr.z, { yaw: 2.3, lift: 0.1, align: 0.8 });
+  const S = game.world.sites;
+  await structures.place('cabin', 'cabin', S.cabin.x, S.cabin.z, { yaw: Math.PI, lift: -0.05 });
+  await structures.place('tower', 'tower', S.tower.x, S.tower.z, { yaw: 0.4 });
+  const b = S.bridge;
+  await structures.place('bridge', 'bridge', b.x, b.z, { yaw: Math.atan2(b.nx, b.nz) + Math.PI / 2 * 0, y: b.deckY });
   game.grass = new Grass(game.terrain, game.world);
   game.scene.add(game.grass.group);
   game.camera.layers.enable(1);
