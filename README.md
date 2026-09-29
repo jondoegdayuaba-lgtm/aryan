@@ -1,6 +1,6 @@
 # Canyon Rush and Missile Run
 
-Two 3D browser games made with plain HTML, CSS and JavaScript and [three.js](https://threejs.org) (bundled in `vendor/three`). Neither has a build step or any image or sound files: the worlds, textures and models are generated in code, and every sound is synthesised with the Web Audio API.
+Two 3D browser games made with plain HTML, CSS and JavaScript and [three.js](https://threejs.org) (bundled in `vendor/three`). Neither needs a build step to run, and neither has any image or sound files: the worlds and textures are generated in code, and every sound is synthesised with the Web Audio API. Most models are built in code too; Canyon Rush's rider is modelled in [Blender](https://www.blender.org) by a script (see below).
 
 ## Canyon Rush
 
@@ -64,7 +64,10 @@ Style points come from wheelies, air time, tricks, backflips, 360s, clean landin
 | `canyon-rush/js/main.js` | Game states, loop, menus, garage, rally and wheelie challenge |
 | `canyon-rush/js/game/bike.js` | E-bike physics: suspension, motor, tyres, wheelies, air control, crashes; the three bikes' specs |
 | `canyon-rush/js/game/bikemodel.js` | The bikes' 3D models and colours |
-| `canyon-rush/js/game/rider.js` | The rider, posed with IK |
+| `canyon-rush/js/game/rider.js` | The rider, posed with IK on the Blender model's skeleton |
+| `canyon-rush/js/game/models.js` | Loads the Blender models |
+| `canyon-rush/models/` | The Blender models, as glTF (`.glb`) files |
+| `tools/blender/rider.py` | Builds the rider in Blender and exports `rider.glb` |
 | `canyon-rush/js/game/stunts.js` | Style points |
 | `canyon-rush/js/game/tricks.js` | The freestyle tricks: names, buttons, points and timing |
 | `canyon-rush/js/world/` | The stage layout, the road route and the terrain generator |
@@ -85,6 +88,17 @@ After changing the code, rebuild the one-file versions of both games with:
 npm install
 npm run build:desktop
 ```
+
+The rider is made by a Blender script: a body grown over a skeleton with Blender's Skin modifier and smoothed, then weighted to an armature so it bends at the joints, in motocross kit with a helmet, goggles, neck brace and buckled boots. To change it, edit `tools/blender/rider.py` and run it with Blender's Python module (Python 3.11), or inside Blender, then rebuild the one-file game:
+
+```sh
+pip install bpy==4.2.0
+python tools/blender/rider.py                       # writes canyon-rush/models/rider.glb
+python tools/blender/rider.py --preview /tmp/rider  # also renders /tmp/rider_front.png etc.
+blender -b -P tools/blender/rider.py                # the same, from an installed Blender
+```
+
+Open `canyon-rush/models/rider.glb` in Blender (File → Import → glTF) to look at it or edit it by hand. The material names (jersey, jersey2, pants, boots, gloves, helmet, helmet2, lens, dark) are how the game recolours the rider for each bike.
 
 ## Missile Run
 

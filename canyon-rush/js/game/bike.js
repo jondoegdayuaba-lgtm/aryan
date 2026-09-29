@@ -85,7 +85,7 @@ export class Bike {
     this._qInv = new THREE.Quaternion();
     this._qd = new THREE.Quaternion();
     this._m = new THREE.Matrix4();
-    this._tmp = { a: V(), b: V(), c: V(), d: V(), e: V(), f: V(), g: V(), h: V(), i: V() };
+    this._tmp = { a: V(), b: V(), c: V(), d: V(), e: V(), f: V(), g: V(), h: V(), i: V(), q: new THREE.Quaternion() };
     this._axes = { right: V(), up: V(), fwd: V() };
 
     this.riderBody = { pos: V(), vel: V(), quat: new THREE.Quaternion(), angVel: V(), prevPos: V(), prevQuat: new THREE.Quaternion() };
@@ -891,5 +891,17 @@ export class Bike {
       R.onGround = true;
     }
     this._integrateQuat(R.quat, R.angVel, dt);
+    const low = R.pos.y < gh + 0.7;
+    if (R.onGround || low) {
+      // Coming down, the body sprawls flat instead of landing on its head: its
+      // spine turns toward the ground plane.
+      const spine = T.c.set(0, 1, 0).applyQuaternion(R.quat);
+      const n = W.normalAt(R.pos.x, R.pos.z, T.e);
+      const flat = T.d.copy(spine).addScaledVector(n, -spine.dot(n));
+      if (flat.lengthSq() < 1e-4) flat.set(1, 0, 0).applyQuaternion(R.quat).addScaledVector(n, -flat.dot(n));
+      flat.normalize();
+      const k = 1 - Math.exp(-dt * (R.pos.y < gh + 0.05 ? 9 : low ? 6 : 1.5));
+      R.quat.premultiply(this._qd.setFromUnitVectors(spine, flat).slerp(T.q.identity(), 1 - k)).normalize();
+    }
   }
 }

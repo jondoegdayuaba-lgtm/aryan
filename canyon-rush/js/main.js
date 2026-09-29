@@ -14,6 +14,7 @@ import { Water } from './render/water.js';
 import { PhysicsWorld } from './game/physicsworld.js';
 import { Bike, BIKES } from './game/bike.js';
 import { BikeModel, LOOKS } from './game/bikemodel.js';
+import { loadModels } from './game/models.js';
 import { CameraRig } from './game/camera.js';
 import { Input } from './game/input.js';
 import { Autopilot } from './game/autopilot.js';
@@ -100,6 +101,10 @@ async function boot() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
 
+  // ---- The rider and bike models (made in Blender) load while the world is built.
+  const modelsReady = loadModels();
+  modelsReady.catch(() => {});
+
   // ---- World.
   const t0 = performance.now();
   const world = await runGenerator(generateWorld(STAGE), (v) => setProgress(v.progress * 0.68, v.label));
@@ -145,6 +150,7 @@ async function boot() {
   let bikeIndex = clamp(settings.bike | 0, 0, BIKES.length - 1);
   let spec = BIKES[bikeIndex];
   const bike = new Bike(phys, spec);
+  await modelsReady;
   const model = new BikeModel(tex, spec, LOOKS[spec.id]);
   scene.add(model.root);
   const heightAt = (x, z) => phys.heightAt(x, z);
