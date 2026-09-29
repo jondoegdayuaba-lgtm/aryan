@@ -9,6 +9,9 @@ import { Post } from './post.js';
 import { makeTerrainTextures, makeNoiseTexture, makeWaterNormal } from './textures.js';
 import { Terrain } from './terrain.js';
 import { Water } from './water.js';
+import { Flora } from './flora.js';
+import { Grass } from './grass.js';
+import { ATMO } from './atmosphere.js';
 
 const params = new URLSearchParams(location.search);
 const DEBUG = params.has('debug');
@@ -65,6 +68,8 @@ function applyQuality(name) {
   sun.shadow.mapSize.set(q.shadowMap, q.shadowMap);
   if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
   terrain?.setShadows(shadowsOn);
+  game.grass?.setDensity(q.grass);
+  if (game.flora) { game.flora.lodScale = q.trees; game.flora.setShadows(shadowsOn); }
   water?.setReflection(q.reflections);
   game.camera.far = q.view * 2.2;
   game.camera.updateProjectionMatrix();
@@ -122,6 +127,9 @@ function frame(dt) {
   for (const s of game.systems) s.update?.(dt, game);
 
   terrain.update(camera);
+  game.flora?.update(camera);
+  ATMO.uPlayer.value.copy(camera.position);
+  game.grass?.update(camera);
   water.update(atmo);
   sky.refreshEnvironment(scene, atmo);
 
@@ -186,8 +194,22 @@ async function boot() {
   game.water = new Water(game.world, game.terrain, makeWaterNormal());
   game.scene.add(game.water.group);
 
+  setLoading(0.62, 'Planting the forest');
+  await nextFrame();
+  const flora = (game.flora = new Flora(game.world));
+  await flora.load();
+  const clears = Object.values(game.world.sites).filter((s) => s.clear);
+  flora.scatter((x, z) => clears.some((s) => Math.hypot(x - s.x, z - s.z) < s.clear * 0.85));
+  flora.index();
+  game.scene.add(flora.group);
+  console.log(`flora: ${flora.items.length} items`);
+  game.grass = new Grass(game.terrain, game.world);
+  game.scene.add(game.grass.group);
+  game.camera.layers.enable(1);
+
   const start = params.get('q') || store.get('quality', coarse ? 'medium' : 'high');
   applyQuality(QUALITY[start] ? start : 'high');
+  game.flora.lodScale = game.quality.trees;
 
   // Place the camera on the ground near the crash site until the game systems take over.
   const w = game.world, s = w.sites.wreck;

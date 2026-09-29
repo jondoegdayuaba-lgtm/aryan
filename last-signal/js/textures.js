@@ -447,3 +447,14 @@ export function makeBark(kind, size = 256) {
   map.anisotropy = 4;
   return { map, normalMap };
 }
+
+// A single rock material's textures (colour + normal), for boulders and cliffs made from meshes.
+export function makeRockTextures(size = 512) {
+  const [ac, actx] = makeCanvas(size), [hc, hctx] = makeCanvas(size);
+  paintRock(actx, hctx, size);
+  const p = packLayer(actx, hctx, size, { strength: 8, rough: 0.85, standard: true });
+  const map = dataTexture(p.albedo, size, size, { srgb: true });
+  const normalMap = dataTexture(p.normal, size, size);
+  map.anisotropy = 4;
+  return { map, normalMap };
+}
