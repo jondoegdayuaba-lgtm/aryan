@@ -22,6 +22,8 @@ What's in it:
 
 The desert is built when the game starts, which takes a few seconds. Graphics quality is picked for your device automatically; change it under **Settings**. Low is meant for phones.
 
+On graphics chips that can't run the full lighting pipeline, the game switches to a simpler **compatible graphics** mode by itself (it also checks that the first frames aren't black). You can turn it on by hand under **Settings** too.
+
 ### Controls
 
 | Action | Keyboard | Phone | Gamepad |

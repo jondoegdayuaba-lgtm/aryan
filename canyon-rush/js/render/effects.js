@@ -77,6 +77,8 @@ const PARTICLE_FRAG = /* glsl */ `
     }
     gl_FragColor = vec4(col * a, a);
     #include <fog_fragment>
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }
 `;
 
@@ -413,7 +415,7 @@ export class Effects {
     const sp = bike.speed;
     const fwd = this._s.set(0, 0, -1).applyQuaternion(bodyQuat);
     bike.wheels.forEach((w, i) => {
-      if (!w.contact) {
+      if (!w.contact || !w.surface) {
         this.tracks.lift(i);
         return;
       }

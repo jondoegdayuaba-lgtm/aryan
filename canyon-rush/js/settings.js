@@ -37,6 +37,7 @@ export function loadSettings() {
     volume: store.get('volume', 0.8),
     shake: store.get('shake', true),
     bike: store.get('bike', 0),
+    compat: store.get('compat', false),
     muted: store.get('muted', false),
   };
   const q = new URLSearchParams(location.search);

@@ -16,12 +16,14 @@ export const terrainLightUniforms = {
 };
 
 const original = {};
-const KEEP = ['fog_pars_vertex', 'fog_vertex', 'fog_pars_fragment', 'fog_fragment', 'lights_fragment_begin', 'lights_pars_begin', 'aomap_fragment'];
+const KEEP = ['fog_pars_vertex', 'fog_vertex', 'fog_pars_fragment', 'fog_fragment', 'lights_fragment_begin', 'lights_pars_begin', 'aomap_fragment', 'tonemapping_fragment'];
 
 const v3 = (c) => `vec3(${c.r.toFixed(5)}, ${c.g.toFixed(5)}, ${c.b.toFixed(5)})`;
 
 // Installs the chunks. Call again (then flag materials for recompile) if the sky changes.
-export function installShaderChunks(atmo, { hazeDensity = 0.00011, hazeFalloff = 0.0011 } = {}) {
+// compat: drawing straight to the screen, where three.js tone-maps before it
+// applies fog; the haze has to go on first there, while the colour is still linear.
+export function installShaderChunks(atmo, { hazeDensity = 0.00011, hazeFalloff = 0.0011, compat = false } = {}) {
   const C = THREE.ShaderChunk;
   for (const k of KEEP) if (!(k in original)) original[k] = C[k];
 
@@ -65,10 +67,12 @@ export function installShaderChunks(atmo, { hazeDensity = 0.00011, hazeFalloff =
     return col * ext + apHazeColor(dir) * (1.0 - ext);
   }
 #endif`;
-  C.fog_fragment = /* glsl */ `
+  const fogApply = /* glsl */ `
 #ifdef USE_FOG
   gl_FragColor.rgb = applyAerialPerspective( gl_FragColor.rgb, vFogRel );
 #endif`;
+  C.fog_fragment = compat ? '' : fogApply;
+  C.tonemapping_fragment = compat ? fogApply + '\n' + original.tonemapping_fragment : original.tonemapping_fragment;
 
   C.lights_pars_begin = original.lights_pars_begin + /* glsl */ `
 #ifdef TERRAIN_LIGHT

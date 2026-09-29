@@ -185,7 +185,7 @@ float fbm5(vec2 p) {
 
 // Renders the sky (with a static cloud layer and a lit ground below the horizon)
 // into a cube map.
-function makeSkyCaptureMaterial(sunDir, dust, clouds, groundAlbedo, sunColor, skyAmbient) {
+function makeSkyCaptureMaterial(sunDir, dust, clouds, groundAlbedo, sunColor, skyAmbient, scale = 1) {
   return new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -197,6 +197,7 @@ function makeSkyCaptureMaterial(sunDir, dust, clouds, groundAlbedo, sunColor, sk
       uGround: { value: groundAlbedo },
       uSunColor: { value: sunColor },
       uSkyAmbient: { value: skyAmbient },
+      uScale: { value: scale },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -208,6 +209,7 @@ function makeSkyCaptureMaterial(sunDir, dust, clouds, groundAlbedo, sunColor, sk
       uniform vec3 uSun;
       uniform float uBetaM;
       uniform float uClouds;
+      uniform float uScale;
       uniform vec3 uGround;
       uniform vec3 uSunColor;
       uniform vec3 uSkyAmbient;
@@ -238,21 +240,26 @@ function makeSkyCaptureMaterial(sunDir, dust, clouds, groundAlbedo, sunColor, sk
           col = mix(col, cirrusCol, cirrus * 0.55 * fade);
           col = mix(col, cumCol * (0.75 + 0.25 * cu), cum * 0.85 * fade);
         }
-        gl_FragColor = vec4(col, 1.0);
+        gl_FragColor = vec4(col * uScale, 1.0);
       }`,
   });
 }
 
 export class Atmosphere {
-  constructor(renderer, timeKey = 'golden') {
+  // hdr: false for GPUs that can't render to float targets. The sky cube is then
+  // stored pre-scaled in 8 bits and there's no image-based lighting (a
+  // hemisphere light stands in for it).
+  constructor(renderer, timeKey = 'golden', { hdr = true } = {}) {
     this.renderer = renderer;
+    this.hdr = hdr;
     this.sunDir = new THREE.Vector3();
     this.sunColor = new THREE.Color();
     this.skyAmbient = new THREE.Color();
     this.haze = [];
-    this.cubeRT = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
+    this.skyScale = 1;
+    this.cubeRT = new THREE.WebGLCubeRenderTarget(256, { type: hdr ? THREE.HalfFloatType : THREE.UnsignedByteType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
     this.cubeCamera = new THREE.CubeCamera(1, 10, this.cubeRT);
-    this.pmrem = new THREE.PMREMGenerator(renderer);
+    this.pmrem = hdr ? new THREE.PMREMGenerator(renderer) : null;
     this.envMap = null;
     this.set(timeKey);
   }
@@ -297,14 +304,20 @@ export class Atmosphere {
   renderCube() {
     const T = this.time;
     const scene = new THREE.Scene();
-    const mat = makeSkyCaptureMaterial(this.sunDir, T.dust, T.clouds, new THREE.Color(0.42, 0.3, 0.2), this.sunColor, this.skyAmbient);
+    if (!this.hdr) {
+      // Fit the brightest horizon into 8 bits (the glow right round the sun clips, which is fine).
+      let peak = 0;
+      for (const c of this.haze) peak = Math.max(peak, c.r, c.g, c.b);
+      this.skyScale = 0.8 / Math.max(peak * 1.6, 1e-3);
+    }
+    const mat = makeSkyCaptureMaterial(this.sunDir, T.dust, T.clouds, new THREE.Color(0.42, 0.3, 0.2), this.sunColor, this.skyAmbient, this.skyScale);
     const box = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 5), mat);
     scene.add(box);
     this.cubeCamera.update(this.renderer, scene);
     box.geometry.dispose();
     mat.dispose();
     if (this.envMap) this.envMap.dispose();
-    this.envMap = this.pmrem.fromCubemap(this.cubeRT.texture).texture;
+    this.envMap = this.pmrem ? this.pmrem.fromCubemap(this.cubeRT.texture).texture : null;
   }
 
   // Light intensity for the sun's DirectionalLight.
@@ -321,6 +334,7 @@ export function makeSkyDome(atmo) {
     fog: false,
     uniforms: {
       uCube: { value: atmo.cubeRT.texture },
+      uSkyInv: { value: 1 / atmo.skyScale },
       uSun: { value: atmo.sunDir },
       uSunColor: { value: atmo.sunColor },
     },
@@ -333,12 +347,13 @@ export function makeSkyDome(atmo) {
       }`,
     fragmentShader: /* glsl */ `
       uniform samplerCube uCube;
+      uniform float uSkyInv;
       uniform vec3 uSun;
       uniform vec3 uSunColor;
       varying vec3 vDir;
       void main() {
         vec3 rd = normalize(vDir);
-        vec3 col = textureLod(uCube, rd, 0.0).rgb;
+        vec3 col = textureLod(uCube, rd, 0.0).rgb * uSkyInv;
         float mu = dot(rd, uSun);
         float sunR = 0.00467;                      // angular radius, radians
         float d = acos(clamp(mu, -1.0, 1.0)) / sunR;
@@ -347,6 +362,8 @@ export function makeSkyDome(atmo) {
           col += uSunColor * 40000.0 * limb * smoothstep(1.0, 0.9, d) * step(0.0, rd.y + 0.02);
         }
         gl_FragColor = vec4(col, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
       }`,
   });
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), mat);

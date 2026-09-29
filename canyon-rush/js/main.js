@@ -3,6 +3,7 @@ import { STAGE } from './world/stage.js';
 import { generateWorld } from './world/worldgen.js';
 import { Atmosphere, makeSkyDome } from './render/atmosphere.js';
 import { installShaderChunks } from './render/shaderpatch.js';
+import { probeHdr, DirectPipeline, frameLooksBlack } from './render/compat.js';
 import { Terrain } from './render/terrain.js';
 import { bakeTerrainLight } from './render/bake.js';
 import { PostPipeline } from './render/post.js';
@@ -29,6 +30,27 @@ const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
 const clamp = THREE.MathUtils.clamp;
 const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 
+// Something broke: say so on screen instead of leaving a black page.
+let problemShown = false;
+function showProblem(text, { compatButton = true } = {}) {
+  problemShown = true;
+  const L = $('loading');
+  L.hidden = false;
+  L.style.display = '';
+  L.classList.remove('done');
+  $('load-label').textContent = text;
+  $('load-actions').hidden = false;
+  $('load-compat').hidden = !compatButton;
+}
+
+// Reload in the compatible renderer (remembered in storage, and carried in the URL too).
+function reloadCompat() {
+  store.set('compat', true);
+  const u = new URL(location.href);
+  u.searchParams.set('compat', '1');
+  location.href = u.toString();
+}
+
 function setProgress(p, label) {
   $('load-fill').style.width = `${Math.round(p * 100)}%`;
   if (label) $('load-label').textContent = label;
@@ -54,14 +76,24 @@ async function boot() {
   if (coarse) document.body.classList.add('touch');
 
   const canvas = $('game');
+  // GPUs that can't render to floating-point targets would show the HDR
+  // pipeline as a black screen; they get the compatible renderer instead.
+  // (?compat=0 forces the HDR pipeline, for testing the black-screen safety net.)
+  const compat = params.get('compat') === '0' ? false : settings.compat || params.get('compat') === '1' || !probeHdr();
+  if (compat) console.log('Using the compatible renderer');
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: compat, powerPreference: 'high-performance', stencil: false });
     if (!renderer.capabilities.isWebGL2) throw new Error('WebGL 2 is not available');
   } catch (err) {
-    $('load-label').textContent = 'This game needs WebGL 2, which your browser could not start.';
+    showProblem('This game needs WebGL 2, which your browser could not start. Try an up-to-date Chrome, Edge, Firefox or Safari.', { compatButton: false });
+    err.shown = true;
     throw err;
   }
+  canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    showProblem('The graphics card stopped the game (it may have run out of memory). Reload the page to keep playing, or try compatible graphics.');
+  });
   renderer.setPixelRatio(Math.min(devicePixelRatio, Q.pixelRatio));
   renderer.setSize(innerWidth, innerHeight, false);
   renderer.autoClear = false;
@@ -75,12 +107,18 @@ async function boot() {
   setProgress(0.7, 'Painting the sky');
   await nextFrame();
   const tex = { noise: makeNoiseTexture(), cell: makeCellTexture() };
-  const atmo = new Atmosphere(renderer, settings.time);
-  installShaderChunks(atmo);
+  const atmo = new Atmosphere(renderer, settings.time, { hdr: !compat });
+  installShaderChunks(atmo, { compat });
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0xffffff, 0.00011);
   scene.environment = atmo.envMap;
+  if (compat) {
+    // No image-based lighting here: a sky/ground hemisphere light stands in for it.
+    const E = atmo.sunColor.clone().multiplyScalar(atmo.sunIntensity * Math.max(atmo.sunDir.y, 0)).add(atmo.skyAmbient);
+    const ground = E.multiplyScalar(0.33).multiply(new THREE.Color(1, 0.78, 0.58));
+    scene.add(new THREE.HemisphereLight(atmo.skyAmbient.clone(), ground, 1));
+  }
   scene.add(makeSkyDome(atmo));
 
   const sun = new THREE.DirectionalLight(atmo.sunColor, atmo.sunIntensity);
@@ -110,18 +148,18 @@ async function boot() {
   const model = new BikeModel(tex, spec, LOOKS[spec.id]);
   scene.add(model.root);
   const heightAt = (x, z) => phys.heightAt(x, z);
-  const fx = new Effects(scene, atmo, heightAt, { soft: Q.soft });
-  const water = new Water(scene, STAGE, atmo, tex);
+  const fx = new Effects(scene, atmo, heightAt, { soft: Q.soft && !compat });
+  const water = new Water(scene, STAGE, atmo, tex, { simple: compat });
   const route = world.route;
   const gates = new Gates(scene, route, STAGE, heightAt);
   const race = new Race(route, gates);
   const stunts = new Stunts();
   const auto = new Autopilot(route, { maxSpeed: 30, wheelies: true });
 
-  const post = new PostPipeline(renderer, {
-    samples: params.has('msaa') ? +params.get('msaa') : Q.msaa,
-    renderScale: params.has('scale') ? +params.get('scale') : Q.renderScale,
-  });
+  const renderScale = params.has('scale') ? +params.get('scale') : Q.renderScale;
+  const post = compat
+    ? new DirectPipeline(renderer, { renderScale })
+    : new PostPipeline(renderer, { samples: params.has('msaa') ? +params.get('msaa') : Q.msaa, renderScale });
   post.composite.uniforms.uExposure.value = atmo.time.exposure;
 
   const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.2, 30000);
@@ -374,6 +412,7 @@ async function boot() {
     $('set-units').value = settings.units;
     $('set-volume').value = settings.volume;
     $('set-shake').checked = settings.shake;
+    $('set-compat').checked = compat;
     showScreen('settings');
   });
   $('set-volume').addEventListener('input', (e) => { audio.init(); audio.setVolume(+e.target.value); });
@@ -387,13 +426,17 @@ async function boot() {
     store.set('volume', settings.volume);
     store.set('shake', settings.shake);
     hud.setUnits(settings.units);
-    const reload = q !== settings.quality || t !== settings.time;
+    const wantCompat = $('set-compat').checked;
+    const reload = q !== settings.quality || t !== settings.time || wantCompat !== compat;
     store.set('quality', q);
     store.set('time', t);
+    store.set('compat', wantCompat);
     if (reload) {
       const u = new URL(location.href);
       u.searchParams.delete('quality');
       u.searchParams.delete('time');
+      if (wantCompat) u.searchParams.set('compat', '1');
+      else u.searchParams.delete('compat');
       location.href = u.toString();
     } else showScreen('menu');
   });
@@ -673,25 +716,36 @@ async function boot() {
 
   $('loading').classList.add('done');
   if (params.has('still')) $('loading').style.display = 'none';
-  setTimeout(() => { $('loading').hidden = true; }, 900);
+  setTimeout(() => { if (!problemShown) $('loading').hidden = true; }, 900);
 
   let last = performance.now();
   let frames = 0;
   const still = params.has('still') ? +params.get('still') || 1 : 0;
   function frame(now) {
-    const dt = still ? 1 / 60 : Math.min(0.05, (now - last) / 1000);
+    // Frame timestamps can land a hair before the last one; never step backwards.
+    const dt = still ? 1 / 60 : Math.min(0.05, Math.max(0, (now - last) / 1000));
     last = now;
     if (G.state !== 'paused') update(dt);
     render(G.state === 'paused' ? 0 : dt);
-    adapt(dt);
     frames++;
+    // Safety net: if the picture comes out black anyway, switch renderers once.
+    // (Checked straight after drawing, before anything can resize the canvas.)
+    if (!still && (frames === 30 || frames === 120) && frameLooksBlack(renderer)) {
+      if (!compat) {
+        showProblem('Switching to compatible graphics…', { compatButton: false });
+        reloadCompat();
+        return;
+      }
+      if (frames === 120) showProblem('Your browser couldn\u2019t draw the 3D world. Updating the browser or your graphics drivers may help, or try another browser such as Chrome or Edge.', { compatButton: false });
+    }
+    adapt(dt);
     if (still && frames >= still) { window.__frameDone = true; return; }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
   window.__canyon = {
-    renderer, scene, camera, terrain, world, atmo, post, sun, THREE, baked, bike, model, rig, phys, route, auto, scatter, fx, water,
+    compat, renderer, scene, camera, terrain, world, atmo, post, sun, THREE, baked, bike, model, rig, phys, route, auto, scatter, fx, water,
     gates, race, stunts, hud, input, G, update, render, startRace, startFree, startWheelie, toMenu, setBike: (i) => setBike(i),
     renderOnce: () => render(0.016),
     stepFrames: (n = 1, dt = 1 / 60) => { for (let i = 0; i < n; i++) { update(dt); render(dt); } },
@@ -699,7 +753,14 @@ async function boot() {
   window.__ready = true;
 }
 
+$('load-compat').addEventListener('click', reloadCompat);
+$('load-reload').addEventListener('click', () => location.reload());
+addEventListener('error', (e) => {
+  if (!window.__ready) return;
+  console.error(e.error || e.message);
+  showProblem('Something went wrong: ' + (e.message || 'unknown error') + '. Reload to try again, or try compatible graphics.');
+});
 boot().catch((err) => {
   console.error(err);
-  $('load-label').textContent = 'Something went wrong while loading: ' + err.message;
+  if (!err.shown) showProblem('Something went wrong while loading: ' + err.message);
 });

@@ -71,6 +71,8 @@ const BEAM_FRAG = /* glsl */ `
     float edge = pow(1.0 - abs(dot(normalize(vN.xz), normalize(vV.xz))), 1.5);
     float a = (1.0 - edge) * (1.0 - t) * (1.0 - t) * (0.75 + 0.25 * sin(vH * 0.08 - uTime * 3.0));
     gl_FragColor = vec4(uColor, a);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
   }
 `;
 

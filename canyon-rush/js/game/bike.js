@@ -191,7 +191,9 @@ export class Bike {
       w.omega = 0;
       w.steer = 0;
       w.center.copy(w.rest);
-      w.contact = true;
+      // Contact (and what the tyre sits on) is only known after the first physics
+      // step; until then nothing should try to draw dust or tracks for it.
+      w.contact = false;
       w.airTime = 0;
     }
   }

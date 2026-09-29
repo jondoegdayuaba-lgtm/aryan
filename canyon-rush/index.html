@@ -147,8 +147,9 @@
         </label>
         <label>Volume <input id="set-volume" type="range" min="0" max="1" step="0.05"></label>
         <label class="check"><input id="set-shake" type="checkbox"> Camera shake</label>
+        <label class="check"><input id="set-compat" type="checkbox"> Compatible graphics (try this if the game looks black)</label>
       </div>
-      <p class="hint" id="set-hint">Graphics and time of day apply after a quick reload.</p>
+      <p class="hint" id="set-hint">Graphics settings and time of day apply after a quick reload.</p>
       <div class="btn-row">
         <button id="set-apply" class="btn primary" type="button">Apply</button>
         <button id="set-back" class="btn" type="button">Back</button>
@@ -205,6 +206,10 @@
       <div class="brand"><span>CANYON</span><em>RUSH</em></div>
       <div class="bar"><div id="load-fill"></div></div>
       <div id="load-label" class="load-label">Loading…</div>
+      <div id="load-actions" class="load-actions" hidden>
+        <button id="load-compat" class="btn primary" type="button">Try compatible graphics</button>
+        <button id="load-reload" class="btn" type="button">Reload</button>
+      </div>
     </div>
   </div>
   <noscript><p class="loading">This game needs JavaScript turned on.</p></noscript>
