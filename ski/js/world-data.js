@@ -4,6 +4,17 @@ import { clamp, assetUrl } from './util.js';
 
 const CELL = 16;   // collision hash cell size (m)
 
+// Footprints of the village buildings in the model's own frame (x along the ridge, z from the back to the front), metres:
+// [centre x, centre z, half width, half depth] per box, and the height of the roof line.
+const FOOTPRINTS = {
+  lodge: { h: 12, boxes: [[0, 0, 17.2, 7.7], [-21.0, 0.5, 4.1, 4.6]] },
+  alp_hut: { h: 6, boxes: [[0, 0, 8.2, 4.7]] },
+  chapel: { h: 17, boxes: [[0, -1.0, 3.4, 5.7], [0, 5.7, 2.0, 2.0]] },
+  chalet_a: { h: 8, boxes: [[0, 0, 5.2, 4.2]] },
+  chalet_b: { h: 8.5, boxes: [[0, 0, 6.4, 4.7], [-7.85, -0.5, 1.7, 2.9]] },
+  chalet_c: { h: 7.5, boxes: [[0, 0, 4.4, 3.6]] },
+};
+
 /**
  * The open world stores its height field as prediction residuals (zigzag coded uint16 of h - (left + above - above-left)), which
  * gzip shrinks four times better than the raw heights. Returns the raw uint16 heights.
@@ -56,6 +67,60 @@ export class WorldData {
     this.sunDir = info.sun.dir;
     this.runs = info.runs || [];
     this._buildHash();
+    this._buildSolids();
+  }
+
+  /** oriented boxes (village buildings) and circles (lift pylons) the skier cannot pass through */
+  _buildSolids() {
+    const out = this.solids = [];
+    for (const b of this.info.buildings || []) {
+      const fp = FOOTPRINTS[b.type];
+      if (!fp) continue;
+      const sc = b.scale || 1, c = Math.cos(b.yaw), sn = Math.sin(b.yaw);
+      for (const [cx, cz, hx, hz] of fp.boxes) {
+        // model frame -> world: rotation about +Y by yaw maps local (x, z) to (x c + z sn, -x sn + z c)
+        const wx = b.x + (cx * c + cz * sn) * sc, wz = b.z + (-cx * sn + cz * c) * sc;
+        out.push({ x: wx, z: wz, hx: hx * sc + 0.15, hz: hz * sc + 0.15, c, s: sn, r: Math.hypot(hx, hz) * sc + 0.4, y: b.y, h: fp.h * sc });
+      }
+    }
+    for (const lf of this.info.lifts || []) {
+      lf.points.forEach(([x, z], i) => {
+        if (i === 0 || i === lf.points.length - 1) return;
+        out.push({ x, z, hx: 0.42, hz: 0.42, c: 1, s: 0, r: 0.6, y: this.height(x, z), h: 10, round: true });
+      });
+    }
+  }
+
+  /**
+   * Calls fn(nx, nz, penetration, top) for every solid touching the disc (x, z, r): (nx, nz) is the unit push-out direction and
+   * top the height (above sea level) of the solid.
+   */
+  querySolids(x, z, r, fn) {
+    const S = this.solids;
+    if (!S || !S.length) return;
+    for (let i = 0; i < S.length; i++) {
+      const o = S[i];
+      const dx = x - o.x, dz = z - o.z;
+      const reach = o.r + r;
+      if (dx * dx + dz * dz > reach * reach) continue;
+      if (o.round) {
+        const d = Math.hypot(dx, dz) || 1e-3;
+        if (d < o.hx + r) fn(dx / d, dz / d, o.hx + r - d, o.y + o.h);
+        continue;
+      }
+      // into the box frame
+      const lx = dx * o.c - dz * o.s, lz = dx * o.s + dz * o.c;
+      const px = Math.max(-o.hx, Math.min(o.hx, lx)), pz = Math.max(-o.hz, Math.min(o.hz, lz));
+      let ex = lx - px, ez = lz - pz;
+      let d = Math.hypot(ex, ez);
+      if (d < 1e-6) {                                   // centre inside the box: leave through the nearest face
+        const gx = o.hx - Math.abs(lx), gz = o.hz - Math.abs(lz);
+        if (gx < gz) { ex = lx < 0 ? -1 : 1; ez = 0; d = -gx; } else { ex = 0; ez = lz < 0 ? -1 : 1; d = -gz; }
+        fn(ex * o.c + ez * o.s, -ex * o.s + ez * o.c, r - d, o.y + o.h);
+        continue;
+      }
+      if (d < r) fn((ex * o.c + ez * o.s) / d, (-ex * o.s + ez * o.c) / d, r - d, o.y + o.h);
+    }
   }
 
   static async load(base = 'assets/world/', onProgress = () => {}) {

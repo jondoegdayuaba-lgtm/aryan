@@ -219,6 +219,7 @@ export class SkierPhysics {
 
     // ---- hazards
     this._collide();
+    this._collideSolids();
     this._collideNets();
     if (!this.crashed && this.grounded && this.ny < 0.70) this.crash('cliff');   // steeper than ~45 degrees
     if (!w.inside(this.x, this.z, 12)) {
@@ -395,6 +396,21 @@ export class SkierPhysics {
         this.x += (dx / dist) * push; this.z += (dz / dist) * push;
         this.vx *= 0.3; this.vz *= 0.3;
       }
+    });
+  }
+
+  /** village buildings and lift pylons of the open world */
+  _collideSolids() {
+    if (this.crashed || !this.world.solids || !this.world.solids.length) return;
+    const speed = Math.hypot(this.vx, this.vz);
+    this.world.querySolids(this.x, this.z, 0.42, (nx, nz, pen, top) => {
+      if (this.crashed) return;
+      if (this.y > top) return;                            // flying over the roof
+      if (speed > TUNING.treeSpeed) { this.crash('building'); return; }
+      this.x += nx * pen; this.z += nz * pen;
+      const vn = this.vx * nx + this.vz * nz;
+      if (vn < 0) { this.vx -= vn * nx * 1.2; this.vz -= vn * nz * 1.2; }
+      this.vx *= 0.9; this.vz *= 0.9;
     });
   }
 

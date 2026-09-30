@@ -6,7 +6,8 @@ Rebuild every Blender-made asset of Alpine Descent, in dependency order.
     python blender/build.py --only sky,props
     python blender/build.py --list
 
-Steps: world  maps  sky  branches  trees  skier  props  rocks  detail  bake
+Steps: world  maps  sky  branches  trees  skier  skier_free  props  rocks  detail  bake  open  open_maps
+       (`open` and `open_maps` build the open world; `open` needs a C compiler for the erosion helper but falls back without one)
 Needs the `bpy` module (pip install -r blender/requirements.txt), numpy, scipy and Pillow.
 """
 import os
@@ -23,12 +24,16 @@ STEPS = [
     ('branches', 'Cycles branch atlas for the foliage cards', ['make_branches.py'], ['make_branches.py', '--samples', '24']),
     ('trees', 'conifers, 4 species x 4 LODs', ['make_trees.py'], ['make_trees.py']),
     ('skier', 'rigged race-suit skier', ['make_skier.py'], ['make_skier.py']),
-    ('props', 'gates, banners, nets, lodge, hut, chairlift', ['make_props.py'], ['make_props.py']),
+    ('skier_free', 'the freerider outfit (same skeleton)', ['make_skier.py', '--style', 'free'], ['make_skier.py', '--style', 'free']),
+    ('props', 'gates, banners, nets, lodge, hut, chairlift, chalets, chapel, signs, flag', ['make_props.py'], ['make_props.py']),
     ('rocks', 'boulders, 4 kinds x 3 LODs', ['make_rocks.py'], ['make_rocks.py']),
     ('detail', 'tileable rock / snow detail textures', ['make_detail.py'], ['make_detail.py']),
     ('bake', 'terrain light map (sun shadows + ambient occlusion)',
      ['bake_terrain.py', '--res', '2048', '--samples', '40', '--ao-samples', '64', '--coarse', '1'],
      ['bake_terrain.py', '--res', '1024', '--samples', '16', '--ao-samples', '24', '--coarse', '2']),
+    ('open', 'open world: basin, erosion, pistes, lifts, village, forest, flags', ['open_world.py', '--redo-terrain', '--no-preview'],
+     ['open_world.py', '--redo-terrain', '--drops', '600000', '--no-preview']),
+    ('open_maps', 'open world colour, mask, light and map textures', ['open_maps.py'], ['open_maps.py', '--size', '1024', '--quick']),
 ]
 
 

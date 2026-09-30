@@ -93,8 +93,8 @@ def build(size):
 
     snow = srgb(0.925, 0.945, 0.975)
     snow_shade = srgb(0.86, 0.90, 0.96)
-    rock_a = srgb(0.43, 0.40, 0.37)
-    rock_b = srgb(0.30, 0.28, 0.27)
+    rock_a = srgb(0.52, 0.49, 0.45)          # pale dolomite: a little lighter than the race mountain's granite
+    rock_b = srgb(0.37, 0.35, 0.33)
     needles = srgb(0.20, 0.16, 0.11)
     ice = srgb(0.74, 0.86, 0.96)
     col = np.empty(shape + (3,), dtype=np.float32)
@@ -123,7 +123,7 @@ def light_map(b, size, quick):
     out[..., 1] = out[..., 0] * (1 - 0.62 * shade)
     print("  ambient occlusion ...")
     ao = lm.sky_visibility(H, X0, Z0, DX, size, directions=8 if quick else 12)
-    ao = ao ** 1.25 * (1 - 0.40 * b["canopy"])
+    ao = ao ** 1.1 * (1 - 0.40 * b["canopy"])
     out[..., 2] = np.clip(ao * 1.08, 0, 1)
     return out
 

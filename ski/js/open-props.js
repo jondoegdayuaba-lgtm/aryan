@@ -67,14 +67,13 @@ export class OpenProps {
     }
     this.buildingInst = [];
     this.buildings = list;
-    let k = 0;
     for (const [type, items] of byType) {
       const parts = this.part(type);
       if (!parts) continue;
       const inst = new Inst(parts, items.length, { cast: true, receive: true, group: this.group });
       items.forEach((b, i) => {
         const big = FALLBACK[type] && !this.parts.get(type) ? 1.35 : 1;
-        const sc = big * (type.startsWith('chalet') ? 0.94 + 0.12 * (((k++ * 2654435761) >>> 0) % 1000) / 1000 : 1);
+        const sc = big * (b.scale || 1);
         _p.set(b.x, b.y - 0.05, b.z);
         _q.setFromAxisAngle(UP, b.yaw);
         _s.set(sc, sc, sc);

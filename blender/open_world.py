@@ -5,14 +5,14 @@ Open world generator for Alpine Descent (pure numpy / scipy, no Blender needed).
 Starts from the eroded basin of open_terrain.py and builds the ski area on top of it:
 
   * the village (flattened plaza, lodge, chalets, chapel, a frozen lake),
-  * five chairlifts (rideable in the game) with their stations and pylons,
+  * seven chairlifts (rideable in the game) with their stations and pylons,
   * a network of groomed pistes found by a slope-aware route search, then carved into the mountain
     (smoothed along the run, cross slope kept close to the hillside so the cuts stay small),
   * a terrain park of kickers,
   * forest and boulder scatter, piste marker poles,
   * 24 collectible flags and 10 landmarks to discover.
 
-Writes  ski/assets/open/{heightmap.u16, groom.u8, trees.f32, rocks.f32, poles.f32, world.json}
+Writes  ski/assets/open/{heightmap.pz, groom.u8, trees.f32, rocks.f32, poles.f32, world.json}
 and     build/open.npz  (read by open_maps.py, which paints the colour / mask / light-map textures).
 
 usage: python open_world.py [--redo-terrain] [--drops N] [--no-preview]
@@ -226,7 +226,7 @@ class Router:
             out += pts if not out else pts[1:]
         return np.array(out)
 
-    def reachable(self, sources, cap=36.0):
+    def reachable(self, sources, cap=42.0):
         """cells a skier can get to from the sources by going downhill (or nearly flat) on ground below `cap` degrees"""
         G = self.graph(0, 0, cap=cap, strict_down=True)
         idx = np.array([self.node(*s) for s in sources])
@@ -348,7 +348,8 @@ class Piste:
         hr = bilinear(H, self.x + self.rx * hw * 0.8, self.z + self.rz * hw * 0.8)
         cs = (hr - hl) / (1.6 * hw)
         self.cross = np.clip(smooth1d(cs, 20.0), -0.17, 0.17) * 0.85
-        self.pitch = np.degrees(np.arctan(-np.gradient(self.y, 2.0)))
+        self.dyds = np.gradient(self.y, 2.0)
+        self.pitch = np.degrees(np.arctan(-self.dyds))
 
     @staticmethod
     def limit_pitch(y, cap_deg, ds=2.0):
@@ -399,7 +400,8 @@ def carve_pistes(H, pistes, blend=24.0):
         dzp = q[:, 1] - p.z[idx]
         t = dxp * p.rx[idx] + dzp * p.rz[idx]
         hw = p.width[idx] * 0.5
-        surf = p.y[idx] + p.cross[idx] * t
+        along = dxp * p.tx[idx] + dzp * p.tz[idx]                  # distance past the nearest sample, along the run
+        surf = p.y[idx] + p.dyds[idx] * along + p.cross[idx] * t   # interpolated: no staircase between the 2 m samples
         w = 1.0 - smoothstep(hw, hw + blend, d)
         w = np.where(ok, w, 0.0)
         g = 1.0 - smoothstep(hw - 2.0, hw + 1.2, d)
@@ -504,6 +506,57 @@ def relax_corridor(H, groom, talus=0.75, iters=45):
     w = np.clip(ndi.gaussian_filter(groom, 3.0) * 1.6, 0.0, 1.0)
     Hn = ot.thermal_erosion(H, iters, talus, 0.5)
     return H + (Hn - H) * w
+
+
+def clear_pylons(lifts, pistes, margin=6.0):
+    """A pylon on a piste is a hazard: slide every interior pylon along its line (keeping the line straight) or, failing that,
+    sideways until it stands at least `margin` metres outside every piste."""
+    P = np.concatenate([np.c_[p.x, p.z] for p in pistes])
+    HW = np.concatenate([p.width * 0.5 for p in pistes])
+    tree = cKDTree(P)
+
+    def clearance(q):
+        d, i = tree.query(q)
+        return d - HW[i]
+
+    moved = stuck = 0
+    for lf in lifts:
+        pts = np.array(lf["points"], float)
+        drop = set()
+        for i in range(1, len(pts) - 1):
+            if clearance(pts[i]) >= margin:
+                continue
+            a = pts[i + 1] - pts[i - 1]
+            a /= np.hypot(*a)
+            n = np.array([-a[1], a[0]])
+            spot = None
+            for k in range(1, 21):                                   # along the line: 2 .. 40 m
+                for sgn in (1, -1):
+                    q = pts[i] + a * (2.0 * k * sgn)
+                    if clearance(q) >= margin:
+                        spot = q
+                        break
+                if spot is not None:
+                    break
+            if spot is None:
+                for k in range(1, 16):                               # across the line: 4 .. 60 m
+                    for sgn in (1, -1):
+                        q = pts[i] + n * (4.0 * k * sgn)
+                        if clearance(q) >= margin:
+                            spot = q
+                            break
+                    if spot is not None:
+                        break
+            if spot is not None:
+                pts[i] = spot
+                moved += 1
+            else:                                                    # nowhere to stand: leave the pylon out, the span gets longer
+                stuck += 1
+                drop.add(i)
+        keep = [i for i in range(len(pts)) if i not in drop]
+        lf["points"] = [(float(pts[i][0]), float(pts[i][1])) for i in keep]
+        lf["length"] = float(np.sum(np.hypot(*np.diff(pts[keep], axis=0).T)))
+    print(f"pylons moved off pistes: {moved}, removed: {stuck}")
 
 
 def plan_pylons(H, lift, clear=7.5, hmax=27.0):
@@ -648,7 +701,9 @@ def place_village(H, rng, pistes_lines):
 
     def site(kind, x, z, yaw, r, blend=16.0):
         y = flatten(H, x, z, r, blend)
-        buildings.append(dict(type=kind, x=float(x), z=float(z), yaw=float(yaw), y=float(y), r=float(r)))
+        # a little size variety between chalets, from the position so it never disturbs the random stream
+        scale = 0.94 + 0.12 * ((int(abs(x) * 7.3 + abs(z) * 13.1) % 1000) / 1000.0) if kind.startswith("chalet") else 1.0
+        buildings.append(dict(type=kind, x=float(x), z=float(z), yaw=float(yaw), y=float(y), r=float(r), scale=round(scale, 3)))
         return y
 
     # lodge in the middle of the plaza, facing the slope (its +z is the front)
@@ -754,12 +809,19 @@ def main():
         pistes.append(p)
     H, groom = carve_pistes(H, pistes)
     H = relax_corridor(H, groom)
+    # the frozen lake skis like a groomed piste (fast, grippy enough)
+    cl, sl_ = math.cos(LAKE["yaw"]), math.sin(LAKE["yaw"])
+    Xg, Zg = ot.grid()
+    lu = (Xg - LAKE["x"]) * cl + (Zg - LAKE["z"]) * sl_
+    lv = -(Xg - LAKE["x"]) * sl_ + (Zg - LAKE["z"]) * cl
+    groom = np.maximum(groom, 1.0 - smoothstep(0.95, 1.05, np.hypot(lu / LAKE["rx"], lv / LAKE["rz"])))
     # lifts run beside the pistes they serve
     for lf in lifts:
         pid = LIFT_FOLLOW.get(lf["id"])
         pst = next((p for p in pistes if p.id == pid), None)
         if pst is not None:
             lift_from_piste(lf, pst, H)
+    clear_pylons(lifts, pistes)
     # a small terrain park on the Sonnenalp piste
     sonne = next(p for p in pistes if p.id == "sonne")
     kick = [(180.0, 9.0, 1.6, 12.0, 4.0), (300.0, -9.0, 2.4, 14.0, 4.5), (430.0, 9.0, 3.2, 16.0, 5.0), (560.0, -9.0, 2.0, 13.0, 4.5),
@@ -897,14 +959,18 @@ def make_flags_and_landmarks(H, slope, rock, reach, router, pistes, lifts, build
     add("summit", "Gipfelkreuz", f"The summit cross at {hc[j, i]:.0f} m: the roof of the ski area.", xs[i], zs[j], 60)
     # a viewpoint on the north-east ridge, an old cabin in the west forest, the kicker park and a quiet bowl
     def best(region, want_high=True):
-        m = reach & (router.slope < 26) & region
-        if not m.any():
-            return None
-        v = np.where(m, Hc if want_high else -Hc, -1e9)
-        j, i = np.unravel_index(np.argmax(v), v.shape)
-        return xs[i], zs[j]
+        for cap in (26, 30, 34, 38):                       # relax the slope limit until the region has somewhere to stand
+            m = reach & (router.slope < cap) & region
+            if m.any():
+                v = np.where(m, Hc if want_high else -Hc, -1e9)
+                j, i = np.unravel_index(np.argmax(v), v.shape)
+                return xs[i], zs[j]
+        return None
 
-    p = best((XC > 300) & (ZC < -300))
+    far_from_summit = np.hypot(XC - xs[i], ZC - zs[j]) > 380
+    region = (XC > 250) & (ZC < -250) & far_from_summit
+    print("eyrie region cells", int(region.sum()), "reachable", int((region & reach).sum()), "gentle", int((region & reach & (router.slope < 38)).sum()))
+    p = best(region)
     if p:
         add("eyrie", "Adler's Eyrie", "Eagles nest on the cliffs below this ridge shoulder.", p[0], p[1], 70)
     west = [t for t in trees if t[0] < -650 and 1700 < t[2] < 1850]
@@ -978,7 +1044,7 @@ def save_outputs(H, groom, slope, rock, trees, rocks, poles, pistes, lifts, buil
     sd = sun_direction()
     village = dict(x=VILLAGE[0], z=VILLAGE[1], y=ground(H, *VILLAGE))
     b0 = ljson[0]["points"][0]
-    spawn = dict(x=b0[0] + 14.0, z=b0[1] + 18.0, yaw=math.atan2(0.0, 1.0))
+    spawn = dict(x=b0[0] + 13.0, z=b0[1] + 9.0, yaw=0.0)          # in view of the first chairlift, facing up the valley
     info = dict(
         version=2, kind="open",
         grid=dict(nx=N, nz=N, dx=DX, x0=X0, z0=Z0, hMin=H_MIN, hQuant=H_QUANT),

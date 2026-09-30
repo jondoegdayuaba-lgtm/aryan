@@ -59,7 +59,10 @@ def sun_visibility(H, x0, z0, dx, sun_az_deg, sun_el_deg, out_size, disc_deg=1.0
 
 
 def sky_visibility(H, x0, z0, dx, out_size, directions=12, radii=(6, 12, 22, 40, 70, 110, 170, 250, 360)):
-    """fraction of the sky dome that is open, from the horizon angles in `directions` directions"""
+    """ambient occlusion: the fraction of the sky above the terrain's own tangent plane that is open, from horizon angles in
+    `directions` directions.  It is measured relative to the local slope (like Cycles' cosine-weighted AO about the surface
+    normal) because the game already looks the sky light up by the surface normal: a steep face in the open must not be darkened
+    for tilting away from the zenith, only for what stands in front of it."""
     ny, nx = H.shape
     H = np.asarray(H, dtype=np.float32)
     xs = x0 + (np.arange(out_size) + 0.5) / out_size * ((nx - 1) * dx)
@@ -68,15 +71,21 @@ def sky_visibility(H, x0, z0, dx, out_size, directions=12, radii=(6, 12, 22, 40,
     fx0 = ((X - x0) / dx).astype(np.float32)
     fz0 = ((Z - z0) / dx).astype(np.float32)
     y0 = _sample(H, fz0, fx0)
+    Hs = ndi.gaussian_filter(H, 1.5)
+    gz_, gx_ = np.gradient(Hs, dx)
+    gxs = _sample(gx_.astype(np.float32), fz0, fx0)
+    gzs = _sample(gz_.astype(np.float32), fz0, fx0)
     acc = np.zeros_like(y0)
     for k in range(directions):
         a = 2 * math.pi * (k + 0.5) / directions
+        ca, sa = math.cos(a), math.sin(a)
+        rise = gxs * ca + gzs * sa                     # slope of the ground toward this direction
         best = np.zeros_like(y0)
         for r in radii:
-            fx = np.clip(fx0 + math.cos(a) * r / dx, 0, nx - 1)
-            fz = np.clip(fz0 + math.sin(a) * r / dx, 0, ny - 1)
+            fx = np.clip(fx0 + ca * r / dx, 0, nx - 1)
+            fz = np.clip(fz0 + sa * r / dx, 0, ny - 1)
             h = _sample(H, fz, fx)
-            best = np.maximum(best, (h - y0) / r)
+            best = np.maximum(best, (h - y0) / r - rise)
         acc += 1.0 - np.sin(np.arctan(best)) * 0.92
     return np.clip(acc / directions, 0, 1)
 

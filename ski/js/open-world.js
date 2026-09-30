@@ -88,11 +88,14 @@ export class OpenMode {
     this._sinceSave = 0;
     this._edgeCool = 0;
     this.nearest = null;
+    this.descent = 0;               // vertical metres skied this session (lifts do not count)
+    this._prevY = null;
   }
 
   get skier() { return this.session.skier; }
 
   begin() {
+    for (const l of this.lifts) l.speedMul = 1;
     const p = this.data.pose || this.world.info.spawn;
     const sk = this.skier;
     sk.reset(p.x, p.z, p.yaw || 0, 0);
@@ -118,6 +121,8 @@ export class OpenMode {
       }
     }
     this._edgeCool -= dt;
+    if (this._prevY !== null && !this.ride && sk.y < this._prevY) this.descent += this._prevY - sk.y;
+    this._prevY = this.ride ? null : sk.y;
     this._t += dt;
     if (this._t > 0.1) {
       this._t = 0;
@@ -136,6 +141,8 @@ export class OpenMode {
     d.km = (d.km || 0) + (sk.distance - this._lastDistance) / 1000;
     this._lastDistance = sk.distance;
     d.top = Math.max(d.top || 0, sk.maxSpeed);
+    d.vert = (d.vert || 0) + this.descent - (this._savedDescent || 0);
+    this._savedDescent = this.descent;
     if (!this.ride && !sk.crashed) d.pose = { x: sk.x, z: sk.z, yaw: sk.yaw };
     this.game.save.save();
   }
@@ -210,7 +217,8 @@ export class OpenMode {
     const yaw = Math.atan2(lift.base.dx, -lift.base.dz);
     sk.reset(_v.x, _v.z, yaw, 0);
     sk.seated = 0;
-    const { c } = lift.nextChair(BOARD_DIST, 14);
+    let { c } = lift.nextChair(BOARD_DIST, 14);
+    if (c < 0) c = 0;
     this.ride = { lift, phase: 'wait', chair: c, t: 0, from: new THREE.Vector3(_v.x, _v.y, _v.z), to: new THREE.Vector3(), yaw };
     this.game.tracks.breakTrack();
     this.game.cameraRig._init = true;
@@ -222,7 +230,7 @@ export class OpenMode {
     sk.savePrev();
     sess.alpha = 1;
     sk.crashed = false;
-    lift.speedMul = R.phase === 'ride' && inp && inp.push ? 2.5 : 1;
+    lift.speedMul = R.phase === 'ride' && inp && inp.push ? 3.5 : 1;
     const c = R.chair;
     const speed = lift.speed * lift.speedMul;
     if (R.phase === 'wait') {
@@ -284,7 +292,8 @@ export class OpenMode {
   _ridePose(sk, lift, c, speed) {
     const yaw = sk.yaw;
     sk.vx = Math.sin(yaw) * speed * 0.9; sk.vz = -Math.cos(yaw) * speed * 0.9; sk.vy = 0;
-    sk.speed = 0;                                       // no wind or ski noise on the chair
+    sk.speed = 0;                                       // no ski noise on the chair; the wind follows the cable speed
+    sk.windSpeed = speed * 1.6;
     sk.nx = 0; sk.ny = 1; sk.nz = 0;
     sk.tuck = 0; sk.brake = 0; sk.steer = 0; sk.lean = 0; sk.slip = 0; sk.skidAmount = 0; sk.compress = 0;
   }
@@ -302,6 +311,7 @@ export class OpenMode {
 
   teleport(x, z, yaw = 0) {
     this.ride = null;
+    for (const l of this.lifts) l.speedMul = 1;
     const sk = this.skier;
     sk.reset(x, z, yaw, 0);
     this.session.lastSafe = { x, z, yaw };

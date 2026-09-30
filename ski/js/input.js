@@ -10,6 +10,7 @@ export class Input {
     this.pressed = new Set();      // one-shot presses since the last consume()
     this.enabled = true;
     this.captureTab = false;
+    this._padDown = {};
     this.handlers = {};
     addEventListener('keydown', (e) => {
       if (e.repeat) { if (this._isGame(e.code)) e.preventDefault(); return; }
@@ -77,7 +78,13 @@ export class Input {
     this.pad.brake = clamp((p.buttons[6] ? p.buttons[6].value : 0) + (p.buttons[13] && p.buttons[13].pressed ? 1 : 0), 0, 1);
     this.pad.jump = !!(p.buttons[0] && p.buttons[0].pressed);
     this.pad.push = !!(p.buttons[2] && p.buttons[2].pressed);
-    if (p.buttons[9] && p.buttons[9].pressed) this.pressed.add('Escape');
+    // one-shot buttons (edge detected): start / menu = pause, B = interact (chairlift), Y = map
+    const edge = (i, code) => {
+      const down = !!(p.buttons[i] && p.buttons[i].pressed);
+      if (down && !this._padDown[i]) this.pressed.add(code);
+      this._padDown[i] = down;
+    };
+    edge(9, 'Escape'); edge(1, 'KeyE'); edge(3, 'Tab');
   }
 
   read(dt) {

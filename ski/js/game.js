@@ -479,7 +479,7 @@ export class Game {
     this.cameraRig.update(dt, v, this.rig);
     if (!frozen) this._effects(dt, v);
     this.audio.update(dt, sk, this.screen === 'playing' || this.attract);
-    if (this.props) this.props.update(dt, this.time, c, sk);
+    if (this.props) this.props.update(frozen ? 0 : dt, this.time, c, sk);
     this.flash = damp(this.flash, 0, 5, dt);
 
     // ---- HUD
@@ -507,7 +507,7 @@ export class Game {
     const o = this.open, b = this.bundles.open, cr = this.cameraRig, prog = o.progress;
     const sk = this.session.skier;
     return {
-      speed: sk.speed, altitude: sk.y, descended: Math.max(0, this.startY - sk.y),
+      speed: sk.speed, altitude: sk.y, descended: o.descent,
       flags: prog.flags, flagTotal: prog.flagTotal, found: prog.found, foundTotal: prog.foundTotal,
       nearest: o.nearest, prompt: o.prompt, yaw: cr.heading + cr.orbitYaw, x: v.x, z: v.z,
       map: b.map, taken: o.taken, flagList: o.flags, landmarks: o.landmarks, foundSet: o.found,
@@ -526,7 +526,7 @@ export class Game {
     ui.show('map');
     b.map.drawFull(ui.el.mapCanvas, this._mapState());
     const p = o.progress;
-    ui.el.mapProgress.textContent = `Flags ${p.flags} / ${p.flagTotal}  ·  Places ${p.found} / ${p.foundTotal}  ·  ${(o.data.km || 0).toFixed(1)} km skied`;
+    ui.el.mapProgress.textContent = `Flags ${p.flags} / ${p.flagTotal}  ·  Places ${p.found} / ${p.foundTotal}  ·  ${(o.data.km || 0).toFixed(1)} km skied  ·  ${Math.round((o.data.vert || 0) + o.descent - (o._savedDescent || 0)).toLocaleString()} m descended`;
     // fast travel to the village and the lift bases
     const box = ui.el.mapTravel;
     box.innerHTML = '';
@@ -591,7 +591,7 @@ export class Game {
       case 'crash': {
         audio.crash(); ui.flashCrash(); this.cameraRig.impulse(1);
         this.flash = 0.35;
-        const why = { tree: 'Hit a tree', rock: 'Hit a rock', cliff: 'Too steep', impact: 'Hard landing', edge: 'Caught an edge', boundary: 'Out of bounds', net: 'Into the safety net', edge2: 'Edge of the map' }[e.cause] || 'Crash';
+        const why = { tree: 'Hit a tree', rock: 'Hit a rock', cliff: 'Too steep', impact: 'Hard landing', edge: 'Caught an edge', boundary: 'Out of bounds', net: 'Into the safety net', building: 'Hit a building' }[e.cause] || 'Crash';
         ui.toast(`${why}!`, 'bad');
         this._burst(sk, 90);
         break;

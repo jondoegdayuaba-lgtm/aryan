@@ -1,7 +1,8 @@
 # Missile Run
 
 > This repository holds two browser games. **Missile Run** is described below. **[Alpine Descent](ski/README.md)** is a realistic
-> 3D downhill skiing game whose mountain, forest, sky and skier were built in Blender (`blender/`); play it offline by saving
+> 3D skiing game (three timed runs and an open-world valley with rideable chairlifts) whose mountains, forest, sky, skier and
+> buildings were built in Blender (`blender/`); play it offline by saving
 > [`desktop/alpine-descent.html`](desktop/alpine-descent.html) to your desktop and double-clicking it.
 
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.

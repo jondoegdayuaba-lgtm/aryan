@@ -84,7 +84,7 @@ export class GameAudio {
   update(dt, sk, active) {
     if (!this.ready) return;
     const t = this.ctx.currentTime;
-    const sp = active ? sk.speed : 0;
+    const sp = active ? (sk.seated > 0.5 ? (sk.windSpeed || 0) : sk.speed) : 0;      // on a chairlift only the wind is heard
     const air = sk.grounded ? 0 : 1;
     const target = { wind: clamp(sp / 34, 0, 1.3), hiss: 0, scrub: 0, chatter: 0 };
     if (sk.grounded && !sk.crashed) {

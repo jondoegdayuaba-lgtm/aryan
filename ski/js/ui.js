@@ -88,7 +88,7 @@ export class UI {
   }
 
   // --------------------------------------------------------------------- menu
-  buildRunList(runs, save, onPick, onOpen = null) {
+  buildRunList(runs, save, onPick, onOpen = null, totals = { lifts: 7, pistes: 9, flags: 24, places: 10 }) {
     const list = $('run-list');
     list.innerHTML = '';
     const slot = $('open-slot');
@@ -103,14 +103,14 @@ export class UI {
       b.innerHTML = `
         <div class="run-main">
           <div class="run-head"><span class="run-name">Open World</span><span class="chip">New</span></div>
-          <div class="run-blurb">A whole alpine valley to explore: village, frozen lake and forest below, five chairlifts you can ride, nine pistes,
+          <div class="run-blurb">A whole alpine valley to explore: village, frozen lake and forest below, seven chairlifts you can ride, nine pistes,
             open bowls, a terrain park, 24 flags to find and places to discover. No timer, no rules.</div>
         </div>
         <div class="run-stats">
-          <div><b>5</b><small>Chairlifts</small></div>
-          <div><b>9</b><small>Pistes</small></div>
-          <div><b>${flags} / 24</b><small>Flags</small></div>
-          <div><b>${found} / 10</b><small>Places</small></div>
+          <div><b>${totals.lifts}</b><small>Chairlifts</small></div>
+          <div><b>${totals.pistes}</b><small>Pistes</small></div>
+          <div><b>${flags} / ${totals.flags}</b><small>Flags</small></div>
+          <div><b>${found} / ${totals.places}</b><small>Places</small></div>
         </div>`;
       b.addEventListener('click', onOpen);
       slot.appendChild(b);
