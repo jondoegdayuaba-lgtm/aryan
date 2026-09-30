@@ -4,7 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
-import { CITY, HEAT, SCORE, GAME_TITLE } from './config.js';
+import { CITY, HEAT, SCORE, GAME_TITLE, DIFFICULTY } from './config.js';
 import { loadAssets } from './assets.js';
 import { World } from './world.js';
 import { Bike } from './bike.js';
@@ -168,6 +168,11 @@ class Game {
     this.bike = new Bike(assets, scene, this.fx, this.audio);
     this.vehicles = new Vehicles(assets, scene, this.world, this.fx, this.audio, (t, d) => this.onEvent(t, d));
     this.pickups = new Pickups(scene, this.world.glowTex);
+    this.opts = { difficulty: 'street', rain: true, shake: true };
+    try { Object.assign(this.opts, JSON.parse(localStorage.getItem('nightrun.opts') || '{}')); } catch { /* ignore */ }
+    if (!DIFFICULTY[this.opts.difficulty]) this.opts.difficulty = 'street';
+    this.life = { runs: 0, escapes: 0, takedowns: 0, km: 0 };
+    try { Object.assign(this.life, JSON.parse(localStorage.getItem('nightrun.life') || '{}')); } catch { /* ignore */ }
     this.state = 'title';     // title | playing | paused | over
     this.time = 0;            // game clock (only while playing)
     this.clock = 0;           // real clock (title animation, etc.)
@@ -197,12 +202,15 @@ class Game {
 
   start() {
     this.audio.start();
+    this.vehicles.diff = this.diff;
+    this.rain.lines.visible = this.opts.rain;
     this.resetRun();
     this.bike.reset(47.5, 30, 0);
     this.vehicles.reset(this.bike);
     this.pickups.reset();
     this.world.update(this.bike.x, this.bike.z, true);
     this.camH = this.bike.h;
+    camera.clearViewOffset();
     this.state = 'playing';
     document.body.classList.add('playing');
     $('screen-title').classList.add('hidden');
@@ -238,7 +246,10 @@ class Game {
     }
   }
 
-  addScore(n) { this.score += n; }
+  get diff() { return DIFFICULTY[this.opts.difficulty]; }
+  addScore(n) { this.score += n * this.diff.score; }
+  saveOpts() { try { localStorage.setItem('nightrun.opts', JSON.stringify(this.opts)); } catch { /* ignore */ } }
+  saveLife() { try { localStorage.setItem('nightrun.life', JSON.stringify(this.life)); localStorage.setItem('nightrun.best', String(this.best)); } catch { /* ignore */ } }
 
   end(kind) {
     this.state = 'over';
@@ -247,7 +258,10 @@ class Game {
     this.endT = 0;
     if (kind === 'escaped') { this.addScore(SCORE.escapeStar * 2 + Math.max(0, 240 - this.time) * 8); }
     const total = Math.floor(this.score);
-    if (total > this.best) { this.best = total; try { localStorage.setItem('nightrun.best', String(total)); } catch { /* ignore */ } }
+    if (total > this.best) this.best = total;
+    this.life.runs++; this.life.takedowns += this.stats.takedowns; this.life.km += this.bike.distance / 1000;
+    if (kind === 'escaped') this.life.escapes++;
+    this.saveLife();
     if (kind === 'busted') this.audio.busted();
     setTimeout(() => {
       if (this.state !== 'over') return;
@@ -283,7 +297,7 @@ class Game {
 
       // heat & escape logic
       if (live) this.heatLogic(dt);
-      const want = this.spawnHold > 0 ? this.vehicles.activeCops.length : HEAT.copsPerHeat[this.heat];
+      const want = this.spawnHold > 0 ? this.vehicles.activeCops.length : Math.max(1, HEAT.copsPerHeat[this.heat] + this.diff.cops);
       if (this.spawnHold > 0) this.spawnHold -= dt;
       this.vehicles.update(dt, b, this.world, t, this.heat, live ? want : 0);
       this.pickups.update(dt, t, b, () => {
@@ -294,7 +308,7 @@ class Game {
         this.audio.pickup();
       });
       if (live) {
-        this.score += Math.max(0, b.forwardSpeed) * dt * SCORE.perMeter * (0.4 + 0.2 * this.heat);
+        this.score += Math.max(0, b.forwardSpeed) * dt * SCORE.perMeter * (0.4 + 0.2 * this.heat) * this.diff.score;
         this.stats.top = Math.max(this.stats.top, b.speed);
         this.comboT -= dt;
         if (this.comboT <= 0) this.combo = 0;
@@ -357,7 +371,7 @@ class Game {
     let cx = b.x - fx * dist, cz = b.z - fz * dist;
     // keep the camera out of walls
     for (let i = 0; i < 2; i++) for (const h of this.world.collide(cx, cz, 0.9, false)) { cx += h.nx * h.depth; cz += h.nz * h.depth; }
-    const sh = b.shake * 0.22;
+    const sh = b.shake * 0.22 * (this.opts.shake ? 1 : 0);
     const tgt = new THREE.Vector3(cx + (Math.random() - 0.5) * sh, height + (Math.random() - 0.5) * sh, cz + (Math.random() - 0.5) * sh);
     if (snap) this.camPos.copy(tgt); else this.camPos.lerp(tgt, 1 - Math.exp(-14 * dt));
     camera.position.copy(this.camPos);
@@ -376,6 +390,7 @@ class Game {
     camera.position.set(b.x + Math.sin(a) * R, 1.6 + Math.sin(this.clock * 0.3) * 0.25, b.z + Math.cos(a) * R);
     camera.lookAt(b.x, 0.95, b.z);
     camera.fov = 44;
+    if (innerWidth > 720) camera.setViewOffset(innerWidth, innerHeight, -innerWidth * 0.2, 0, innerWidth, innerHeight);   // bike sits right of the menu
     camera.updateProjectionMatrix();
   }
 
@@ -395,6 +410,9 @@ class Game {
     const rainT = (this.state === 'title' ? this.clock : this.clock);
     this.rain.update(rainT, camera.position, b.vx, b.vz, b.speed);
     if (this.state !== 'paused') {
+      for (const v of this.world.ventsNear(b.x, b.z)) {
+        if (Math.random() < dt * 9) this.fx.smoke.emit(v.x + (Math.random() - 0.5) * 0.6, 0.2, v.z + (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.4, 2.4, (Math.random() - 0.5) * 0.4, 2.2, 0.8, 0.75, 0.78, 0.82, 0.22, 3.5);
+      }
       this.fx.sparks.update(dt, camera, renderer.domElement.height / renderer.getPixelRatio());
       this.fx.smoke.update(dt, camera, renderer.domElement.height / renderer.getPixelRatio());
     }
@@ -437,7 +455,32 @@ async function boot() {
   game.world.update(game.bike.x, game.bike.z, true);
   $('loading').classList.add('hidden');
   $('screen-title').classList.remove('hidden');
-  $('best').textContent = game.best ? `Best: ${game.best.toLocaleString()}` : '';
+  const renderLife = () => {
+    const L = game.life;
+    $('lifetime').innerHTML = `<div class="best"><b>${game.best.toLocaleString()}</b><span>BEST SCORE</span></div><div><b>${L.runs}</b><span>RUNS</span></div><div><b>${L.escapes}</b><span>ESCAPES</span></div><div><b>${L.takedowns}</b><span>COPS WRECKED</span></div><div><b>${L.km.toFixed(1)}</b><span>KM RIDDEN</span></div>`;
+  };
+  renderLife();
+  // difficulty
+  const setDiff = (d) => { game.opts.difficulty = d; game.saveOpts(); document.querySelectorAll('#difficulty button').forEach((b) => { const on = b.dataset.d === d; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); }); };
+  document.querySelectorAll('#difficulty button').forEach((b) => b.addEventListener('click', () => setDiff(b.dataset.d)));
+  setDiff(game.opts.difficulty);
+  // drawers
+  const drawers = ['panel-how', 'panel-settings'];
+  const openDrawer = (id) => drawers.forEach((d) => $(d).classList.toggle('hidden', d !== id || !$(d).classList.contains('hidden')));
+  $('btn-how').addEventListener('click', () => openDrawer('panel-how'));
+  $('btn-settings').addEventListener('click', () => openDrawer('panel-settings'));
+  document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => drawers.forEach((d) => $(d).classList.add('hidden'))));
+  document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.tab-body').forEach((t) => t.classList.toggle('hidden', t.id !== `tab-${b.dataset.tab}`));
+  }));
+  // settings
+  const ro = $('opt-rain'), rs = $('opt-shake'), so = $('opt-sound');
+  ro.checked = game.opts.rain; rs.checked = game.opts.shake;
+  ro.addEventListener('change', () => { game.opts.rain = ro.checked; game.rain.lines.visible = ro.checked; game.saveOpts(); });
+  rs.addEventListener('change', () => { game.opts.shake = rs.checked; game.saveOpts(); });
+  so.addEventListener('change', () => { game.audio.setMuted(!so.checked); $('btn-mute').classList.toggle('off', !so.checked); });
+  $('btn-reset').addEventListener('click', () => { game.best = 0; game.life = { runs: 0, escapes: 0, takedowns: 0, km: 0 }; game.saveLife(); renderLife(); });
 
   const q = $('quality');
   q.value = qualityName;
@@ -452,7 +495,7 @@ async function boot() {
   $('btn-menu').addEventListener('click', () => { location.reload(); });
   $('btn-pause').addEventListener('click', () => game.togglePause());
   $('btn-mute').addEventListener('click', () => { game.audio.start(); game.audio.setMuted(!game.audio.muted); $('btn-mute').classList.toggle('off', game.audio.muted); });
-  addEventListener('keydown', (e) => { if ((e.code === 'Enter' || e.code === 'Space') && game.state === 'title') { e.preventDefault(); game.start(); } });
+  addEventListener('keydown', (e) => { if ((e.code === 'Enter' || e.code === 'Space') && game.state === 'title' && !/SELECT|INPUT|BUTTON/.test(document.activeElement?.tagName || '')) { e.preventDefault(); game.start(); } });
   if (params.has('autostart')) game.start();
 
   let last = performance.now();

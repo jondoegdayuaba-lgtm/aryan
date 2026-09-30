@@ -26,7 +26,10 @@ drops a preset by itself if the first seconds run below ~28 fps.
 ## Playing
 
 * **Heat** (stars): 2 to start. Each star brings more, faster cruisers. Staying chased ratchets it
-  up every 45 s, and at 3+ stars some cruisers come at you head-on.
+  up every 45 s. From 3 stars, police riders on e-bikes (fast, fragile) join in and some cruisers
+  come at you head-on. Pick Rookie, Street or Nightmare on the menu.
+* **The city** has parked cars, market stalls, scaffolding and steam vents that are solid or in
+  the way. Cut through the alleys and ride the sidewalks, as real e-bike chases do.
 * **Shake them:** keep every cruiser more than 150 m away for 8 s and you lose a star. Lose all of
   them to escape.
 * **Busted:** cruisers within ~7 m fill the bust meter, faster when you're slow. Wreck the bike

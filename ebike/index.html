@@ -71,24 +71,75 @@
   </div>
 
   <div id="screen-title" class="screen hidden">
-    <div class="title-card">
-      <h1>NIGHT<span>RUN</span></h1>
-      <p class="tag">You stole the wrong e-bike. The whole city is after you.</p>
-      <p class="how">Outrun the police through a rain-soaked city. Every star of heat brings more cruisers. Lose them out of sight to drop a star, and clear all of them to escape.</p>
-      <table class="keys">
-        <tr><td><kbd>W</kbd> <kbd>↑</kbd></td><td>Accelerate</td><td><kbd>Shift</kbd></td><td>Boost (uses battery)</td></tr>
-        <tr><td><kbd>A</kbd> <kbd>D</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Steer</td><td><kbd>Space</kbd></td><td>Handbrake drift</td></tr>
-        <tr><td><kbd>S</kbd> <kbd>↓</kbd></td><td>Brake / reverse</td><td><kbd>C</kbd> hold</td><td>Look behind</td></tr>
-        <tr><td><kbd>R</kbd></td><td>Restart</td><td><kbd>P</kbd> <kbd>M</kbd></td><td>Pause / mute</td></tr>
-      </table>
-      <p class="how small">Touch: hold ◀ ▶ to steer, the bike accelerates by itself.</p>
-      <div class="row">
-        <button id="btn-start" class="primary" type="button">RIDE</button>
-        <label class="q">Graphics
-          <select id="quality"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
-        </label>
+    <div class="sirens" aria-hidden="true"><i></i><i></i></div>
+    <div class="menu">
+      <div class="brand">
+        <div class="kicker">ELECTRIC BIKE · POLICE CHASE</div>
+        <h1>NIGHT<span>RUN</span></h1>
+        <p class="tag">You stole the wrong e-bike. Now the whole city is after you.</p>
       </div>
-      <p id="best" class="best"></p>
+
+      <div class="block">
+        <div class="block-title">DIFFICULTY</div>
+        <div class="seg" id="difficulty" role="radiogroup">
+          <button type="button" data-d="rookie" role="radio"><b>ROOKIE</b><small>Slower cops</small></button>
+          <button type="button" data-d="street" role="radio" class="on"><b>STREET</b><small>The real thing</small></button>
+          <button type="button" data-d="nightmare" role="radio"><b>NIGHTMARE</b><small>More cops, faster, x1.5 score</small></button>
+        </div>
+      </div>
+
+      <div class="row main-row">
+        <button id="btn-start" class="primary" type="button"><span>RIDE</span><small>Enter</small></button>
+        <button id="btn-how" type="button">HOW TO PLAY</button>
+        <button id="btn-settings" type="button">SETTINGS</button>
+      </div>
+
+      <div class="stat-strip" id="lifetime"></div>
+      <div class="credit">3D models &amp; textures built in Blender · three.js</div>
+    </div>
+
+    <div id="panel-how" class="drawer hidden">
+      <div class="drawer-head"><h3>HOW TO PLAY</h3><button type="button" class="x" data-close aria-label="Close">✕</button></div>
+      <div class="tabs"><button type="button" data-tab="controls" class="on">Controls</button><button type="button" data-tab="rules">The chase</button><button type="button" data-tab="tips">Tips</button></div>
+      <div class="tab-body" id="tab-controls">
+        <table class="keys">
+          <tr><td><kbd>W</kbd> <kbd>↑</kbd></td><td>Accelerate</td></tr>
+          <tr><td><kbd>S</kbd> <kbd>↓</kbd></td><td>Brake / reverse</td></tr>
+          <tr><td><kbd>A</kbd> <kbd>D</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Steer</td></tr>
+          <tr><td><kbd>Shift</kbd></td><td>Boost (drains the battery)</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>Handbrake drift</td></tr>
+          <tr><td><kbd>C</kbd> hold</td><td>Look behind</td></tr>
+          <tr><td><kbd>P</kbd> <kbd>M</kbd> <kbd>R</kbd></td><td>Pause · mute · restart</td></tr>
+        </table>
+        <p class="note">Touch: hold ◀ ▶ to steer. The bike accelerates by itself. Gamepad: stick, triggers, A boost, X drift, Y look back.</p>
+      </div>
+      <div class="tab-body hidden" id="tab-rules">
+        <ul>
+          <li><b>Heat ★</b> starts at 2. Every star brings more and faster cruisers. From 3 stars, police <b>e-bike riders</b> join in, and some cars come at you head-on.</li>
+          <li><b>Shake them:</b> stay more than 150 m from every cruiser for 8 seconds to lose a star. Lose them all to escape.</li>
+          <li><b>Busted</b> when cruisers stay close and the meter fills, faster if you’re slow. A wrecked bike ends the run too.</li>
+          <li><b>Score</b> from distance, close calls with traffic, batteries and wrecked cruisers.</li>
+        </ul>
+      </div>
+      <div class="tab-body hidden" id="tab-tips">
+        <ul>
+          <li>Real e-bike chases are won in tight spaces: cut through the <b>alleys</b> between buildings and ride the <b>sidewalks</b>.</li>
+          <li>Parked cars, market stalls and scaffolding are solid. Weave, don’t plough.</li>
+          <li>Cops slow down for corners. <b>Drift</b> round them and pull away.</li>
+          <li>Ram a cruiser at speed to wreck it, but expect to lose some bike too.</li>
+          <li>Cyan battery cells refill your boost. Check the radar for them.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="panel-settings" class="drawer hidden">
+      <div class="drawer-head"><h3>SETTINGS</h3><button type="button" class="x" data-close aria-label="Close">✕</button></div>
+      <label class="set">Graphics
+        <select id="quality"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+      <label class="set">Sound <input type="checkbox" id="opt-sound" checked></label>
+      <label class="set">Rain <input type="checkbox" id="opt-rain" checked></label>
+      <label class="set">Camera shake <input type="checkbox" id="opt-shake" checked></label>
+      <button type="button" id="btn-reset" class="ghost">Reset best score &amp; stats</button>
     </div>
   </div>
 

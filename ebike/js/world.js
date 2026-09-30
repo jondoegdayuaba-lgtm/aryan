@@ -58,7 +58,8 @@ export class World {
     this.vcMetal = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.85, name: 'vc_metal' });
     this.vcNames = new Set(['trim', 'metal', 'darkmetal', 'curb', 'paint_white', 'paint_yellow', 'manhole', 'wood', 'tank', 'hydrant_red',
       'mailbox_blue', 'dumpster', 'cone_orange', 'plain_white', 'leaf_a', 'leaf_b', 'bark', 'barrier', 'barrier_stripe', 'awning_red',
-      'awning_blue', 'awning_green', 'sig_case']);
+      'awning_blue', 'awning_green', 'sig_case', 'crate', 'vent_grate', 'fruit_red', 'fruit_green', 'fruit_yellow',
+      'plastic_trim', 'tire', 'wheelwell', 'rim_alloy', 'brake_rotor', 'chrome', 'paint', 'paint_black']);
   }
 
   key(tx, tz) { return tx + ',' + tz; }
@@ -102,6 +103,7 @@ export class World {
     const tmp = new THREE.Group();
     const rects = [];
     const circles = [];
+    const vents = [];
     const glows = [];   // {x,y,z,color}
     const pools = [];   // {x,z,r}
     const add = (name, x, z, rot = 0, y = 0, s = 1) => {
@@ -179,14 +181,47 @@ export class World {
           else circles.push({ x: ox + x, z: oz + z, r: 0.9 });
         }
       }
+      // market stalls and scaffolding on the sidewalk
+      for (let k = 0; k < 2; k++) {
+        const hs = hash(tx, tz, 1000 + si * 4 + k);
+        if (hs < 0.3) {
+          const t = -28 + hash(tx, tz, 1010 + si * 4 + k) * 56;
+          const scaffold = hs < 0.09;
+          const [x, z] = at(t, scaffold ? 35.2 : 37.2);
+          add(scaffold ? 'prop_scaffold' : 'prop_stall', x, z, rotOut);
+          for (const d of scaffold ? [-0.8, 0.8] : [-1.0, 0, 1.0]) circles.push({ x: ox + x + tX * d, z: oz + z + tZ * d, r: scaffold ? 0.8 : 0.75 });
+        }
+      }
+      // steam vents in the road
+      if (hash(tx, tz, 1100 + si) < 0.4) {
+        const t = -26 + hash(tx, tz, 1110 + si) * 52;
+        const [x, z] = at(t, 45.2);
+        add('prop_vent', x, z, 0);
+        vents.push({ x: ox + x, z: oz + z });
+      }
       // road works in the outer lane of the road on this side
-      if (hash(tx, tz, 700 + si) < 0.14) {
+      const works = hash(tx, tz, 700 + si) < 0.14;
+      // cars parked along the curb (solid!)
+      if (!works) {
+        for (let k = 0; k < 3; k++) {
+          if (hash(tx, tz, 1200 + si * 5 + k) > 0.42) continue;
+          const t = -30 + k * 26 + hash(tx, tz, 1210 + si * 5 + k) * 10;
+          const kind = ['sedan', 'sedan', 'taxi', 'van'][Math.floor(hash(tx, tz, 1220 + si * 5 + k) * 4)];
+          const [x, z] = at(t, 41.2);
+          const car = this.assets[kind].clone(true);
+          car.position.set(x, 0, z);
+          car.rotation.y = Math.atan2(-tX, -tZ) + (hash(tx, tz, 1230 + si * 5 + k) < 0.5 ? 0 : Math.PI);
+          tmp.add(car);
+          for (const d of [-1.6, 0, 1.6]) circles.push({ x: ox + x + tX * d, z: oz + z + tZ * d, r: 0.95 });
+        }
+      }
+      if (works) {
         const t = -24 + hash(tx, tz, 710 + si) * 48;
-        const [bx, bz] = at(t, 42.5);
+        const [bx, bz] = at(t, 43.6);
         add('prop_barrier', bx, bz, Math.atan2(nx, nz) + Math.PI / 2);
         for (const d of [-1.4, 0, 1.4]) circles.push({ x: ox + bx + tX * d, z: oz + bz + tZ * d, r: 0.7 });
         for (let k = 0; k < 4; k++) {
-          const [cx2, cz2] = at(t + 3 + k * 2.2, 42.5 - k * 0.5);
+          const [cx2, cz2] = at(t + 3 + k * 2.2, 43.6 - k * 0.5);
           add('prop_cone', cx2, cz2, 0);
           circles.push({ x: ox + cx2, z: oz + cz2, r: 0.25 });
         }
@@ -256,7 +291,7 @@ export class World {
     }
 
     this.root.add(group);
-    this.tiles.set(key, { tx, tz, group, rects, circles });
+    this.tiles.set(key, { tx, tz, group, rects, circles, vents });
   }
 
   // ---- queries ------------------------------------------------------------------------
@@ -288,6 +323,13 @@ export class World {
       }
     }
     return hits;
+  }
+
+  /** Steam vents near a point (for particle plumes). */
+  ventsNear(x, z) {
+    const out = [];
+    for (const t of this.tilesNear(x, z, 1)) out.push(...t.vents);
+    return out;
   }
 
   /** True when a straight line between two points is not cut by a building. */

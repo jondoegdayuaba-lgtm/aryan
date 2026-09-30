@@ -7,22 +7,26 @@ const OFFS = [-1.55, 0, 1.55];            // three circles along the car's lengt
 const P = CITY.period;
 const CIV_COLORS = [0x7a0f14, 0x0e2c5a, 0x1d3d2a, 0xb7b9bc, 0x2b2c30, 0xd8d3c4, 0x4a2f5a, 0x8a5a1c, 0x0f5b6b];
 
+const BIKE_OFFS = [-0.55, 0, 0.55];
+
 class Vehicle {
-  constructor(kind, model, scene) {
+  constructor(kind, model, scene, isBike = false) {
+    this.isBike = isBike;
+    this.offs = isBike ? BIKE_OFFS : OFFS;
     this.kind = kind;                       // 'cop' | 'civ'
     this.obj = new THREE.Group();
     this.model = model;
     this.obj.add(model);
     this.obj.visible = false;
     scene.add(this.obj);
-    this.wheels = ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'].map((n) => model.getObjectByName(n));
+    this.wheels = (isBike ? ['wheel_f', 'wheel_r'] : ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr']).map((n) => model.getObjectByName(n));
     this.active = false;
     this.mats = {};
     // per-vehicle material copies so lights / paint can differ between instances
     model.traverse((o) => {
       if (!o.isMesh) return;
       const swap = (m) => {
-        if (['pl_red', 'pl_blue', 'taillight', 'paint'].includes(m.name)) {
+        if (['pl_red', 'pl_blue', 'taillight', 'paint', 'hoodie', 'delivery_pack', 'helmet', 'underglow', 'hivis'].includes(m.name)) {
           if (!this.mats[m.name]) this.mats[m.name] = m.clone();
           return this.mats[m.name];
         }
@@ -32,8 +36,14 @@ class Vehicle {
       o.castShadow = true;
     });
     this.tailBase = this.mats.taillight ? this.mats.taillight.emissiveIntensity : 1;
-    this.radius = kind === 'cop' ? COP.radius : 1.0;
-    this.mass = kind === 'cop' ? 3 : 2.6;
+    if (isBike) {   // police e-bike rider: navy jacket, white helmet, flashing underglow
+      this.mats.hoodie.color.setHex(0x0b1a44);
+      this.mats.delivery_pack.color.setHex(0xe8ecf5);
+      this.mats.hivis.color.setHex(0x1b4dff);
+      this.mats.underglow.emissive.setHex(0xff2020);
+    }
+    this.radius = isBike ? 0.55 : kind === 'cop' ? COP.radius : 1.0;
+    this.mass = isBike ? 1.4 : kind === 'cop' ? 3 : 2.6;
     this.flashPhase = Math.random() * 6;
     this.sprites = [];
     if (kind === 'cop') this.addFlashSprites();
@@ -44,8 +54,8 @@ class Vehicle {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({
         map: Vehicle.glowTex, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false,
       }));
-      s.position.set(x, 1.7, 0.25);
-      s.scale.setScalar(2.4);
+      s.position.set(this.isBike ? x * 0.8 : x, this.isBike ? 1.95 : 1.7, this.isBike ? 0.05 : 0.25);
+      s.scale.setScalar(this.isBike ? 1.5 : 2.4);
       this.obj.add(s);
       return s;
     };
@@ -56,7 +66,7 @@ class Vehicle {
   reset(x, z, h, speed) {
     this.x = x; this.z = z; this.h = h;
     this.vx = -Math.sin(h) * speed; this.vz = -Math.cos(h) * speed;
-    this.hp = this.kind === 'cop' ? COP.hp : 40;
+    this.hp = this.isBike ? 22 : this.kind === 'cop' ? COP.hp : 40;
     this.disabled = false;
     this.deadT = 0;
     this.active = true;
@@ -81,7 +91,7 @@ class Vehicle {
   get fx() { return -Math.sin(this.h); }
   get fz() { return -Math.cos(this.h); }
 
-  circle(i) { return [this.x + this.fx * OFFS[i], this.z + this.fz * OFFS[i]]; }
+  circle(i) { return [this.x + this.fx * this.offs[i], this.z + this.fz * this.offs[i]]; }
 
   /** Point the nav state at the road we are on (after pursuit or spawn). */
   snapToRoad() {
@@ -104,12 +114,12 @@ class Vehicle {
     const rx = Math.cos(this.h), rz = -Math.sin(this.h);
     let vf = this.vx * fx + this.vz * fz;
     let vl = this.vx * rx + this.vz * rz;
-    const accel = this.kind === 'cop' ? COP.accel : 6;
+    const accel = this.isBike ? 18 : this.kind === 'cop' ? COP.accel : 6;
     const dv = targetSpeed - vf;
     vf += clamp(dv, -30 * dt, accel * dt);
     this.brake = dv < -2;
     const err = wrap(wantH - this.h);
-    const maxYaw = clamp(16 / Math.max(Math.abs(vf), 4), 0.4, 1.9);
+    const maxYaw = clamp((this.isBike ? 22 : 16) / Math.max(Math.abs(vf), 4), 0.4, this.isBike ? 2.6 : 1.9);
     const yaw = clamp(err * 3.2, -maxYaw, maxYaw) * (vf < -0.5 ? -1 : 1);
     this.h += (yaw + this.spin) * dt;
     this.spin *= Math.exp(-3 * dt);
@@ -140,7 +150,8 @@ export class Vehicles {
     Vehicle.glowTex = world.glowTex;
     this.cops = [];
     this.civs = [];
-    for (let i = 0; i < 8; i++) this.cops.push(new Vehicle('cop', assets.police.clone(true), scene));
+    for (let i = 0; i < 6; i++) this.cops.push(new Vehicle('cop', assets.police.clone(true), scene));
+    for (let i = 0; i < 3; i++) this.cops.push(new Vehicle('cop', assets.ebike.clone(true), scene, true));
     const kinds = ['sedan', 'sedan', 'sedan', 'taxi', 'van', 'sedan', 'sedan', 'van'];
     for (let i = 0; i < TRAFFIC.count + 4; i++) {
       const v = new Vehicle('civ', assets[kinds[i % kinds.length]].clone(true), scene);
@@ -160,6 +171,7 @@ export class Vehicles {
     this.copSpawnT = 0;
     this.bust = 0;
     this.nearest = [];
+    this.diff = { speed: 1, cops: 0, score: 1, bust: 1 };
   }
 
   reset(player) {
@@ -206,7 +218,9 @@ export class Vehicles {
   }
 
   spawnCop(player, heat) {
-    const v = this.cops.find((c) => !c.active);
+    // from 3 stars up, police riders on e-bikes join the pursuit (nimble, fragile)
+    const wantBike = heat >= 3 && Math.random() < 0.4;
+    const v = this.cops.find((c) => !c.active && c.isBike === wantBike) || this.cops.find((c) => !c.active);
     if (!v) return false;
     // at high heat some cruisers come at you head-on from ahead
     const ahead = heat >= 3 && Math.random() < 0.12 * heat;
@@ -276,7 +290,7 @@ export class Vehicles {
     const dx = player.x - v.x, dz = player.z - v.z;
     const dist = Math.hypot(dx, dz);
     // rubber band: cruisers that fall far behind gun it to rejoin the chase
-    const vmax = (COP.baseSpeed + heat * COP.speedPerHeat) * (dist > 110 ? 1 + Math.min(0.4, (dist - 110) / 150) : 1);
+    const vmax = (COP.baseSpeed + heat * COP.speedPerHeat) * (v.isBike ? 1.1 : 1) * this.diff.speed * (dist > 110 ? 1 + Math.min(0.4, (dist - 110) / 150) : 1);
     let wantH, ax, az, tSpeed;
     const los = dist < 130 && world.lineClear(v.x, v.z, player.x, player.z);
     v.hasLos = los;
@@ -523,7 +537,7 @@ export class Vehicles {
     }
     if (n > 0 && p.alive) {
       const slow = p.speed < 10 ? 1.7 : 0.55;
-      this.bust += COP.bustRate * dt * slow * (1 + 0.5 * (n - 1));
+      this.bust += COP.bustRate * this.diff.bust * dt * slow * (1 + 0.5 * (n - 1));
     } else {
       this.bust = Math.max(0, this.bust - COP.bustDecay * dt);
     }
@@ -542,8 +556,13 @@ export class Vehicles {
       const t = time * 7 + c.flashPhase;
       const a = on ? (Math.sin(t) > 0 ? 1 : 0) : 0;
       const b = on ? (Math.sin(t + 2.2) > 0 ? 1 : 0) : 0;
-      c.mats.pl_red.emissiveIntensity = 0.4 + a * 9;
-      c.mats.pl_blue.emissiveIntensity = 0.4 + b * 9;
+      if (c.isBike) {
+        c.mats.underglow.emissive.setHex(a ? 0xff2020 : 0x2a50ff);
+        c.mats.underglow.emissiveIntensity = on ? 7 : 0;
+      } else {
+        c.mats.pl_red.emissiveIntensity = 0.4 + a * 9;
+        c.mats.pl_blue.emissiveIntensity = 0.4 + b * 9;
+      }
       c.sRed.material.opacity = a * 0.6; c.sBlue.material.opacity = b * 0.6;
       c.sRed.visible = c.sBlue.visible = on;
       c._a = a; c._b = b;

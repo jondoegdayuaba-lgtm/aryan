@@ -9,7 +9,7 @@ export const CITY = {
   sidewalk: 6,
   lotCenter: 18,      // building lots sit at (+-18, +-18) inside the tile
   viewRadius: 2,      // tiles kept alive around the player (5 x 5)
-  laneOffsets: [2.5, 7.5],
+  laneOffsets: [2.8, 6.4],   // outer lane leaves room for cars parked at the curb
 };
 
 // footprint half-sizes of the building archetypes in city.glb
@@ -78,4 +78,10 @@ export const SCORE = {
   copCrash: 500,
   pickup: 150,
   escapeStar: 1500,
+};
+
+export const DIFFICULTY = {
+  rookie: { speed: 0.92, cops: -1, score: 0.8, bust: 0.75 },
+  street: { speed: 1, cops: 0, score: 1, bust: 1 },
+  nightmare: { speed: 1.09, cops: 1, score: 1.5, bust: 1.2 },
 };

@@ -57,6 +57,12 @@ def materials():
     M["glass_pane"] = pbr("shelter_glass", (0.5, 0.65, 0.75), 0.05, 0.0, alpha=0.18)
     M["concrete_barrier"] = pbr("barrier", (0.5, 0.5, 0.48), 0.9)
     M["stripe"] = pbr("barrier_stripe", (0.9, 0.55, 0.05), 0.7)
+    M["crate"] = pbr("crate", (0.35, 0.22, 0.1), 0.85)
+    M["steam"] = pbr("vent_grate", (0.03, 0.03, 0.035), 0.5, 0.9)
+    M["bulb"] = pbr("string_bulb", (1, 0.85, 0.5), 0.3, emit=(1, 0.75, 0.35), emit_strength=5)
+    M["fruit_r"] = pbr("fruit_red", (0.6, 0.05, 0.03), 0.6)
+    M["fruit_g"] = pbr("fruit_green", (0.1, 0.4, 0.05), 0.6)
+    M["fruit_y"] = pbr("fruit_yellow", (0.8, 0.6, 0.05), 0.6)
     M["awn_r"] = pbr("awning_red", (0.45, 0.04, 0.05), 0.85)
     M["awn_b"] = pbr("awning_blue", (0.05, 0.12, 0.4), 0.85)
     M["awn_g"] = pbr("awning_green", (0.05, 0.3, 0.14), 0.85)
@@ -167,6 +173,29 @@ def ledge(mb, x0, y0, x1, y1, z, M, out=0.35, h=0.4):
     mb.box(x0 - out, y0 - out, z, x1 + out, y1 + out, z + h, M["trim"])
 
 
+def wall_details(mb, M, hx, hy, z0, z1, rng, density=0.5):
+    """Window AC units, drain pipes and cable runs bolted to the four walls."""
+    for (nx, ny) in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        tx, ty = -ny, nx
+        wx, wy = (hx if nx else hy), (hy if ny else hx)
+        # drain pipe near one corner
+        px, py = nx * (hx + 0.12) + tx * (hy - 0.6), ny * (hy + 0.12) + ty * (hx - 0.6)
+        mb.cyl(px, py, 0, z1, 0.09, 0.09, M["darkmetal"], 8, cap_top=True)
+        floors = int((z1 - z0) / FLOOR_H)
+        for f in range(1, floors):
+            for col in range(-3, 4):
+                if rng.random() > density * 0.22:
+                    continue
+                zc = z0 + f * FLOOR_H + 0.7
+                off = col * 4.0 + 1.3
+                if abs(off) > (hy if nx else hx) - 2:
+                    continue
+                cx, cy = nx * (hx + 0.3) + tx * off, ny * (hy + 0.3) + ty * off
+                sx, sy = (0.3, 0.45) if nx else (0.45, 0.3)
+                mb.box(cx - sx, cy - sy, zc, cx + sx, cy + sy, zc + 0.55, M["metal"])
+                mb.box(cx - sx * 0.6, cy - sy * 0.6, zc + 0.55, cx + sx * 0.6, cy + sy * 0.6, zc + 0.62, M["darkmetal"])
+
+
 def tier(mb, M, fac, x0, y0, x1, y1, z0, z1, uoff, first=False):
     """One building tier: (optional) storefront band, facade, roof slab."""
     zb = z0
@@ -206,6 +235,7 @@ def build_brick(M, rng):
     ac_unit(mb, 7, 6, h, M, 0.9)
     mb.box(5, -11, h, 10, -7, h + 3, M["trim"])
     fire_escape(mb, 6, 15.0, 6, M, 1)
+    wall_details(mb, M, 15, 15, GROUND_H + 0.4, h, rng, 0.9)
     awning(mb, -13, -3, 15.05, 5, 2.2, M["awn_r"], 1)
     awning(mb, 3, 12, -15.05, 5, 2.2, M["awn_g"], -1)
     return mb.finish()
@@ -216,6 +246,7 @@ def build_concrete(M, rng):
     h = GROUND_H + 0.4 + 10 * FLOOR_H
     tier(mb, M, "concrete", -16, -16, 16, 16, 0, h, 0.125, True)
     parapet(mb, -16, -16, 16, 16, h, M)
+    wall_details(mb, M, 16, 16, GROUND_H + 0.4, h, rng, 0.8)
     mb.box(-6, -6, h, 8, 6, h + 4.5, M["trim"])  # penthouse
     for (x, y) in ((-11, -10), (-11, 0), (-11, 9), (11, -9), (12, 9)):
         ac_unit(mb, x, y, h, M)
@@ -248,6 +279,7 @@ def build_lowrise(M, rng):
     mb = MB("bld_lowrise")
     h = GROUND_H + 0.4 + 3 * FLOOR_H
     tier(mb, M, "concrete", -16, -16, 16, 16, 0, h, 0.0, True)
+    wall_details(mb, M, 16, 16, GROUND_H + 0.4, h, rng, 0.7)
     parapet(mb, -16, -16, 16, 16, h, M, 1.1)
     for (x, y) in ((-10, -5), (-4, 8), (9, -8), (11, 9)):
         ac_unit(mb, x, y, h, M, 1.1)
@@ -268,6 +300,7 @@ def build_resi(M, rng):
     tier(mb, M, "deco", -15, -15, 15, 15, 0, h, 0.125, True)
     parapet(mb, -15, -15, 15, 15, h, M)
     balconies(mb, -15, -15, 15, 15, 11, M, rng)
+    wall_details(mb, M, 15, 15, GROUND_H + 0.4, h, rng, 0.35)
     mb.box(-4, -4, h, 6, 5, h + 3.4, M["trim"])
     ac_unit(mb, -9, -8, h, M)
     ac_unit(mb, 9, 8, h, M)
@@ -504,6 +537,48 @@ def build_props(M):
     mb = MB("prop_planter")
     mb.box(-0.6, -0.6, 0, 0.6, 0.6, 0.55, M["concrete_barrier"])
     mb.cyl(0, 0, 0.55, 0.85, 0.5, 0.45, M["leaf1"], 8)
+    objs.append(mb.finish())
+
+    # market stall: striped awning, crates of produce, hanging bulbs
+    mb = MB("prop_stall")
+    for x in (-1.4, 1.4):
+        for y in (-0.9, 0.9):
+            mb.box(x - 0.04, y - 0.04, 0, x + 0.04, y + 0.04, 2.4 if y < 0 else 2.0, M["darkmetal"])
+    for k in range(8):
+        x0 = -1.5 + k * 0.375
+        mb.face([(x0, -1.0, 2.45), (x0 + 0.375, -1.0, 2.45), (x0 + 0.375, 1.1, 2.05), (x0, 1.1, 2.05)], M["awn_r"] if k % 2 == 0 else M["white"])
+    mb.box(-1.5, -0.6, 0.0, 1.5, 0.6, 0.85, M["crate"])
+    for i in range(6):
+        x = -1.2 + i * 0.48
+        m = (M["fruit_r"], M["fruit_g"], M["fruit_y"])[i % 3]
+        mb.cyl(x, 0.0, 0.85, 0.98, 0.2, 0.15, m, 8)
+        mb.cyl(x, 0.3, 0.85, 0.98, 0.15, 0.11, m, 8)
+    mb.box(-1.4, -0.9, 0.0, -1.0, -0.5, 0.5, M["crate"])
+    for i in range(5):
+        x = -1.2 + i * 0.6
+        mb.cyl(x, -1.0, 2.25, 2.35, 0.07, 0.05, M["bulb"], 8)
+    objs.append(mb.finish())
+
+    # scaffolding tower with planks and safety netting
+    mb = MB("prop_scaffold")
+    for lv in range(4):
+        z = lv * 2.0
+        for x in (-1.2, 1.2):
+            for y in (-0.6, 0.6):
+                mb.box(x - 0.03, y - 0.03, z, x + 0.03, y + 0.03, z + 2.0, M["metal"])
+        mb.box(-1.25, -0.65, z + 2.0 - 0.05, 1.25, 0.65, z + 2.0, M["wood"])
+        for y in (-0.6, 0.6):
+            mb.box(-1.2, y - 0.02, z + 1.0, 1.2, y + 0.02, z + 1.04, M["metal"])
+        mb.between((-1.2, -0.6, z), (1.2, -0.6, z + 2.0), 0.015, M["metal"], seg=4, caps=False)
+    mb.box(-1.22, 0.62, 0.6, 1.22, 0.64, 8.0, M["orange"])
+    objs.append(mb.finish())
+
+    # steam vent grate with a stack
+    mb = MB("prop_vent")
+    mb.box(-0.5, -0.5, 0.0, 0.5, 0.5, 0.03, M["steam"])
+    for i in range(7):
+        mb.box(-0.45, -0.42 + i * 0.14, 0.03, 0.45, -0.36 + i * 0.14, 0.05, M["darkmetal"])
+    mb.cyl(0.9, 0.0, 0.0, 0.9, 0.16, 0.14, M["orange"], 10)
     objs.append(mb.finish())
 
     # roadwork sign / A-frame
