@@ -1,6 +1,7 @@
 // Menus: lobby, locker, settings, how-to-play, pause, death and victory screens.
 import { OUTFITS, SKIN_TONES } from './character.js';
 import { GAME, MAPS } from './config.js';
+import { dailyChallenges, level, XP_PER_LEVEL } from './progress.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -11,12 +12,15 @@ export class UI {
     $('title-a').textContent = GAME.title;
     $('title-b').textContent = GAME.subtitle;
     const click = (id, fn) => $(id).addEventListener('click', () => { game.audio.init(); game.audio.ui(); fn(); });
+    const click2 = (el, fn) => el.addEventListener('click', () => { game.audio.init(); game.audio.ui(); fn(); });
     click('btn-play', () => this.play());
     click('btn-online', () => this.panel('online'));
     for (const el of document.querySelectorAll('.map-card')) el.addEventListener('click', () => { game.audio.init(); game.audio.ui(); this.pickMap(el.dataset.map); });
     this.bindOnline();
     click('btn-settings', () => this.panel('settings'));
     click('btn-howto', () => this.panel('howto'));
+    for (const t of document.querySelectorAll('.tab[data-tab]')) click2(t, () => this.tab(t.dataset.tab));
+    click('mm-cancel', () => this.cancelPlay());
     click('btn-dance', () => { this.dancing = !this.dancing; $('btn-dance').classList.toggle('on', this.dancing); });
     click('outfit-prev', () => this.outfit(-1));
     click('outfit-next', () => this.outfit(1));
@@ -29,6 +33,7 @@ export class UI {
     click('btn-spectate', () => { $('death').hidden = true; });
     click('btn-win-lobby', () => this.toLobby());
     document.querySelectorAll('button').forEach((b) => b.addEventListener('mouseenter', () => game.audio.ui('hover')));
+    this.tab('lobby');
     this.bindSettings();
     this.refreshOutfit();
     this.refreshStats();
@@ -45,20 +50,80 @@ export class UI {
     if (g.net.isClient) { this.panel('online'); return; }
     this.starting = true;
     const friends = g.net.isHost ? g.net.conns.size : 0;
-    $('menu').hidden = true;
     this.panel(null);
-    $('matchmaking').hidden = false;
+    // matchmaking status in the corner, like a real queue (with a way out)
+    $('mm-panel').hidden = false;
+    $('btn-play').hidden = true;
     const duel = (MAPS[g.settings.map] || MAPS.island).mode === 'duel';
-    $('mm-text').textContent = friends ? `Starting a match with ${friends} friend${friends > 1 ? 's' : ''}…` : duel ? 'Finding an opponent…' : 'Finding a match…';
-    setTimeout(() => {
-      $('mm-text').textContent = duel ? (friends ? `${friends + 1} players — heading to the Duel Grounds` : 'Opponent found — heading to the Duel Grounds')
-        : `${Math.max(g.settings.bots + 1, friends + 1)} players found — boarding the airship`;
-    }, 700);
-    setTimeout(() => {
-      $('matchmaking').hidden = true;
-      this.starting = false;
-      if (g.state === 'lobby') g.startMatch();
-    }, 1500);
+    $('mm-title').textContent = 'Matchmaking';
+    $('mm-sub').textContent = friends ? `Starting with ${friends} friend${friends > 1 ? 's' : ''}…` : duel ? 'Finding an opponent…' : 'Finding players…';
+    this.mmTimers = [
+      setTimeout(() => {
+        $('mm-title').textContent = duel ? 'Opponent found' : 'Match found';
+        $('mm-sub').textContent = duel ? `Heading to the Duel Grounds` : `${Math.max(g.settings.bots + 1, friends + 1)} players · boarding the airship`;
+      }, 900),
+      setTimeout(() => {
+        this.mmTimers = null;
+        $('mm-panel').hidden = true;
+        $('btn-play').hidden = false;
+        this.starting = false;
+        if (g.state === 'lobby') { $('menu').hidden = true; g.startMatch(); }
+      }, 1900),
+    ];
+  }
+
+  cancelPlay() {
+    if (this.mmTimers) for (const t of this.mmTimers) clearTimeout(t);
+    this.mmTimers = null;
+    this.starting = false;
+    $('mm-panel').hidden = true;
+    $('btn-play').hidden = false;
+  }
+
+  // Top bar tabs switch the cards on the left.
+  tab(name) {
+    this.curTab = name;
+    for (const t of document.querySelectorAll('.tab[data-tab]')) t.classList.toggle('on', t.dataset.tab === name);
+    for (const c of document.querySelectorAll('.menu-left .card')) c.hidden = !(c.dataset.show || '').split(' ').includes(name);
+    this.refreshProgress();
+  }
+
+  refreshProgress() {
+    const st = this.game.stats;
+    const xp = st.xp || 0;
+    const lv = level(xp);
+    $('lvl').textContent = lv;
+    $('tb-level').textContent = lv;
+    $('xp-fill').style.width = `${(xp % XP_PER_LEVEL) / XP_PER_LEVEL * 100}%`;
+    $('xp-text').textContent = `${xp % XP_PER_LEVEL} / ${XP_PER_LEVEL} XP`;
+    $('xp-total').textContent = `${xp} total`;
+    const ul = $('chal-list');
+    ul.innerHTML = '';
+    for (const c of dailyChallenges(st)) {
+      const li = document.createElement('li');
+      if (c.done) li.className = 'done';
+      const t = document.createElement('span'); t.textContent = c.text;
+      const xpv = document.createElement('span'); xpv.className = 'xpv'; xpv.textContent = `${c.xp} XP`;
+      const bar = document.createElement('div'); bar.className = 'bar2';
+      const fill = document.createElement('i'); fill.style.width = `${Math.min(100, c.prog / c.goal * 100)}%`; bar.appendChild(fill);
+      const pr = document.createElement('span'); pr.className = 'pr'; pr.textContent = c.done ? 'Complete' : `${c.prog} / ${c.goal}`;
+      li.append(t, xpv, bar, pr);
+      ul.appendChild(li);
+    }
+    const now = new Date();
+    const left = 24 - now.getHours();
+    $('chal-reset').textContent = `New in ${left}h`;
+    this.game.saveStats();
+  }
+
+  // Short lines in the lobby corner: who joined or left the room.
+  lobbyFeed(text) {
+    const el = document.createElement('div');
+    el.textContent = text;
+    $('lobby-feed').appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; }, 6000);
+    setTimeout(() => el.remove(), 7200);
+    while ($('lobby-feed').children.length > 5) $('lobby-feed').firstChild.remove();
   }
 
   // Choose the map. The lobby backdrop moves to it right away (the island is rebuilt in a moment).
@@ -169,6 +234,14 @@ export class UI {
       ul.appendChild(li);
     }
     const n = net.roster.length;
+    // join / leave messages
+    const names = net.roster.map((r) => r.id + '|' + r.name);
+    const prev = this.prevRoster || [];
+    if (net.active) {
+      for (const r of net.roster) if (!prev.includes(r.id + '|' + r.name) && prev.length) this.lobbyFeed(`${r.name} joined the room.`);
+      for (const p of prev) if (!names.includes(p)) this.lobbyFeed(`${p.split('|')[1]} left the room.`);
+    }
+    this.prevRoster = net.active ? names : [];
     if (net.isHost) $('net-go').textContent = n > 1 ? `Start match (${n} players)` : 'Start match (waiting for friends)';
     // the big buttons show the room too
     $('btn-online').classList.toggle('room', inRoom);
@@ -205,6 +278,8 @@ export class UI {
     this.refreshStats();
     this.refreshOutfit();
     this.refreshOnline();
+    this.cancelPlay();
+    this.tab(this.curTab || 'lobby');
   }
 
   showMatch() {
@@ -285,7 +360,15 @@ export class UI {
       <div><dt>Damage dealt</dt><dd>${Math.round(a.damageDealt)}</dd></div>
       <div><dt>Materials gathered</dt><dd>${a.matsGathered}</dd></div>
       <div><dt>Structures built</dt><dd>${a.built}</dd></div>
-      <div><dt>Time survived</dt><dd>${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}</dd></div>`;
+      <div><dt>Time survived</dt><dd>${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}</dd></div>
+      ${this.xpLines()}`;
+  }
+
+  xpLines() {
+    const m = this.game.matchXp;
+    if (!m) return '';
+    const rows = m.lines.map(([label, v]) => `<div class="xpl"><dt>${label}</dt><dd>+${v} XP</dd></div>`).join('');
+    return `${rows}<div class="xpl total"><dt>${m.levelUp ? `Level up! Now level ${m.level}` : 'XP earned'}</dt><dd>+${m.xp} XP</dd></div>`;
   }
 
   showDeath(killer) {

@@ -30,6 +30,7 @@ import { UI } from './ui.js';
 import { LOBBY, DUEL_LOBBY } from './layout.js';
 import { DuelWorld } from './duel.js';
 import { Net, v3, toV } from './net.js';
+import { awardMatch } from './progress.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -319,6 +320,7 @@ class Game {
     this.lobbyChar.root.position.copy(spot.pos);
     this.lobbyChar.root.rotation.y = spot.yaw;
     this.lobbyChar.hold(null, 'none');
+    this.matchXp = null;
     this.lobbyT = 0;
     this.lobbySnap = true;
     this.ui.showLobby();
@@ -344,20 +346,99 @@ class Game {
     this.played = false;
   }
 
+  // Who stands in the lobby: you in the middle, friends in your room either side.
+  lobbySquad() {
+    const net = this.net;
+    const s = this.settings;
+    if (net.active && net.roster.length) {
+      const myId = net.isHost ? 'host' : net.peer && net.peer.id;
+      return net.roster.map((r) => ({ key: r.id, name: r.name, outfit: r.outfit | 0, skin: r.skin ?? 1, me: r.id === myId, host: !!r.host }));
+    }
+    return [{ key: 'me', name: s.name || 'You', outfit: s.outfit, skin: s.skin ?? 1, me: true }];
+  }
+
+  makePad() {
+    const g = new THREE.Group();
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.7, 0.07, 40),
+      new THREE.MeshStandardMaterial({ color: 0x1b3f66, emissive: new THREE.Color(0.1, 0.55, 1.1), emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.3 }));
+    disc.position.y = 0.03;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.035, 8, 48),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 1.1, 2.0) }));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.07;
+    const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.66, 1.6, 40, 1, true),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.7, 1.4), transparent: true, opacity: 0.12, side: THREE.DoubleSide,
+        depthWrite: false, blending: THREE.AdditiveBlending }));
+    glow.position.y = 0.8;
+    g.add(disc, ring, glow);
+    g.userData.glow = glow;
+    this.scene.add(g);
+    return g;
+  }
+
   updateLobby(dt) {
     this.lobbyT += dt;
     const c = this.lobbyChar;
     const spot = this.lobbySpot;
-    c.update(dt, { vel: new THREE.Vector3(), yaw: spot.yaw, aimPitch: -0.1, grounded: true, crouch: false, sprint: false,
-      mode: 'ground', harvest: -1, dance: this.ui.dancing });
-    // camera to the front-right of the character, which stands on the left third of the screen
     const f = new THREE.Vector3(Math.sin(spot.yaw), 0, Math.cos(spot.yaw));
     const r = new THREE.Vector3(-f.z, 0, f.x);
-    const orbit = Math.sin(this.lobbyT * 0.15) * 0.25;
-    const camPos = spot.pos.clone().addScaledVector(f, 3.4).addScaledVector(r, -1.3 + orbit).add(new THREE.Vector3(0, 1.45, 0));
+    const squad = this.lobbySquad();
+    const me = squad.find((m) => m.me) || squad[0];
+    const order = [me, ...squad.filter((m) => m !== me)];
+    this.lobbyMates = this.lobbyMates || new Map();
+    this.lobbyPads = this.lobbyPads || [];
+    const tags = $('lobby-tags');
+    const seen = new Set();
+    order.forEach((m, i) => {
+      // slots: middle, then alternating right and left, a little further back
+      const k = i === 0 ? 0 : Math.ceil(i / 2) * (i % 2 ? 1 : -1);
+      const pos = spot.pos.clone().addScaledVector(r, -k * 1.55).addScaledVector(f, -Math.abs(k) * 0.35);
+      pos.y = this.physics.groundAt(pos.x, pos.z, pos.y + 5, 0.3, 20);
+      let model = c;
+      if (i > 0) {
+        let e = this.lobbyMates.get(m.key);
+        if (!e || e.outfit !== m.outfit || e.skin !== m.skin) {
+          if (e) this.scene.remove(e.model.root);
+          const cm = new CharacterModel(this.assets.gltf.character, m.outfit % OUTFITS.length, SKIN_TONES[m.skin % SKIN_TONES.length]);
+          cm.hold(null, 'none');
+          cm.state.idleT = Math.random() * 3;
+          this.scene.add(cm.root);
+          e = { model: cm, outfit: m.outfit, skin: m.skin };
+          this.lobbyMates.set(m.key, e);
+        }
+        model = e.model;
+        seen.add(m.key);
+      }
+      model.root.visible = true;
+      model.root.position.copy(pos);
+      model.root.rotation.y = spot.yaw + k * -0.12;
+      model.update(dt, { vel: new THREE.Vector3(), yaw: spot.yaw, aimPitch: -0.05, grounded: true, crouch: false, sprint: false,
+        mode: 'ground', harvest: -1, dance: i === 0 && this.ui.dancing });
+      const pad = this.lobbyPads[i] || (this.lobbyPads[i] = this.makePad());
+      pad.visible = true;
+      pad.position.copy(pos);
+      pad.userData.glow.material.opacity = 0.06 + Math.sin(this.lobbyT * 2 + i) * 0.02;
+      // name tag above the head
+      let tag = tags.children[i];
+      if (!tag) { tag = document.createElement('div'); tag.className = 'ltag'; tags.appendChild(tag); }
+      const label = `${m.name}${m.host ? '<small>host</small>' : m.me && order.length > 1 ? '<small>you</small>' : ''}`;
+      if (tag.dataset.l !== label) { tag.dataset.l = label; tag.innerHTML = ''; const n = document.createElement('span'); n.textContent = m.name; tag.appendChild(n);
+        if (m.host || (m.me && order.length > 1)) { const sm = document.createElement('small'); sm.textContent = m.host ? 'host' : 'you'; tag.appendChild(sm); } }
+      const hp = pos.clone().add(new THREE.Vector3(0, 2.0, 0)).project(this.camera);
+      tag.hidden = hp.z > 1;
+      tag.style.left = `${(hp.x * 0.5 + 0.5) * 100}%`;
+      tag.style.top = `${(-hp.y * 0.5 + 0.5) * 100}%`;
+    });
+    for (const [key, e] of this.lobbyMates) if (!seen.has(key)) { this.scene.remove(e.model.root); this.lobbyMates.delete(key); }
+    for (let i = order.length; i < this.lobbyPads.length; i++) this.lobbyPads[i].visible = false;
+    while (tags.children.length > order.length) tags.lastChild.remove();
+    tags.hidden = false;
+    // camera straight in front of the squad, which stands in the middle of the screen
+    const orbit = Math.sin(this.lobbyT * 0.15) * 0.3;
+    const camPos = spot.pos.clone().addScaledVector(f, 4.6).addScaledVector(r, orbit).add(new THREE.Vector3(0, 1.5, 0));
     if (this.lobbySnap) { this.camera.position.copy(camPos); this.lobbySnap = false; }
     this.camera.position.lerp(camPos, 1 - Math.exp(-dt * 3));
-    const look = spot.pos.clone().addScaledVector(r, -1.05).add(new THREE.Vector3(0, 1.05, 0));
+    const look = spot.pos.clone().add(new THREE.Vector3(0, 1.0, 0));
     this.camera.lookAt(look);
     if (Math.abs(this.camera.fov - 42) > 0.1) { this.camera.fov = 42; this.camera.updateProjectionMatrix(); }
     this.renderer.updateShadow(spot.pos);
@@ -450,6 +531,9 @@ class Game {
   // Shared by the host and online clients.
   prepareMatch() {
     this.lobbyChar.root.visible = false;
+    for (const e of (this.lobbyMates || new Map()).values()) e.model.root.visible = false;
+    for (const p of this.lobbyPads || []) p.visible = false;
+    $('lobby-tags').hidden = true;
     this.time = 0;
     this.over = false;
     this.placement = 0;
@@ -629,6 +713,7 @@ class Game {
     if (t.kind === 'container') {
       const c = t.obj;
       c.opened = true;
+      actor.chestsOpened = (actor.chestsOpened || 0) + 1;
       this.net.emit('co', c.id);
       const items = c.kind === 'chest' ? chestLoot(this.rng) : c.kind === 'supply' ? supplyLoot(this.rng) : ammoBoxLoot(this.rng);
       const fwd = new THREE.Vector3(Math.sin(c.yaw), 0, Math.cos(c.yaw));
@@ -777,10 +862,20 @@ class Game {
 
   netEnd(wid) { this.finish(this.actorById.get(wid) || null); }
 
+  // XP and challenge progress for the match you just finished.
+  scoreMatch(won) {
+    const a = this.player;
+    this.matchXp = awardMatch(this.stats, {
+      kills: a.kills, chests: a.chestsOpened || 0, built: a.built, mats: a.matsGathered, damage: Math.round(a.damageDealt),
+      placement: this.placement, players: this.actors.length, duel: MAPS[this.mapKey].mode === 'duel', won, time: this.time,
+    });
+  }
+
   playerDied(killer) {
     this.placement = this.aliveCount() + 1;
     this.stats.matches++;
     this.stats.kills += this.player.kills;
+    this.scoreMatch(false);
     this.saveStats();
     this.spectating = killer && killer.alive ? killer : null;
     setTimeout(() => { if (this.state === 'match') this.ui.showDeath(killer); }, 1600);
@@ -797,6 +892,7 @@ class Game {
       this.stats.matches++;
       this.stats.wins++;
       this.stats.kills += winner.kills;
+      this.scoreMatch(true);
       this.saveStats();
       winner.dancing = true;
       this.audio.victory();

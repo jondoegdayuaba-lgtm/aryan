@@ -219,8 +219,11 @@ export class Hud {
       el.querySelector('.num').textContent = inv.mats[m];
       el.classList.toggle('sel', g.controller.buildMat === m);
     }
-    // build bar
+    // build bar takes the hotbar's place while building
     $('buildbar').classList.toggle('on', a.buildMode);
+    $('hud').classList.toggle('building', !!a.buildMode);
+    this.updateWhere(dt);
+    this.updateSquad();
     this.buildEls.forEach((el) => {
       el.classList.toggle('sel', el.dataset.kind === g.controller.buildKind);
       el.classList.toggle('poor', inv.mats[g.controller.buildMat] < BUILD_COST);
@@ -268,6 +271,51 @@ export class Hud {
     $('spectate').hidden = !spec;
     if (spec) $('spectate-name').textContent = g.spectating.name;
     $('glide-hint').hidden = !(a.mode === 'sky' && a.pos.y - g.terrain.heightAt(a.pos.x, a.pos.z) < 150);
+  }
+
+  // Name of the place you're in, under the minimap.
+  updateWhere(dt) {
+    this.whereT = (this.whereT || 0) - dt;
+    if (this.whereT > 0) return;
+    this.whereT = 0.5;
+    const g = this.game;
+    const a = g.player;
+    const x = a.mode === 'bus' ? g.airship.pos.x : a.pos.x, z = a.mode === 'bus' ? g.airship.pos.z : a.pos.z;
+    let name = '';
+    let best = Infinity;
+    for (const p of g.terrain.pois || POIS) {
+      const d = Math.hypot(p.x - x, p.z - z) - (p.flat || p.lake || 30);
+      if (d < 35 && d < best) { best = d; name = p.name; }
+    }
+    if (!name && g.mapKey === 'duel') name = 'Duel Grounds';
+    if ($('where').textContent !== name) $('where').textContent = name;
+  }
+
+  // Your friends (online) with their shield and health.
+  updateSquad() {
+    const g = this.game;
+    const el = $('squad');
+    const list = g.net && g.net.active ? g.actors.filter((x) => x.human && x !== g.player) : [];
+    const sig = list.map((x) => `${x.id}:${x.alive ? 1 : 0}:${Math.ceil(x.health)}:${Math.ceil(x.shield)}`).join('|');
+    if (sig === this.squadSig) return;
+    this.squadSig = sig;
+    el.innerHTML = '';
+    for (const x of list) {
+      const d = document.createElement('div');
+      d.className = 'sq' + (x.alive ? '' : ' dead');
+      const n = document.createElement('span');
+      n.textContent = x.name;
+      d.appendChild(n);
+      for (const [cls, v] of [['s', x.shield], ['h', x.health]]) {
+        const i = document.createElement('i');
+        i.className = cls;
+        const b = document.createElement('b');
+        b.style.width = `${x.alive ? Math.max(0, Math.min(100, v)) : 0}%`;
+        i.appendChild(b);
+        d.appendChild(i);
+      }
+      el.appendChild(d);
+    }
   }
 
   updatePrompt() {
@@ -483,7 +531,7 @@ export class Hud {
     ctx.clearRect(0, 0, S, S);
     ctx.save();
     ctx.beginPath();
-    ctx.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2);
+    ctx.rect(0, 0, S, S);
     ctx.clip();
     ctx.fillStyle = '#2a6f9a';
     ctx.fillRect(0, 0, S, S);

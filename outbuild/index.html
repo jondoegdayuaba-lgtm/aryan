@@ -25,9 +25,30 @@
 
   <!-- ============================================================ lobby -->
   <section id="menu" hidden>
-    <div class="menu-left">
+    <nav id="topbar">
       <h1 class="logo"><span id="title-a"></span><small id="title-b"></small></h1>
-      <div class="locker">
+      <div class="tabs" role="tablist">
+        <button class="tab on" data-tab="lobby" type="button" role="tab">Lobby</button>
+        <button class="tab" data-tab="locker" type="button" role="tab">Locker</button>
+        <button class="tab" data-tab="challenges" type="button" role="tab">Challenges</button>
+        <button class="tab" data-tab="career" type="button" role="tab">Career</button>
+        <button id="btn-howto" class="tab" type="button">How to play</button>
+        <button id="btn-settings" class="tab" type="button">Settings</button>
+      </div>
+      <div class="tb-right"><span class="lvl-badge" title="Season level"><small>LV</small><b id="tb-level">1</b></span></div>
+    </nav>
+
+    <div class="menu-left">
+      <div class="card season" data-show="lobby challenges">
+        <div class="season-head"><span class="season-ico"></span><div><small>Season 1</small><h3>Level <b id="lvl">1</b></h3></div></div>
+        <div class="xp"><div id="xp-fill"></div></div>
+        <p class="xp-text"><span id="xp-text">0 / 1000 XP</span><span id="xp-total"></span></p>
+      </div>
+      <div class="card chal" data-show="lobby challenges">
+        <h4>Daily challenges <small id="chal-reset"></small></h4>
+        <ul id="chal-list"></ul>
+      </div>
+      <div class="card locker" data-show="lobby locker">
         <span class="label">Outfit</span>
         <div class="locker-row">
           <button id="outfit-prev" class="arrow" type="button" aria-label="Previous outfit">&#8249;</button>
@@ -37,24 +58,28 @@
         </div>
         <button id="btn-dance" class="chip" type="button">Dance</button>
       </div>
-      <div class="menu-stats">
-        <div><b id="stat-matches">0</b><span>Matches</span></div>
-        <div><b id="stat-wins">0</b><span>Wins</span></div>
-        <div><b id="stat-kills">0</b><span>Eliminations</span></div>
+      <div class="card career" data-show="career">
+        <h4>Career</h4>
+        <div class="menu-stats">
+          <div><b id="stat-matches">0</b><span>Matches</span></div>
+          <div><b id="stat-wins">0</b><span>Wins</span></div>
+          <div><b id="stat-kills">0</b><span>Eliminations</span></div>
+        </div>
       </div>
+      <div id="lobby-feed"></div>
     </div>
+
+    <div id="lobby-tags"></div>
+
     <div class="menu-right">
       <div class="map-pick" role="radiogroup" aria-label="Map">
         <button class="map-card" data-map="island" type="button" role="radio"><i class="map-ico island"></i><span><b>Island Royale</b><small>Airship drop · up to 50 players</small></span></button>
         <button class="map-card" data-map="duel" type="button" role="radio"><i class="map-ico duel"></i><span><b>Duel Grounds</b><small>1v1 arena · spawn loaded</small></span></button>
       </div>
+      <div id="mm-panel" hidden><div class="spinner small"></div><div><b id="mm-title">Matchmaking</b><small id="mm-sub"></small></div><button id="mm-cancel" class="link" type="button">Cancel</button></div>
       <button id="btn-play" class="play" type="button">Play<small id="play-sub">Solo · Island Royale</small></button>
       <button id="btn-online" class="play alt" type="button">Play with friends<small id="online-sub">Online · share a room code</small></button>
-      <div class="menu-links">
-        <button id="btn-howto" class="link" type="button">How to play</button>
-        <button id="btn-settings" class="link" type="button">Settings</button>
-      </div>
-      <p class="menu-foot">Models made in Blender · Runs in your browser</p>
+      <p class="menu-foot">Models and animations made in Blender · Runs in your browser</p>
     </div>
   </section>
 
@@ -126,12 +151,14 @@
     <div id="dmgdirs"></div>
     <div id="numbers"></div>
     <div id="nametags"></div>
+    <div id="squad"></div>
     <div id="killfeed"></div>
     <div id="elim"></div>
 
     <div id="compass"><div id="compass-strip"></div><i class="needle"></i></div>
     <div class="hud-tr">
       <canvas id="minimap" width="200" height="200"></canvas>
+      <div id="where"></div>
       <div class="info">
         <span class="storm"><i></i><span id="storm-label"></span> <b id="storm-time"></b></span>
         <span class="count"><i class="ico-alive"></i><b id="alive">0</b></span>

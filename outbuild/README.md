@@ -4,7 +4,7 @@ An original island battle royale for the browser. You drop from an airship with 
 
 Everything here is original: the characters, weapons, map, place names, models, textures, sounds and music. It is not affiliated with any other game.
 
-- **Models:** made with Blender's Python API (`blender/`) and exported as GLB.
+- **Models and animations:** made with Blender's Python API (`blender/`) and exported as GLB. Character clips (idle, walk, run, sprint, crouch, jump, fall, skydive, glide, death, dance, pickaxe swing, throw) are keyframed on the rig; guns have moving magazines, bolts, slides and pumps with keyframed Fire and Reload clips.
 - **Rendering:** [three.js](https://threejs.org) with ACES tone mapping, sun shadows, bloom and SMAA. The Epic setting adds ambient occlusion.
 - **Sound:** synthesised live with the Web Audio API. There are no audio files.
 
@@ -21,6 +21,17 @@ Or open `desktop/outbuild.html`. It is the whole game in one file (about 11 MB) 
 
 A mouse and keyboard are needed. Click the game to lock the pointer.
 
+## Maps
+
+Pick a map on the right of the lobby:
+
+- **Island Royale:** the full island. Drop from the airship with up to 49 others, loot, build and outlast everyone while the storm closes in.
+- **Duel Grounds:** a small arena island for 1v1. Everyone spawns on the ground with an assault rifle, a pump shotgun, an SMG, heals, shields and materials. A 3-second countdown starts the fight, and a faster storm keeps it short. Solo, you face one bot; online, the host's friends all join the duel.
+
+## Level and challenges
+
+Each match earns XP for eliminations, survival time and placement. Every day brings three new challenges (open chests, build structures, win a duel and so on) worth bonus XP. Your season level, XP and challenges show on the lobby's left; everything is saved in your browser.
+
 ## Play with friends
 
 Online play is peer-to-peer (WebRTC through [PeerJS](https://peerjs.com)). There is no game server to run.
@@ -29,7 +40,7 @@ Online play is peer-to-peer (WebRTC through [PeerJS](https://peerjs.com)). There
 2. Everyone else types the code under **Play with friends** and clicks **Join**. Up to 16 players can be in a room.
 3. The host clicks **Start match**. Bots fill the rest of the match size set in Settings.
 
-The host's computer runs the match: bots, loot, the storm, damage and builds. Each player's own movement runs on their own computer, so moving feels instant, and shots and builds take one trip to the host. The player with the fastest computer and connection should host.
+The host picks the map. Friends show up next to you in the lobby. The host's computer runs the match: bots, loot, the storm, damage and builds. Each player's own movement runs on their own computer, so moving feels instant, and shots and builds take one trip to the host. The player with the fastest computer and connection should host.
 
 Notes:
 
@@ -107,6 +118,8 @@ blenv/bin/python outbuild/blender/build_all.py
 | Script | Makes |
 | --- | --- |
 | `characters.py` | The rigged character (19 bones) and every outfit part: hair styles, hats, helmet, hood, masks, vest, jacket, backpack and cape. |
+| `animations.py` | The character's keyframed clips, one NLA track each, exported inside `character.glb`. |
+| `gun_anims.py` | Fire and Reload clips on the guns' moving parts and on the left-hand grip point, exported inside `weapons.glb`. |
 | `pieces.py` | Build pieces in wood, stone and metal, plus the houses' walls, windows, doors, floors, roofs and stairs. |
 | `props.py` | Trees, rocks, bushes, cars, containers, fences, crates, hay, the windmill, water tower and radio mast. |
 | `gear.py` | Weapons, the harvesting tool, grenade, rocket, chests, ammo boxes, supply drop, heals, ammo, the airship and the glider. |
@@ -131,6 +144,7 @@ The game swaps materials by name for its own shaders, which add triplanar textur
 | `js/bots.js` | Bot AI: drop planning, looting through doors and stairs, storm rotation, fighting, building cover |
 | `js/combat.js`, `js/items.js` | Weapons, projectiles, explosions, harvesting; items, loot tables, inventory, pickups and chests |
 | `js/storm.js`, `js/airship.js` | The storm circle and wall; the drop airship |
+| `js/duel.js`, `js/progress.js` | The Duel Grounds arena; season level, XP and daily challenges |
 | `js/net.js` | Online play: rooms, host snapshots and events, client input, split messages |
 | `js/hud.js`, `js/ui.js` | HUD, minimap and full map, item icons rendered from the models; menus and end screens |
 | `js/audio.js`, `js/effects.js` | Synthesised sound and music; particles, debris, tracers, explosions |

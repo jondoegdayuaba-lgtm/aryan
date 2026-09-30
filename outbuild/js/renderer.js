@@ -128,7 +128,7 @@ const GradeShader = {
     uStorm: { value: 0 },
     uDamage: { value: 0 },
     uHeal: { value: 0 },
-    uSaturation: { value: 1.08 },
+    uSaturation: { value: 1.2 },
     uContrast: { value: 1.04 },
     uTime: { value: 0 },
     uScope: { value: 0 },

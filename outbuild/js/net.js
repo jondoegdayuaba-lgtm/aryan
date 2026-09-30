@@ -438,7 +438,7 @@ export class Net {
     return {
       t: 'inv', slots: a.inv.slots, ammo: a.inv.ammo, mats: a.inv.mats, sel: a.inv.selected,
       rl: [r2(a.reloadT), r2(a.reloadTotal)], use: [r2(a.useT), r2(a.useTotal)], hv: r2(a.harvestT),
-      k: a.kills, dd: Math.round(a.damageDealt), mg: a.matsGathered, b: a.built,
+      k: a.kills, dd: Math.round(a.damageDealt), mg: a.matsGathered, b: a.built, co: a.chestsOpened || 0,
     };
   }
 
@@ -488,7 +488,7 @@ export class Net {
     if (a.inv.selected !== m.sel && !(this.pendingSel !== null && performance.now() - this.pendingSelT < 400)) a.inv.selected = m.sel;
     a.reloadT = m.rl[0]; a.reloadTotal = m.rl[1] || 1;
     a.useT = m.use[0]; a.useTotal = m.use[1] || 1;
-    a.kills = m.k; a.damageDealt = m.dd; a.matsGathered = m.mg; a.built = m.b;
+    a.kills = m.k; a.damageDealt = m.dd; a.matsGathered = m.mg; a.built = m.b; a.chestsOpened = m.co || 0;
   }
 
   applyEvent(ev) {
