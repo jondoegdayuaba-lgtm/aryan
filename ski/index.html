@@ -70,6 +70,7 @@
       <button id="tb-brake" type="button">Brake</button>
       <button id="tb-jump" type="button">Jump</button>
       <button id="tb-tuck" type="button">Tuck</button>
+      <button id="tb-push" type="button">Push</button>
     </div>
   </div>
 
@@ -104,13 +105,31 @@
               <option value="helmet">Helmet cam</option>
             </select>
           </label>
+          <label class="opt">Skier
+            <select id="opt-outfit">
+              <option value="race">Race suit</option>
+              <option value="free">Freerider</option>
+            </select>
+          </label>
+          <label class="opt">Colour
+            <select id="opt-hue">
+              <option value="0">Classic</option>
+              <option value="1">Ocean</option>
+              <option value="2">Forest</option>
+              <option value="3">Sunshine</option>
+              <option value="4">Violet</option>
+              <option value="5">Ruby</option>
+            </select>
+          </label>
           <button id="btn-sound" class="text-btn" type="button">Sound on</button>
         </div>
         <dl class="controls">
           <div><dt>A D / ← →</dt><dd>Steer</dd></div>
-          <div><dt>W / ↑ / Shift</dt><dd>Tuck (hold)</dd></div>
+          <div><dt>W / ↑</dt><dd>Tuck (hold)</dd></div>
+          <div><dt>Shift</dt><dd>Skate / push</dd></div>
           <div><dt>S / ↓</dt><dd>Brake</dd></div>
           <div><dt>Space</dt><dd>Crouch, release to jump</dd></div>
+          <div><dt>Drag / wheel</dt><dd>Look around / zoom</dd></div>
           <div><dt>C</dt><dd>Camera</dd></div>
           <div><dt>R / Esc</dt><dd>Restart / Pause</dd></div>
         </dl>

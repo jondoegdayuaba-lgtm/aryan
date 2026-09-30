@@ -9,7 +9,7 @@ import { Vegetation } from './vegetation.js';
 import { Rocks } from './rocks.js';
 import { setupSky } from './sky.js';
 import { installFog, setWorldLightTexture } from './shader-patches.js';
-import { SkierRig } from './skier-rig.js';
+import { SkierRig, OUTFIT_HUES } from './skier-rig.js';
 import { RunSession } from './session.js';
 import { Autopilot } from './ai.js';
 import { CameraRig } from './camera.js';
@@ -21,7 +21,7 @@ import { UI, SaveData } from './ui.js';
 import { Props } from './props.js';
 import { clamp, damp, formatTime, formatDelta } from './util.js';
 
-const AUTO_PUSH_SECONDS = 6;
+const AUTO_PUSH_SECONDS = 7;
 
 export class Game {
   constructor(canvas, params) {
@@ -42,6 +42,7 @@ export class Game {
     this.demoTimer = 0;
     this.hintTimer = 0;
     this.manual = params.has('manual');
+    this._view = {};            // interpolated skier state for drawing
   }
 
   // ==================================================================== loading
@@ -62,7 +63,7 @@ export class Game {
     }
     const atm = this.atm = (await loader.json('world/atmosphere.json')) || {};
     const [rigInfo, treeInfo] = await Promise.all([loader.json('models/skier_rig.json'), loader.json('models/tree_info.json')]);
-    const [color, mask, light, sky, skyIbl, atlas, treeGltf, skierGltf, propsGltf, rockN, rockC, snowN, rockGltf] = await Promise.all([
+    const [color, mask, light, sky, skyIbl, atlas, treeGltf, skierGltf, propsGltf, rockN, rockC, snowN, rockGltf, skierFreeGltf] = await Promise.all([
       loader.texture('tex/terrain_color.jpg'),
       loader.texture('tex/terrain_mask.png', { srgb: false }),
       loader.texture('tex/terrain_light.jpg', { srgb: false }),
@@ -76,6 +77,7 @@ export class Game {
       loader.texture('tex/rock_c.png', { srgb: false, repeat: true }),
       loader.texture('tex/snow_n.png', { srgb: false, repeat: true }),
       loader.gltf('models/rocks.glb'),
+      loader.gltf('models/skier_free.glb'),
     ]);
     if (!color || !mask) throw new Error('The terrain textures are missing. Run blender/build.py to generate the assets.');
     if (!treeGltf || !skierGltf) throw new Error('The 3D models are missing. Run blender/build.py to generate the assets.');
@@ -127,9 +129,10 @@ export class Game {
     if (this.props) scene.add(this.props.group);
 
     // ------------------------------------------------------------------ skier
-    this.rig = new SkierRig(skierGltf, rigInfo);
-    scene.add(this.rig.group);
-    this.headMeshes = this.rig.meshes.filter((m) => /skull|helmet|ears|chin|goggle|strap/.test(m.name));
+    this.rigs = { race: new SkierRig(skierGltf, rigInfo) };
+    if (skierFreeGltf) this.rigs.free = new SkierRig(skierFreeGltf, rigInfo);
+    for (const r of Object.values(this.rigs)) { r.group.visible = false; scene.add(r.group); }
+    this.rig = this.rigs.race;
 
     // ---------------------------------------------------------------- effects
     const sr = this.snowRadiance;
@@ -139,8 +142,10 @@ export class Game {
     scene.add(this.tracks.mesh);
 
     this.cameraRig = new CameraRig(camera, world);
+    this.cameraRig.bind(this.canvas);
     this.cameraRig.mode = this.save.data.camera || 'chase';
     this.cameraRig.hideHead = (hide) => { for (const m of this.headMeshes) m.visible = !hide; };
+    this.setCharacter(this.save.data.outfit || 'race', this.save.data.hue | 0);
 
     // ------------------------------------------------------------------ quality
     this.post = new PostFX(renderer, scene, camera, this.exposure);
@@ -155,6 +160,20 @@ export class Game {
     this.ui.show('menu');
     window.__game = this;
     return this;
+  }
+
+  /** choose the skier: outfit ('race' | 'free') and colour (index into OUTFIT_HUES) */
+  setCharacter(style, hueIndex = 0) {
+    if (!this.rigs[style]) style = 'race';
+    for (const [k, r] of Object.entries(this.rigs)) r.group.visible = k === style;
+    this.rig = this.rigs[style];
+    this.rig.setHue(OUTFIT_HUES[hueIndex % OUTFIT_HUES.length].hue);
+    this.rig._first = true;
+    this.headMeshes = this.rig.meshes.filter((m) => /skull|face|lips|hair|helmet|ears|goggle|strap/.test(m.name));
+    this.save.data.outfit = style;
+    this.save.data.hue = hueIndex;
+    this.save.save();
+    if (this.cameraRig) this.cameraRig._init = true;
   }
 
   pickQuality() {
@@ -241,7 +260,7 @@ export class Game {
     this.screen = 'playing';
     this.ui.show('hud');
     this.hintTimer = 9;
-    this.ui.hint(this.ui.el.touch.hidden ? 'A / D steer · W tuck for speed · S brake · Space to jump' : 'Touch left / right to steer');
+    this.ui.hint(this.ui.el.touch.hidden ? 'A / D steer · W tuck for speed · Shift skate · S brake · Space to jump' : 'Touch left / right to steer');
     this.input.clearPressed();
   }
 
@@ -298,7 +317,7 @@ export class Game {
       if (this.autopilot && !sk.crashed) inp = this.autopilot.control(sk, this.time);
       else if (this.autopilot) inp = { steer: 0, tuck: 0, brake: 0, jump: false };
       else inp = this.screen === 'playing' ? this.input.read(dt) : this.frameInput;
-      inp.autoPush = c.state === 'running' && c.clock < AUTO_PUSH_SECONDS ? 9.5 : 0;
+      inp.autoPush = c.state === 'running' && c.clock < AUTO_PUSH_SECONDS ? 14 : 0;
       this.frameInput = inp;
       const events = this.session.update(dt, () => this.frameInput);
       if (this.screen === 'playing') for (const e of events) this._onEvent(e, sk);
@@ -311,10 +330,12 @@ export class Game {
       }
     }
 
-    // ---- visuals (also while paused so the picture stays alive)
-    this.rig.update(sk, this.screen === 'paused' ? 0 : dt);
-    this.cameraRig.update(dt, sk, this.rig);
-    if (this.screen !== 'paused') this._effects(dt, sk);
+    // ---- visuals (also while paused so the picture stays alive). The physics runs at a fixed 120 Hz, so
+    // everything that is drawn uses the pose interpolated to the frame time: smooth at any refresh rate.
+    const v = sk.interp(this.session.alpha, this._view);
+    this.rig.update(v, this.screen === 'paused' ? 0 : dt);
+    this.cameraRig.update(dt, v, this.rig);
+    if (this.screen !== 'paused') this._effects(dt, v);
     this.audio.update(dt, sk, this.screen === 'playing' || this.attract);
     if (this.props) this.props.update(dt, this.time, c, sk);
     this.flash = damp(this.flash, 0, 5, dt);
@@ -458,7 +479,7 @@ export class Game {
     this.terrain.update(this.camera);
     this.veg.update(this.camera, dt);
     if (this.rocks) this.rocks.update(this.camera, dt);
-    const speed01 = clamp((sk.speed - 12) / 30, 0, 1);
+    const speed01 = clamp((sk.speed - 16) / 36, 0, 1);
     this.post.render(dt, this.time, speed01, this.flash);
   }
 

@@ -10,6 +10,19 @@ import { clamp, damp } from './util.js';
 import { applyWorldLight } from './shader-patches.js';
 
 const sanitize = (n) => n.replace(/\s/g, '_').replace(/[[\].:/]/g, '');
+
+/** outfit colour choices: hue rotations applied to the saturated parts of the suit, helmet and accents */
+export const OUTFIT_HUES = [
+  { name: 'Classic', hue: 0 }, { name: 'Ocean', hue: 0.56 }, { name: 'Forest', hue: 0.31 },
+  { name: 'Sunshine', hue: 0.13 }, { name: 'Violet', hue: 0.76 }, { name: 'Ruby', hue: 0.93 },
+];
+const TINT_MATERIALS = ['helmet', 'boot_accent', 'glove_accent', 'basket', 'pack'];
+const _col = new THREE.Color();
+const _hsl = { h: 0, s: 0, l: 0 };
+function shiftColor(color, hue) {
+  color.getHSL(_hsl, THREE.LinearSRGBColorSpace);
+  if (_hsl.s > 0.3 && _hsl.l > 0.015) color.setHSL((_hsl.h + hue) % 1, _hsl.s, _hsl.l, THREE.LinearSRGBColorSpace);
+}
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Q = () => new THREE.Quaternion();
 const AX = V(1, 0, 0), AZ = V(0, 0, 1);
@@ -103,6 +116,35 @@ export class SkierRig {
     this.pose = { tuck: 0, compress: 0, roll: 0, bodyYaw: 0, steer: 0, footLift: 0 };
     this.t = { H: V(), A: V(), K: V(), pole: V() };
     this.restPose();
+  }
+
+  // ---------------------------------------------------------------------- outfit colour
+  /** rotate the hue of the saturated colours (suit vertex colours, helmet, gloves, pack). 0 = as modelled. */
+  setHue(hue) {
+    if (!this._tint) {
+      const suits = [], mats = new Map();
+      for (const m of this.meshes) {
+        const attr = m.geometry.attributes.color;
+        if (attr) suits.push({ attr, orig: Float32Array.from(attr.array), size: attr.itemSize });
+        const list = Array.isArray(m.material) ? m.material : [m.material];
+        for (const mt of list) if (TINT_MATERIALS.includes(mt.name) && !mats.has(mt)) mats.set(mt, mt.color.clone());
+      }
+      this._tint = { suits, mats };
+    }
+    const { suits, mats } = this._tint;
+    for (const s of suits) {
+      const a = s.attr.array, o = s.orig, k = s.size;
+      for (let i = 0; i < a.length; i += k) {
+        _col.setRGB(o[i], o[i + 1], o[i + 2], THREE.LinearSRGBColorSpace);
+        if (hue) shiftColor(_col, hue);
+        a[i] = _col.r; a[i + 1] = _col.g; a[i + 2] = _col.b;
+      }
+      s.attr.needsUpdate = true;
+    }
+    for (const [mt, orig] of mats) {
+      mt.color.copy(orig);
+      if (hue) shiftColor(mt.color, hue);
+    }
   }
 
   // ------------------------------------------------------------------ bone helpers

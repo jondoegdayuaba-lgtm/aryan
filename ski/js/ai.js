@@ -1,6 +1,7 @@
 // Autopilot: follows the piste (and the gates) by pure pursuit. Used by the automated tests, by the
 // title-screen demo skier and as the pace-setting rival.
 import { clamp, angleDiff, smoothstep } from './util.js';
+import { TUNING, G } from './physics.js';
 
 const _p = {};
 const _q = {};
@@ -15,7 +16,7 @@ export class Autopilot {
     this.world = world;
     this.course = course;
     this.skill = skill;
-    this.aLatMax = (course.slalom ? 7.6 : 8.6) * skill;
+    this.aLatMax = (course.slalom ? 0.68 : 0.77) * (TUNING.gripBase + TUNING.gripEdge) * G * skill;
     this.tucking = false;
     this.jumpTimer = 0;
   }

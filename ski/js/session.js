@@ -10,8 +10,12 @@ export class RunSession {
     this.world = world;
     this.run = run;
     this.skier = new SkierPhysics(world);
+    // giant slalom stays at racing speeds; the other runs are wide open
+    if (run.mode === 'slalom') this.skier.tune = { drag: 2.0, mu: 1.7, grip: 1.05 };
+    else if (run.mode === 'cruise') this.skier.tune = { drag: 1.15, mu: 1.1, grip: 1.0 };
     this.course = new Course(world, run);
     this.acc = 0;
+    this.alpha = 0;                 // how far between two physics steps the renderer is
     this.events = [];
     this.time = 0;
     this.lastSafe = null;
@@ -50,6 +54,7 @@ export class RunSession {
       this.acc -= STEP;
       this._step(STEP, control, out);
     }
+    this.alpha = this.acc / STEP;
     return out;
   }
 

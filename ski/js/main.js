@@ -45,9 +45,16 @@ async function boot() {
   const csel = $('opt-camera');
   csel.value = game.save.data.camera || 'chase';
   csel.addEventListener('change', () => { game.save.data.camera = csel.value; game.save.save(); });
+  const outfitSel = $('opt-outfit'), hueSel = $('opt-hue');
+  outfitSel.value = game.save.data.outfit || 'race';
+  hueSel.value = String(game.save.data.hue | 0);
+  const applyCharacter = () => game.setCharacter(outfitSel.value, +hueSel.value);
+  outfitSel.addEventListener('change', applyCharacter);
+  hueSel.addEventListener('change', applyCharacter);
   game.input.bindButton($('tb-brake'), 'brake');
   game.input.bindButton($('tb-jump'), 'jump');
   game.input.bindButton($('tb-tuck'), 'tuck');
+  game.input.bindButton($('tb-push'), 'push');
   // audio needs a user gesture
   addEventListener('pointerdown', () => game.audio.start(), { once: true });
   addEventListener('keydown', () => game.audio.start(), { once: true });

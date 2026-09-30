@@ -14,23 +14,26 @@ export const G = 9.81;
 export const TUNING = {
   mass: 80,
   rho: 1.0,                 // air density at altitude
-  cdaUpright: 0.60,
-  cdaTuck: 0.30,
-  muGroomed: 0.042,         // kinetic friction, groomed piste
-  muPowder: 0.105,
-  plowPowder: 0.010,        // extra drag off piste  (m/s^2 per (m/s)^2)
+  cdaUpright: 0.30,
+  cdaTuck: 0.15,
+  muGroomed: 0.016,         // kinetic friction, groomed piste
+  muPowder: 0.060,
+  plowPowder: 0.008,        // extra drag off piste  (m/s^2 per (m/s)^2)
   gripGroomed: 1.0,
-  gripPowder: 0.62,
-  gripBase: 0.16,           // lateral grip (in g) with flat skis
-  gripEdge: 0.98,           // extra lateral grip (in g) with fully engaged edges
-  skidFriction: 0.42,
-  brakeDecel: 0.42,         // g
-  yawRateMax: 1.75,
+  gripPowder: 0.68,
+  gripBase: 0.20,           // lateral grip (in g) with flat skis
+  gripEdge: 1.50,           // extra lateral grip (in g) with fully engaged edges
+  skidFriction: 0.40,
+  brakeDecel: 0.50,         // g
+  yawRateMax: 2.05,
   snapHeight: 0.24,         // legs absorb small bumps up to this height
   snapUpSpeed: 2.1,         // ...unless leaving the surface faster than this
-  crashImpact: 13.5,        // m/s into the snow
-  hardImpact: 8.5,
+  crashImpact: 14.5,        // m/s into the snow
+  hardImpact: 9.5,
   treeSpeed: 3.5,
+  slopeBoost: 1.2,          // multiplies the slope-parallel part of gravity on the snow
+  pushMax: 13.0,            // skating (Shift) works up to this speed
+  pushAccel: 4.6,
 };
 
 const _n = { x: 0, y: 1, z: 0 };
@@ -72,6 +75,7 @@ export class SkierPhysics {
     this.pathS = 0;
     this.pathDist = 0;
     this._proj = {};
+    this.tune = { drag: 1, mu: 1, grip: 1 };      // run-specific multipliers
   }
 
   reset(x, z, yaw, speed = 0) {
@@ -96,10 +100,32 @@ export class SkierPhysics {
     this.lean = 0;
     this.compress = 0;
     this.events.length = 0;
+    this._hasPrev = false;
   }
 
   get forward() {
     return [Math.sin(this.yaw), 0, -Math.cos(this.yaw)];
+  }
+
+  /** remember the pose before a physics step so the renderer can interpolate between steps */
+  savePrev() {
+    const p = this._prev || (this._prev = { x: 0, y: 0, z: 0, yaw: 0, lean: 0, compress: 0 });
+    p.x = this.x; p.y = this.y; p.z = this.z; p.yaw = this.yaw; p.lean = this.lean; p.compress = this.compress;
+    this._hasPrev = true;
+  }
+
+  /** copy of the state for drawing, with the pose blended `alpha` of the way from the previous step to this one */
+  interp(alpha, out) {
+    Object.assign(out, this);
+    if (this._hasPrev && !this.crashed) {
+      const p = this._prev;
+      out.x = p.x + (this.x - p.x) * alpha;
+      out.y = p.y + (this.y - p.y) * alpha;
+      out.z = p.z + (this.z - p.z) * alpha;
+      out.yaw = p.yaw + angleDiff(this.yaw, p.yaw) * alpha;
+      out.lean = p.lean + (this.lean - p.lean) * alpha;
+    }
+    return out;
   }
 
   /** surface under the skier: friction, grip and drag from the distance to the groomed piste */
@@ -122,6 +148,7 @@ export class SkierPhysics {
     const T = TUNING;
     const w = this.world;
     this.events.length = 0;
+    this.savePrev();
 
     if (this.crashed) return this._stepCrashed(dt);
 
@@ -146,13 +173,13 @@ export class SkierPhysics {
     }
 
     const onPiste = this._surface(this.x, this.z);
-    const mu = T.muPowder + (T.muGroomed - T.muPowder) * onPiste;
+    const mu = (T.muPowder + (T.muGroomed - T.muPowder) * onPiste) * this.tune.mu;
     const gripMul = T.gripPowder + (T.gripGroomed - T.gripPowder) * onPiste;
     const plow = T.plowPowder * (1 - onPiste);
     this.surface = onPiste > 0.5 ? 'groomed' : 'powder';
 
     const cda = T.cdaUpright + (T.cdaTuck - T.cdaUpright) * this.tuck;
-    const dragK = 0.5 * T.rho * cda / T.mass;
+    const dragK = 0.5 * T.rho * cda / T.mass * this.tune.drag;
 
     if (this.grounded) this._stepGround(dt, input, mu, gripMul, plow, dragK);
     else this._stepAir(dt, input, dragK);
@@ -218,7 +245,7 @@ export class SkierPhysics {
 
     // ---- steering: yaw rate the player asks for, limited by what the grip could follow
     const engage = Math.abs(this.steer);
-    const gripFull = (T.gripBase + T.gripEdge) * gripMul * gN * (1 - 0.18 * this.tuck);
+    const gripFull = (T.gripBase + T.gripEdge) * gripMul * gN * (1 - 0.18 * this.tuck) * this.tune.grip;
     const yawCap = Math.min(T.yawRateMax, 1.3 * gripFull / Math.max(speed, 2.6));
     const pivot = 1 + 0.9 * this.brake + (speed < 4 ? 0.7 : 0);
     let yawRate = this.steer * yawCap * pivot;
@@ -237,7 +264,7 @@ export class SkierPhysics {
     rx = fy * nz - fz * ny; ry = fz * nx - fx * nz; rz = fx * ny - fy * nx;
     const rl2 = Math.hypot(rx, ry, rz) || 1; rx /= rl2; ry /= rl2; rz /= rl2;
 
-    const aGrip = (T.gripBase + T.gripEdge * engage) * gripMul * gN * (1 - 0.18 * this.tuck) * (1 + 0.15 * this.compress);
+    const aGrip = (T.gripBase + T.gripEdge * engage) * gripMul * gN * (1 - 0.18 * this.tuck) * (1 + 0.15 * this.compress) * this.tune.grip;
     if (speed > 0.05) {
       const vf = tx * fx + ty * fy + tz * fz;
       const vr = tx * rx + ty * ry + tz * rz;
@@ -263,9 +290,10 @@ export class SkierPhysics {
 
     // ---- gravity along the slope, friction, drag, braking, pushing
     const gn = -G * ny;                                     // g . n
-    tx += (0 - gn * nx) * dt;                               // gravity projected on the tangent plane
-    ty += (-G - gn * ny) * dt;
-    tz += (0 - gn * nz) * dt;
+    const sb = T.slopeBoost;                                // a little extra pull down the fall line: arcade speed
+    tx += (0 - gn * nx) * dt * sb;                          // gravity projected on the tangent plane
+    ty += (-G - gn * ny) * dt * sb;
+    tz += (0 - gn * nz) * dt * sb;
     speed = Math.hypot(tx, ty, tz);
     if (speed > 1e-4) {
       const ux = tx / speed, uy = ty / speed, uz = tz / speed;
@@ -275,12 +303,12 @@ export class SkierPhysics {
       const ns = Math.max(speed - dec * dt, 0);
       tx = ux * ns; ty = uy * ns; tz = uz * ns; speed = ns;
     }
-    if (input.push && speed < 9.5) {                        // skating / double poling out of the gate
-      const push = 3.4 * (1 - speed / 9.5);
+    if (input.push && speed < T.pushMax) {                  // skating / double poling
+      const push = T.pushAccel * (1 - speed / T.pushMax) + 0.6;
       tx += fx * push * dt; ty += fy * push * dt; tz += fz * push * dt;
     }
     if (input.autoPush && speed < input.autoPush) {
-      const push = 2.2;
+      const push = 3.6;
       tx += fx * push * dt; ty += fy * push * dt; tz += fz * push * dt;
     }
     this.vx = tx; this.vy = ty; this.vz = tz;

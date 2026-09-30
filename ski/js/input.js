@@ -5,8 +5,8 @@ export class Input {
   constructor(canvas) {
     this.keys = new Set();
     this.steerKey = 0;
-    this.touch = { left: false, right: false, tuck: false, brake: false, jump: false, steerAnalog: 0, active: false };
-    this.pad = { steer: 0, tuck: 0, brake: 0, jump: false };
+    this.touch = { left: false, right: false, tuck: false, brake: false, jump: false, push: false, steerAnalog: 0, active: false };
+    this.pad = { steer: 0, tuck: 0, brake: 0, jump: false, push: false };
     this.pressed = new Set();      // one-shot presses since the last consume()
     this.enabled = true;
     this.handlers = {};
@@ -68,12 +68,13 @@ export class Input {
   _pollPad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const p = pads && [...pads].find((g) => g && g.connected);
-    if (!p) { this.pad.steer = this.pad.tuck = this.pad.brake = 0; this.pad.jump = false; return; }
+    if (!p) { this.pad.steer = this.pad.tuck = this.pad.brake = 0; this.pad.jump = false; this.pad.push = false; return; }
     const dz = (v) => (Math.abs(v) < 0.12 ? 0 : v);
     this.pad.steer = dz(p.axes[0] || 0);
     this.pad.tuck = clamp((p.buttons[7] ? p.buttons[7].value : 0) + (p.buttons[12] && p.buttons[12].pressed ? 1 : 0), 0, 1);
     this.pad.brake = clamp((p.buttons[6] ? p.buttons[6].value : 0) + (p.buttons[13] && p.buttons[13].pressed ? 1 : 0), 0, 1);
     this.pad.jump = !!(p.buttons[0] && p.buttons[0].pressed);
+    this.pad.push = !!(p.buttons[2] && p.buttons[2].pressed);
     if (p.buttons[9] && p.buttons[9].pressed) this.pressed.add('Escape');
   }
 
@@ -89,9 +90,10 @@ export class Input {
     this.steerKey = target === 0 ? damp(this.steerKey, 0, 14, dt) : clamp(this.steerKey + Math.sign(target - this.steerKey) * dt * 5.5, -1, 1);
     if (target !== 0 && Math.sign(target) !== Math.sign(this.steerKey)) this.steerKey = 0;
     const steer = clamp(this.steerKey + this.pad.steer, -1, 1);
-    const tuck = k.has('ArrowUp') || k.has('KeyW') || k.has('ShiftLeft') || k.has('ShiftRight') || this.touch.tuck ? 1 : this.pad.tuck;
+    const tuck = k.has('ArrowUp') || k.has('KeyW') || this.touch.tuck ? 1 : this.pad.tuck;
+    const push = k.has('ShiftLeft') || k.has('ShiftRight') || this.touch.push || this.pad.push;
     const brake = k.has('ArrowDown') || k.has('KeyS') || this.touch.brake ? 1 : this.pad.brake;
     const jump = k.has('Space') || this.touch.jump || this.pad.jump;
-    return { steer, tuck, brake, jump, push: false };
+    return { steer, tuck, brake, jump, push: !!push };
   }
 }

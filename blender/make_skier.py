@@ -23,6 +23,12 @@ import numpy as np
 import common as C
 from common import bpy
 
+STYLE = 'race'
+if '--style' in sys.argv:
+    STYLE = sys.argv[sys.argv.index('--style') + 1]
+FREE = STYLE == 'free'
+
+
 # ------------------------------------------------------------------ stance (game coords)
 SKI_LEN = 1.66
 SKI_MOUNT_Z = -0.03           # boot centre relative to the ski middle
@@ -220,7 +226,12 @@ def make_materials():
     vc = M['suit'].node('ShaderNodeVertexColor', -400, 200, layer_name='Col')
     M['suit'].link_bsdf(vc, 'Color', 'Base Color')
     M['gaiter'] = pbr('gaiter', (0.028, 0.030, 0.036), 0.88)
-    M['helmet'] = pbr('helmet', (0.75, 0.03, 0.03), 0.22, coat_weight=1.0, coat_roughness=0.05)
+    M['helmet'] = pbr('helmet', (0.85, 0.28, 0.02) if FREE else (0.75, 0.03, 0.03), 0.22, coat_weight=1.0, coat_roughness=0.05)
+    M['skin'] = pbr('skin', (0.62, 0.34, 0.24), 0.58)
+    M['lips'] = pbr('lips', (0.38, 0.10, 0.09), 0.5)
+    M['hair'] = pbr('hair', (0.035, 0.022, 0.014), 0.7)
+    M['pack'] = pbr('pack', (0.85, 0.28, 0.02), 0.7)
+    M['pack_strap'] = pbr('pack_strap', (0.03, 0.03, 0.035), 0.75)
     M['helmet_trim'] = pbr('helmet_trim', (0.02, 0.02, 0.025), 0.5)
     M['goggle_frame'] = pbr('goggle_frame', (0.015, 0.015, 0.018), 0.45)
     M['goggle_lens'] = pbr('goggle_lens', (0.32, 0.55, 0.85), 0.04, metal=1.0)
@@ -262,29 +273,32 @@ def build_body():
         edges.append((names[a], names[b]))
 
     P = J['pelvis']
-    V('pelvis', P, 0.150, 0.118)
-    V('waist', J['waist'], 0.142, 0.100)
-    V('chest1', J['chest1'], 0.170, 0.112)
-    V('chest2', J['chest2'], 0.190, 0.120)
-    V('neckbase', J['neckbase'], 0.072, 0.076)
-    V('neck', J['neck'], 0.056, 0.060)
+    tp = 1.10 if FREE else 1.0          # jacket volume
+    ap = 1.16 if FREE else 1.0          # sleeves
+    lp = 1.10 if FREE else 1.0          # trousers
+    V('pelvis', P, 0.160 * lp, 0.130 * lp)
+    V('waist', J['waist'], 0.152 * tp, 0.114 * tp)
+    V('chest1', J['chest1'], 0.186 * tp, 0.130 * tp)
+    V('chest2', J['chest2'], 0.206 * tp, 0.138 * tp)
+    V('neckbase', J['neckbase'], 0.078, 0.080)
+    V('neck', J['neck'], 0.060, 0.064)
     E('pelvis', 'waist'); E('waist', 'chest1'); E('chest1', 'chest2'); E('chest2', 'neckbase'); E('neckbase', 'neck')
     for side in 'LR':
         hip, knee, ankle = J[f'hip.{side}'], J[f'knee.{side}'], J[f'ankle.{side}']
-        V(f'hip.{side}', hip, 0.098, 0.106)
-        V(f'thigh.{side}', hip + (knee - hip) * 0.45, 0.088, 0.090)
-        V(f'knee.{side}', knee, 0.061, 0.064)
-        V(f'calf.{side}', knee + (ankle - knee) * 0.32, 0.061, 0.066)
-        V(f'shin.{side}', knee + (ankle - knee) * 0.72, 0.048, 0.048)
-        V(f'ankle.{side}', ankle + (knee - ankle) * 0.10, 0.045, 0.046)
+        V(f'hip.{side}', hip, 0.104 * lp, 0.112 * lp)
+        V(f'thigh.{side}', hip + (knee - hip) * 0.45, 0.096 * lp, 0.100 * lp)
+        V(f'knee.{side}', knee, 0.068 * lp, 0.072 * lp)
+        V(f'calf.{side}', knee + (ankle - knee) * 0.32, 0.068 * lp, 0.074 * lp)
+        V(f'shin.{side}', knee + (ankle - knee) * 0.72, 0.054 * lp, 0.054 * lp)
+        V(f'ankle.{side}', ankle + (knee - ankle) * 0.10, 0.048, 0.049)
         E('pelvis', f'hip.{side}'); E(f'hip.{side}', f'thigh.{side}'); E(f'thigh.{side}', f'knee.{side}')
         E(f'knee.{side}', f'calf.{side}'); E(f'calf.{side}', f'shin.{side}'); E(f'shin.{side}', f'ankle.{side}')
         sh, el, wr = J[f'shoulder.{side}'], J[f'elbow.{side}'], J[f'wrist.{side}']
-        V(f'sh.{side}', sh, 0.062, 0.062)
-        V(f'upper.{side}', sh + (el - sh) * 0.45, 0.052, 0.052)
-        V(f'elbow.{side}', el, 0.043, 0.043)
-        V(f'fore.{side}', el + (wr - el) * 0.4, 0.043, 0.043)
-        V(f'wrist.{side}', wr, 0.031, 0.031)
+        V(f'sh.{side}', sh, 0.070 * ap, 0.070 * ap)
+        V(f'upper.{side}', sh + (el - sh) * 0.45, 0.058 * ap, 0.058 * ap)
+        V(f'elbow.{side}', el, 0.048 * ap, 0.048 * ap)
+        V(f'fore.{side}', el + (wr - el) * 0.4, 0.047 * ap, 0.047 * ap)
+        V(f'wrist.{side}', wr, 0.033, 0.033)
         E('chest2', f'sh.{side}'); E(f'sh.{side}', f'upper.{side}'); E(f'upper.{side}', f'elbow.{side}')
         E(f'elbow.{side}', f'fore.{side}'); E(f'fore.{side}', f'wrist.{side}')
 
@@ -309,11 +323,20 @@ def build_body():
 def build_head(M):
     parts = {}
     head = J['head']
-    fwd = np.array([0.0, math.sin(math.radians(6)), math.cos(math.radians(6))])
-    # skull under the helmet / gaiter (dark)
-    v, t = ellipsoid(head + np.array([0, 0.005, 0.005]), (0.094, 0.114, 0.106), nu=24, nv=14)
-    parts['skull'] = (v, t, 'helmet')
-    # helmet: dome open at the bottom, slightly longer at the back, small peak
+    # a real face: skin head, nose, cheeks, lips and chin (the goggles sit over the eyes and the helmet over the top)
+    v, t = ellipsoid(head + np.array([0, 0.005, 0.005]), (0.094, 0.114, 0.106), nu=28, nv=16)
+    parts['skull'] = (v, t, 'skin')
+    feat = [ellipsoid(head + np.array([0.0, -0.020, 0.108]), (0.013, 0.028, 0.024), nu=12, nv=8),           # nose
+            ellipsoid(head + np.array([0.047, -0.046, 0.080]), (0.032, 0.031, 0.030), nu=12, nv=8),          # cheeks
+            ellipsoid(head + np.array([-0.047, -0.046, 0.080]), (0.032, 0.031, 0.030), nu=12, nv=8),
+            ellipsoid(head + np.array([0.0, -0.092, 0.064]), (0.041, 0.031, 0.038), nu=14, nv=8)]           # chin
+    parts['face'] = (*merge(feat), 'skin')
+    v, t = ellipsoid(head + np.array([0.0, -0.062, 0.096]), (0.022, 0.006, 0.010), nu=14, nv=6)
+    parts['lips'] = (v, t, 'lips')
+    # hair showing under the helmet at the nape
+    v, t = ellipsoid(head + np.array([0.0, -0.030, -0.070]), (0.092, 0.098, 0.052), nu=18, nv=10)
+    parts['hair'] = (v, t, 'hair')
+    # helmet: dome open at the bottom, slightly longer at the back
     hc = head + np.array([0, 0.022, -0.004])
     v, t = ellipsoid(hc, (0.128, 0.128, 0.142), nu=32, nv=18)
     keep = v[:, 1] > head[1] - 0.045
@@ -326,12 +349,6 @@ def build_head(M):
     for sx in (1, -1):
         ears.append(ellipsoid(head + np.array([sx * 0.114, -0.020, -0.006]), (0.017, 0.050, 0.055), nu=14, nv=8))
     parts['ears'] = (*merge(ears), 'helmet_trim')
-    # chin / mouth guard band of the helmet (thin skirt below the goggles)
-    v, t = ellipsoid(head + np.array([0, -0.028, 0.030]), (0.094, 0.048, 0.086), nu=24, nv=10)
-    keep = (v[:, 2] > head[2] + 0.028) & (v[:, 1] < head[1] - 0.010)
-    idx = np.cumsum(keep) - 1
-    tk = np.array([tr for tr in t if keep[tr].all()])
-    parts['chin'] = (v[keep], idx[tk], 'helmet')
     # goggles: curved frame + lens wrapped around the face
     R = 0.118
     gcen = head + np.array([0, 0.020, 0.0])
@@ -343,7 +360,6 @@ def build_head(M):
             for i in range(nx + 1):
                 u = (i / nx - 0.5) * 2
                 vv = (j / ny - 0.5) * 2
-                # rounded-rectangle outline
                 sx = math.copysign(abs(u) ** 0.8, u)
                 sy = math.copysign(abs(vv) ** 0.9, vv) * (1.0 - 0.18 * abs(u) ** 2)
                 th = sx * w_ / R
@@ -352,8 +368,8 @@ def build_head(M):
                 verts.append(gcen + np.array([math.sin(th) * r, y, math.cos(th) * r * 0.97 - 0.010]))
         for j in range(ny):
             for i in range(nx):
-                a = j * (nx + 1) + i
-                tris += [[a, a + 1, a + nx + 1], [a + 1, a + nx + 2, a + nx + 1]]
+                a_ = j * (nx + 1) + i
+                tris += [[a_, a_ + 1, a_ + nx + 1], [a_ + 1, a_ + nx + 2, a_ + nx + 1]]
         (fr if name == 'frame' else ls).append((np.array(verts), np.array(tris)))
     parts['goggle_frame'] = (*merge(fr), 'goggle_frame')
     parts['goggle_lens'] = (*merge(ls), 'goggle_lens')
@@ -366,10 +382,31 @@ def build_head(M):
             r = 0.132 + 0.001
             verts.append(gcen + np.array([math.sin(th) * r * 0.99, dy + 0.004, math.cos(th) * r * 1.13 - 0.008]))
     for i in range(n):
-        a = 2 * i
-        b = 2 * ((i + 1) % n)
-        tris += [[a, b, a + 1], [b, b + 1, a + 1]]
+        a_ = 2 * i
+        b_ = 2 * ((i + 1) % n)
+        tris += [[a_, b_, a_ + 1], [b_, b_ + 1, a_ + 1]]
     parts['strap'] = (np.array(verts), np.array(tris), 'strap')
+    return parts
+
+
+def build_backpack():
+    """freeride backpack strapped over the jacket"""
+    parts = {}
+    lean = math.radians(TORSO_LEAN)
+    up = np.array([0.0, math.cos(lean), math.sin(lean)])
+    back = np.array([0.0, math.sin(lean), -math.cos(lean)])
+    c = J['chest1'] + up * 0.01 + back * 0.150
+    rot = rot_x(TORSO_LEAN)
+    v, t = ellipsoid(c, (0.118, 0.175, 0.066), rot=rot, nu=24, nv=14)
+    parts['pack'] = (v, t, 'pack')
+    v, t = ellipsoid(c + up * 0.15 + back * 0.012, (0.098, 0.04, 0.062), rot=rot, nu=16, nv=8)
+    parts['pack_flap'] = (v, t, 'pack_strap')
+    sv = []
+    for sx in (1, -1):
+        p0 = J['chest2'] + np.array([sx * 0.10, 0.06, 0.0]) + back * 0.06
+        p1 = J['chest1'] + np.array([sx * 0.13, 0.0, 0.0]) - back * 0.02 + up * 0.03
+        sv.append(tube(p0, p1, 0.022, 0.022, sides=8, rings=2))
+    parts['pack_straps'] = (*merge(sv), 'pack_strap')
     return parts
 
 
@@ -635,9 +672,9 @@ def rigid_weights(n, bone, names):
 
 # ---------------------------------------------------------------------------- main
 def paint_suit(ob, M):
-    """race-suit design as smooth per-vertex colours (linear RGB), from position and normal.
-    Red suit, white side panels, black yoke over the shoulders and upper back, black lower legs, white cuffs,
-    black neck gaiter."""
+    """outfit design as smooth per-vertex colours (linear RGB), from position and normal.
+    race: red suit, white side panels, black yoke, black lower legs, white cuffs, black neck gaiter.
+    free: teal jacket with dark yoke and orange cuffs, charcoal trousers, neck gaiter pulled down."""
     me = ob.data
     me.materials.append(M['suit'].mat)
     n = len(me.vertices)
@@ -654,34 +691,55 @@ def paint_suit(ob, M):
         t = np.clip((v - a) / (b - a), 0.0, 1.0)
         return t * t * (3 - 2 * t)
 
-    RED = np.array([0.60, 0.030, 0.028])
     WHITE = np.array([0.80, 0.82, 0.86])
     BLACK = np.array([0.011, 0.012, 0.015])
-    col = np.tile(RED, (n, 1))
-
-    def mix(target, w):
-        nonlocal col
-        col = col * (1 - w[:, None]) + np.asarray(target)[None, :] * w[:, None]
-
     ch2, ch1, nb = J['chest2'][1], J['chest1'][1], J['neckbase'][1]
-    # white side panels down torso and legs (outer faces), continuing onto the outside of the arms
-    side = ss(0.80, 0.95, np.abs(gn[:, 0])) * ss(0.050, 0.090, np.abs(x))
-    mix(WHITE, side * (1 - ss(ch2 - 0.030, ch2 + 0.010, y)) * ss(0.20, 0.26, y))
-    arm = ss(0.35, 0.65, gn[:, 0] * np.sign(x)) * ss(0.19, 0.24, np.abs(x))
-    mix(WHITE, arm * 0.85)
-    # black yoke: shoulders and upper back, with a V-shaped lower edge
-    yoke = ss(0.0, 0.020, (y + 0.32 * np.abs(x)) - (ch2 - 0.065))
-    front = ss(0.10, 0.45, gn[:, 2])
-    mix(BLACK, yoke * (1 - 0.85 * front * ss(ch2 + 0.02, ch2 - 0.03, y)))
-    # black lower legs (the boot cuffs hide most of it) and white ankle rings
-    mix(BLACK, ss(0.34, 0.24, y))
-    # cuffs
-    for s_ in 'LR':
-        for jn in (f'wrist.{s_}',):
-            d = np.linalg.norm(g - J[jn], axis=1)
+    lean = math.radians(TORSO_LEAN)
+    tup = np.array([0.0, math.cos(lean), math.sin(lean)])
+    along = (g - J['pelvis']) @ tup                                              # distance up the torso axis
+    if not FREE:
+        RED = np.array([0.60, 0.030, 0.028])
+        col = np.tile(RED, (n, 1))
+
+        def mix(target, w):
+            nonlocal col
+            col = col * (1 - w[:, None]) + np.asarray(target)[None, :] * w[:, None]
+
+        side = ss(0.80, 0.95, np.abs(gn[:, 0])) * ss(0.050, 0.090, np.abs(x))
+        mix(WHITE, side * (1 - ss(ch2 - 0.030, ch2 + 0.010, y)) * ss(0.20, 0.26, y))
+        arm = ss(0.35, 0.65, gn[:, 0] * np.sign(x)) * ss(0.19, 0.24, np.abs(x))
+        mix(WHITE, arm * 0.85)
+        yoke = ss(0.0, 0.020, (y + 0.32 * np.abs(x)) - (ch2 - 0.065))
+        front = ss(0.10, 0.45, gn[:, 2])
+        mix(BLACK, yoke * (1 - 0.85 * front * ss(ch2 + 0.02, ch2 - 0.03, y)))
+        mix(BLACK, ss(0.34, 0.24, y))
+        for s_ in 'LR':
+            d = np.linalg.norm(g - J[f'wrist.{s_}'], axis=1)
             mix(WHITE, ss(0.075, 0.045, d))
-    # neck gaiter
-    mix(BLACK, ss(nb - 0.015, nb + 0.010, y))
+        mix(BLACK, ss(nb - 0.015, nb + 0.010, y))
+    else:
+        JACKET = np.array([0.012, 0.28, 0.31])
+        JACKET_D = np.array([0.006, 0.085, 0.105])
+        PANTS = np.array([0.030, 0.032, 0.038])
+        ORANGE = np.array([0.85, 0.30, 0.03])
+        col = np.tile(PANTS, (n, 1))
+
+        def mix(target, w):
+            nonlocal col
+            col = col * (1 - w[:, None]) + np.asarray(target)[None, :] * w[:, None]
+
+        mix(JACKET, ss(0.095, 0.115, along))                                       # everything above the hips is jacket
+        mix(JACKET_D, ss(0.44, 0.47, along) * (1 - 0.0))                           # dark shoulder yoke
+        mix(JACKET_D, ss(0.115, 0.135, along) * (1 - ss(0.145, 0.165, along)))     # dark hem band
+        mix(ORANGE, ss(0.16, 0.175, along) * (1 - ss(0.185, 0.20, along)) * 0.9)   # orange hem stripe
+        for s_ in 'LR':
+            d = np.linalg.norm(g - J[f'wrist.{s_}'], axis=1)
+            mix(JACKET_D, ss(0.115, 0.085, d))                                      # sleeve cuffs
+            mix(ORANGE, ss(0.17, 0.15, d) * (1 - ss(0.12, 0.10, d)) * 0.9)          # orange sleeve band
+        # trousers: darker below the knees, lighter side panels
+        mix(BLACK, ss(0.36, 0.25, y))
+        mix(PANTS * 1.6, ss(0.80, 0.95, np.abs(gn[:, 0])) * ss(0.05, 0.09, np.abs(x)) * (1 - ss(0.095, 0.115, along)))
+        mix(JACKET_D, ss(nb - 0.015, nb + 0.010, y))                                # neck gaiter, pulled down
     # a whisper of fabric variation so the suit does not look like plastic
     rng = np.random.default_rng(3)
     col *= (1.0 + 0.035 * np.sin(g @ np.array([31.0, 27.0, 23.0]) + rng.uniform(0, 6))[:, None])
@@ -772,7 +830,7 @@ def main():
         s = side_of(name)
         skin_object(ob, arm, rigid_weights(len(ob.data.vertices), f'Hand.{s}', names), names)
         objs.append(ob)
-    for name, (v, t, mat) in build_bib().items():
+    for name, (v, t, mat) in (build_bib().items() if not FREE else []):
         ob = make_obj(name, v, t)
         me = ob.data
         # planar UVs (the plate is a curved grid: u across, v up)
@@ -789,10 +847,20 @@ def main():
         skin_object(ob, arm, Wm, names)
         objs.append(ob)
 
+    if FREE:
+        for name, (v, t, mat) in build_backpack().items():
+            ob = make_obj(name, v, t)
+            ob.data.materials.append(M[mat].mat)
+            pts_ = np.array([vv.co[:] for vv in ob.data.vertices])
+            gp_ = np.stack([pts_[:, 0], pts_[:, 2], -pts_[:, 1]], 1)
+            _, Wm = bone_weights(gp_)
+            skin_object(ob, arm, Wm, names)
+            objs.append(ob)
+
     # ---- export
     tri = sum(len(o.data.polygons) for o in objs)
     print(f'skier: {len(objs)} meshes, ~{tri} polygons, {len(names)} bones')
-    out = os.path.join(C.ASSETS, 'models', 'skier.glb')
+    out = os.path.join(C.ASSETS, 'models', 'skier_free.glb' if FREE else 'skier.glb')
     C.export_glb(out, [arm] + objs, materials=True, skins=True, jpeg=True, vertex_colors=True)
     rest = {b[0]: dict(head=[float(x) for x in b[2]], tail=[float(x) for x in b[3]], parent=b[1]) for b in BONES}
     with open(os.path.join(C.ASSETS, 'models', 'skier_rig.json'), 'w') as f:
@@ -828,7 +896,7 @@ def preview(objs, arm):
     for name, (x, y, z, rz) in views.items():
         co.location = (x, y, z)
         co.rotation_euler = (math.radians(90), 0, math.radians(rz))
-        C.render_to(os.path.join(C.BUILD, f'skier_{name}.png'), 'PNG', 'RGB')
+        C.render_to(os.path.join(C.BUILD, f'skier_{"free_" if FREE else ""}{name}.png'), 'PNG', 'RGB')
     print('previews in', C.BUILD)
 
 
