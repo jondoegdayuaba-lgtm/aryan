@@ -12,6 +12,7 @@ import { Audio } from './audio.js';
 import { MapView } from './map.js';
 import { Hud } from './hud.js';
 import { Helicopter } from './heli.js';
+import { Wildlife } from './wildlife.js';
 
 const V3 = THREE.Vector3;
 const _fwd = new V3(), _tmp = new V3(), _w = { depth: 0, y: 0, body: null };
@@ -63,6 +64,8 @@ export class Play {
   async init() {
     const g = this.g;
     await this.heli.load();
+    this.wildlife = new Wildlife(g);
+    await this.wildlife.load();
     this.heli.onPhase = (p) => this._heliPhase(p);
     g.scene.add(g.camera);
     // flashlight rides on the camera
@@ -905,6 +908,7 @@ export class Play {
     this.map.update(p.pos.x, p.pos.y, p.pos.z);
     if (this.heliAt !== undefined && atmo.hour >= this.heliAt && this.heli.phase === 'idle') this.heli.start();
     this.heli.update(dt, w.storm);
+    this.wildlife.update(dt);
 
     // hud
     this._hud(dt, resting);

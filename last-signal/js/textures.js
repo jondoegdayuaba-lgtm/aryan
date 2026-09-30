@@ -575,7 +575,23 @@ function rustMetal(ac, hc, size) {
   });
 }
 
+function fur(ac, hc, size, base, seed) {
+  const tn = createTileNoise(seed), r = rng(seed);
+  fillPixels(ac, hc, size, (u, v, o) => {
+    const n = tn.fbm(u, v, 5, 4), s = tn.fbm(u, v, 80, 2, 0.5, 20);
+    const c = mixRGB(mixRGB(base, [0, 0, 0], 0.3), mixRGB(base, [255, 255, 255], 0.12), saturate(0.5 + 0.6 * n + 0.3 * s));
+    o.r = c[0]; o.g = c[1]; o.b = c[2]; o.h = 0.5 + 0.2 * s;
+  });
+  for (let i = 0; i < 2500; i++) {
+    const x = r() * size, y = r() * size;
+    ac.strokeStyle = `rgba(255,240,220,${0.06 + r() * 0.08})`; ac.lineWidth = 1;
+    ac.beginPath(); ac.moveTo(x, y); ac.lineTo(x + (r() - 0.5) * 4, y + 6 + r() * 8); ac.stroke();
+  }
+}
+
 const SURFACES = {
+  Fur_Deer: { paint: (a, h, s) => fur(a, h, s, hex(0x8a5f3a), 421), strength: 2, rough: 0.95 },
+  Fur_White: { paint: (a, h, s) => fur(a, h, s, hex(0xe3d7c2), 422), strength: 2, rough: 0.95 },
   Wood_Planks: { paint: (a, h, s) => planks(a, h, s, hex(0x8a7355), 401), strength: 5, rough: 0.9 },
   Wood_Old: { paint: (a, h, s) => planks(a, h, s, hex(0x5a5346), 402), strength: 6, rough: 0.95 },
   Wood_Fresh: { paint: (a, h, s) => planks(a, h, s, hex(0xb8925c), 403), strength: 4, rough: 0.8 },
