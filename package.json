@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:desktop": "node tools/build-desktop.mjs"
+    "build:desktop": "node tools/build-desktop.mjs",
+    "build:ebike-assets": "python3 tools/blender/build_assets.py"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

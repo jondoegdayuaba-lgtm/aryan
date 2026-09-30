@@ -1,0 +1,4 @@
+# Asset pipeline (Python 3.11):  pip install -r tools/blender/requirements.txt
+bpy==4.2.0
+pillow
+numpy

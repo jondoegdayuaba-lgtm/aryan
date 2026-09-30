@@ -1,3 +1,12 @@
+# Games
+
+Two browser games live in this repo.
+
+* **[Night Run](ebike/README.md)** (`/ebike/`): an e-bike police chase through a rain-soaked night city. Models and textures are built in Blender (`tools/blender`).
+* **Missile Run** (this page, root `index.html`): guide a missile through a range and a town.
+
+---
+
 # Missile Run
 
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Night Run — E-Bike Police Chase</title>
+  <meta name="description" content="Race an electric bike through a rain-soaked night city with the police on your tail. 3D models built in Blender.">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0e1a'/%3E%3Ccircle cx='18' cy='42' r='9' fill='none' stroke='%2325d0ff' stroke-width='4'/%3E%3Ccircle cx='47' cy='42' r='9' fill='none' stroke='%2325d0ff' stroke-width='4'/%3E%3Cpath d='M18 42l10-16h12l7 16M28 26l-3-6h-6' fill='none' stroke='%23ff3b3b' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three-addons/" } }</script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+  <div id="damage"></div>
+  <div id="speedlines"></div>
+
+  <div id="hud" class="hidden">
+    <div class="hud-tl">
+      <div class="panel score-panel">
+        <span class="label">SCORE</span><span id="score" class="num">0</span>
+        <span class="label t">TIME</span><span id="time" class="num small">0:00</span>
+      </div>
+      <div id="stars" class="stars" aria-label="Heat level">
+        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.8-6.3 3.8 1.7-7L2 9.2l7.1-.6z"/></svg>
+        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.8-6.3 3.8 1.7-7L2 9.2l7.1-.6z"/></svg>
+        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.8-6.3 3.8 1.7-7L2 9.2l7.1-.6z"/></svg>
+        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.8-6.3 3.8 1.7-7L2 9.2l7.1-.6z"/></svg>
+        <svg class="star" viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.8-6.3 3.8 1.7-7L2 9.2l7.1-.6z"/></svg>
+      </div>
+      <div id="status" class="status"></div>
+    </div>
+
+    <div class="hud-tr">
+      <canvas id="radar" aria-label="Radar"></canvas>
+      <div class="btns">
+        <button id="btn-mute" class="icon-btn" type="button" aria-label="Mute">
+          <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path class="w" d="M16 8.5a5 5 0 010 7M18.5 6a8.5 8.5 0 010 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
+          <svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="bust" class="bust hidden"><span>BUSTED IN</span><div class="bar"><div id="bust-fill"></div></div></div>
+    <div id="cool" class="cool hidden"><span>LOSING THE POLICE</span><div class="bar"><div id="cool-fill"></div></div></div>
+    <div id="popups" aria-live="polite"></div>
+
+    <div class="hud-bl">
+      <div class="speed"><span id="speed">0</span><small>km/h</small></div>
+    </div>
+    <div class="hud-bc">
+      <div class="gauge" id="hp-wrap"><span class="label">BIKE</span><div class="bar"><div id="hp-fill"></div></div></div>
+      <div class="gauge"><span class="label">BATTERY</span><div class="bar"><div id="bat-fill"></div></div></div>
+    </div>
+  </div>
+
+  <div id="touch" class="touch">
+    <div class="left"><button data-touch="left" aria-label="Steer left">◀</button><button data-touch="right" aria-label="Steer right">▶</button></div>
+    <div class="right"><button data-touch="drift" aria-label="Drift">DRIFT</button><button data-touch="brake" aria-label="Brake">BRAKE</button><button data-touch="boost" class="boost" aria-label="Boost">BOOST</button></div>
+  </div>
+
+  <div id="loading" class="screen">
+    <h1>NIGHT<span>RUN</span></h1>
+    <div class="load-bar"><div id="load-fill"></div></div>
+    <p id="load-text">Loading the city…</p>
+  </div>
+
+  <div id="screen-title" class="screen hidden">
+    <div class="title-card">
+      <h1>NIGHT<span>RUN</span></h1>
+      <p class="tag">You stole the wrong e-bike. The whole city is after you.</p>
+      <p class="how">Outrun the police through a rain-soaked city. Every star of heat brings more cruisers. Lose them out of sight to drop a star, and clear all of them to escape.</p>
+      <table class="keys">
+        <tr><td><kbd>W</kbd> <kbd>↑</kbd></td><td>Accelerate</td><td><kbd>Shift</kbd></td><td>Boost (uses battery)</td></tr>
+        <tr><td><kbd>A</kbd> <kbd>D</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Steer</td><td><kbd>Space</kbd></td><td>Handbrake drift</td></tr>
+        <tr><td><kbd>S</kbd> <kbd>↓</kbd></td><td>Brake / reverse</td><td><kbd>C</kbd> hold</td><td>Look behind</td></tr>
+        <tr><td><kbd>R</kbd></td><td>Restart</td><td><kbd>P</kbd> <kbd>M</kbd></td><td>Pause / mute</td></tr>
+      </table>
+      <p class="how small">Touch: hold ◀ ▶ to steer, the bike accelerates by itself.</p>
+      <div class="row">
+        <button id="btn-start" class="primary" type="button">RIDE</button>
+        <label class="q">Graphics
+          <select id="quality"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+        </label>
+      </div>
+      <p id="best" class="best"></p>
+    </div>
+  </div>
+
+  <div id="screen-pause" class="screen hidden">
+    <div class="title-card small">
+      <h2>PAUSED</h2>
+      <div class="row"><button id="btn-resume" class="primary" type="button">RESUME</button><button id="btn-menu" type="button">MENU</button></div>
+    </div>
+  </div>
+
+  <div id="screen-over" class="screen hidden">
+    <div class="title-card small">
+      <h2 id="over-title">BUSTED</h2>
+      <p id="over-sub" class="tag"></p>
+      <div id="over-stats" class="stats"></div>
+      <div class="row"><button id="btn-again" class="primary" type="button">RIDE AGAIN</button><button type="button" onclick="location.reload()">MENU</button></div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
