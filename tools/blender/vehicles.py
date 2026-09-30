@@ -195,6 +195,21 @@ def car(kind, M):
     mb.box(-0.28, 2.42, 0.52, 0.28, 2.50, 0.66, T)
     mb.box(-0.75, -2.36, 0.30, 0.75, -2.50, 0.46, T)
     mb.box(-0.9, -2.3, 0.22, 0.9, 2.4, 0.27, T)   # underbody
+    # panel gaps, belt-line chrome, grille slats, headlight bezels, wipers, antenna, fuel cap
+    for sx in (-1, 1):
+        for y in (-1.05, -0.10, 0.98):
+            mb.box(0.962 * sx - 0.006, y - 0.006, 0.50, 0.962 * sx + 0.006, y + 0.006, 0.95, M["well"])
+        mb.box(0.966 * sx - 0.004, -1.9, 0.955, 0.966 * sx + 0.004, 1.75, 0.968, M["chrome"])
+        mb.box(min(0.5 * sx, 0.88 * sx), 2.36, 0.64, max(0.5 * sx, 0.88 * sx), 2.40, 0.77, M["well"])   # bezel
+        mb.box(0.82 * sx - 0.03, -1.55, 0.84, 0.82 * sx + 0.03, -1.50, 0.92, M["chrome"])              # fuel cap
+        mb.between((0.05 * sx, 1.26, 1.08), (0.58 * sx, 1.40, 1.13), 0.006, M["well"], seg=4)          # wipers
+        mb.box(1.0 * sx - 0.055, 0.90, 1.035, 1.13 * sx + 0.055 * 0, 1.03, 1.115, T)                  # mirror housing
+    for k in range(5):
+        mb.box(-0.28, 2.505, 0.53 + k * 0.026, 0.28, 2.515, 0.545 + k * 0.026, M["chrome"])
+    mb.between((-0.55, -0.95, 1.46), (-0.72, -1.15, 1.98), 0.006, T, seg=4)
+    mb.box(-0.45, -2.49, 0.86, -0.36, -2.47, 0.90, M["decal_w"])                                       # reverse lamp
+    mb.box(0.36, -2.49, 0.86, 0.45, -2.47, 0.90, M["decal_w"])
+    mb.box(-0.9, -0.5, 0.28, -0.85, 0.7, 0.36, T); mb.box(0.85, -0.5, 0.28, 0.9, 0.7, 0.36, T)          # side skirts
     # plates
     mb.box(-0.26, -2.505, 0.60, 0.26, -2.495, 0.72, M["plate"])
     mb.box(-0.26, 2.505, 0.42, 0.26, 2.515, 0.52, M["plate"])

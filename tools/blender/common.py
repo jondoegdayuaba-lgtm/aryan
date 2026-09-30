@@ -391,3 +391,40 @@ def place(ob, pivot, parent=None):
     ob.location = Vector(pivot) - (parent.location if parent is not None else Vector((0, 0, 0)))
     ob.parent = parent
     return ob
+
+
+def loft_tube(name, mat, stations, seg=14, subsurf=1, cap_start=True, cap_end=True):
+    """Smooth organic tube through stations [(centre, rx, ry), ...].
+
+    rx is the radius across the body (X-ish), ry front-to-back, so torsos can be oval.
+    Welded and subdivided, so limbs and torsos read as soft forms instead of stacked cylinders.
+    """
+    mb = MB(name)
+    rings = []
+    up_ref = Vector((0, 0, 1))
+    for i, (c, rx, ry) in enumerate(stations):
+        c = Vector(c)
+        nxt = Vector(stations[min(i + 1, len(stations) - 1)][0])
+        prv = Vector(stations[max(i - 1, 0)][0])
+        t = (nxt - prv).normalized()
+        ref = up_ref if abs(t.dot(up_ref)) < 0.95 else Vector((0, 1, 0))
+        side = t.cross(ref).normalized()          # across the body
+        fwd = side.cross(t).normalized()          # front-to-back
+        rings.append([c + side * (rx * math.cos(2 * math.pi * k / seg)) + fwd * (ry * math.sin(2 * math.pi * k / seg)) for k in range(seg)])
+    for a, b in zip(rings, rings[1:]):
+        for k in range(seg):
+            j = (k + 1) % seg
+            mb.face([a[k], a[j], b[j], b[k]], mat, None, True)
+    if cap_start:
+        mb.face(rings[0][::-1], mat, None, True)
+    if cap_end:
+        mb.face(rings[-1], mat, None, True)
+    ob = mb.finish(weld=True)
+    if subsurf:
+        s = ob.modifiers.new("sub", "SUBSURF")
+        s.levels = subsurf
+        s.render_levels = subsurf
+        to_mesh_obj(ob)
+    for p in ob.data.polygons:
+        p.use_smooth = True
+    return ob

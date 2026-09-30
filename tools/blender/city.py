@@ -50,8 +50,8 @@ def materials():
     M["sig_case"] = pbr("sig_case", (0.02, 0.02, 0.02), 0.5, 0.2)
     M["orange"] = pbr("cone_orange", (0.95, 0.3, 0.02), 0.5)
     M["white"] = pbr("plain_white", (0.85, 0.85, 0.85), 0.5)
-    M["leaf1"] = pbr("leaf_a", (0.05, 0.16, 0.05), 0.85)
-    M["leaf2"] = pbr("leaf_b", (0.08, 0.22, 0.07), 0.85)
+    M["leaf1"] = pbr("foliage_a", (0.55, 0.75, 0.5), 0.85, albedo="leaf_a.jpg")
+    M["leaf2"] = pbr("foliage_b", (0.7, 0.85, 0.55), 0.85, albedo="leaf_a.jpg")
     M["bark"] = pbr("bark", (0.09, 0.06, 0.04), 0.9)
     M["ad"] = pbr("adpanel", (0.9, 0.9, 1), 0.3, emit=(0.6, 0.85, 1.0), emit_strength=2.5)
     M["glass_pane"] = pbr("shelter_glass", (0.5, 0.65, 0.75), 0.05, 0.0, alpha=0.18)
@@ -205,6 +205,14 @@ def tier(mb, M, fac, x0, y0, x1, y1, z0, z1, uoff, first=False):
         zb = GROUND_H + 0.4
     wall_side(mb, x0, y0, x1, y1, zb, z1, M[fac], 16, 14, GROUND_H + 0.4 if first else z0, uoff)
     roof_top(mb, x0, y0, x1, y1, z1, M["roof"])
+    # corner pilasters and belt courses break up the flat walls
+    if fac != "glass":
+        for (cx, cy, sx, sy) in ((x0, y0, 1, 1), (x1, y0, -1, 1), (x0, y1, 1, -1), (x1, y1, -1, -1)):
+            mb.box(min(cx, cx + sx * 0.5) - 0.12 * -sx * 0, min(cy, cy + sy * 0.5), zb, max(cx, cx + sx * 0.5), max(cy, cy + sy * 0.5), z1, M["trim"])
+        zz = zb + 4 * FLOOR_H
+        while zz < z1 - 2:
+            ledge(mb, x0, y0, x1, y1, zz, M, 0.18, 0.3)
+            zz += 4 * FLOOR_H
 
 
 def build_glass(M, rng):
@@ -525,12 +533,14 @@ def build_props(M):
                     k = 1 + 0.07 * math.sin(ph * 3 + th * 2.4 + x * 3) + 0.04 * math.sin(ph * 5 - th * 3 + y * 2)
                     return (x + r * k * math.sin(th) * math.cos(ph), y + r * k * math.sin(th) * math.sin(ph), z + r * 0.85 * k * math.cos(th))
                 a, b, c, d = vp(i, j), vp(i + 1, j), vp(i + 1, j + 1), vp(i, j + 1)
+                uv = lambda ii, jj: (ii / seg * 4, jj / rings * 3)
+                ua, ub, uc, ud = uv(i, j), uv(i + 1, j), uv(i + 1, j + 1), uv(i, j + 1)
                 if j == 0:
-                    mb.face([a, d, c], M[m], None, True)
+                    mb.face([a, d, c], M[m], [ua, ud, uc], True)
                 elif j == rings - 1:
-                    mb.face([a, c, b], M[m], None, True)
+                    mb.face([a, c, b], M[m], [ua, uc, ub], True)
                 else:
-                    mb.face([a, d, c, b], M[m], None, True)
+                    mb.face([a, d, c, b], M[m], [ua, ud, uc, ub], True)
     objs.append(mb.finish(weld=True))   # weld so the canopy shades smoothly
 
     # planter

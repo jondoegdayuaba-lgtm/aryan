@@ -231,63 +231,63 @@ def limb(M, name, mat, pts, r0, r1=None):
 
 def build_rider(M):
     lower, upper = [], []
-    hip = Vector((0, -0.22, 0.90))
-    # legs
+    L = C.loft_tube
+    lean = math.radians(-52)
     for s in (-1, 1):
-        thigh = [(0.11 * s, -0.22, 0.89), (0.18 * s, -0.04, 0.83), (0.19 * s, 0.10, 0.76)]
-        shin = [(0.19 * s, 0.10, 0.76), (0.19 * s, 0.06, 0.58), (0.175 * s, -0.02, 0.43)]
-        lower.append(limb(M, f"thigh{s}", M["jeans"], thigh, 0.085, 0.066))
-        lower.append(limb(M, f"shin{s}", M["jeans"], shin, 0.066, 0.05))
-        lower.append(blob(M, f"knee{s}", "jeans", (0.19 * s, 0.10, 0.76), (0.07, 0.07, 0.07)))
-        lower.append(blob(M, f"butt{s}", "jeans", (0.09 * s, -0.27, 0.90), (0.10, 0.12, 0.10)))
+        # legs: hip -> knee -> ankle, tapered, with a kneepad and cuffed shoe
+        lower.append(L(f"thigh{s}", M["jeans"], [((0.10 * s, -0.27, 0.90), 0.10, 0.11), ((0.14 * s, -0.12, 0.86), 0.098, 0.10),
+                                                 ((0.185 * s, 0.03, 0.80), 0.085, 0.088), ((0.19 * s, 0.11, 0.765), 0.072, 0.075)]))
+        lower.append(L(f"shin{s}", M["jeans"], [((0.19 * s, 0.11, 0.765), 0.072, 0.075), ((0.19 * s, 0.09, 0.66), 0.066, 0.07),
+                                                ((0.18 * s, 0.03, 0.52), 0.058, 0.06), ((0.175 * s, -0.01, 0.43), 0.062, 0.064)]))
+        lower.append(L(f"knee{s}", M["glove"], [((0.19 * s, 0.135, 0.79), 0.055, 0.03), ((0.19 * s, 0.155, 0.74), 0.06, 0.03)], 10, 1))
         mbs = MB(f"shoe{s}")
-        mbs.box(0.175 * s - 0.05, -0.10, 0.34, 0.175 * s + 0.05, 0.16, 0.42, M["shoe"])
-        mbs.box(0.175 * s - 0.052, -0.10, 0.335, 0.175 * s + 0.052, 0.165, 0.355, M["rubber"])
+        x = 0.175 * s
+        mbs.box(x - 0.055, -0.09, 0.365, x + 0.055, 0.17, 0.44, M["shoe"])
+        mbs.box(x - 0.05, -0.10, 0.44, x + 0.05, 0.02, 0.50, M["shoe"])
+        mbs.box(x - 0.058, -0.10, 0.335, x + 0.058, 0.18, 0.365, M["rubber"])
         so = mbs.finish()
-        C.add_bevel_subsurf(so, 0.02, 1, 2)
+        C.add_bevel_subsurf(so, 0.022, 1, 3)
         C.to_mesh_obj(so)
         lower.append(so)
-    # torso: hoodie ellipsoid leaning forward
-    lean = math.radians(-52)
-    torso = blob(M, "torso", "hoodie", (0, -0.03, 1.10), (0.20, 0.155, 0.31), (lean, 0, 0))
-    upper.append(torso)
-    upper.append(blob(M, "hood", "hoodie", (0, -0.10, 1.31), (0.13, 0.11, 0.10)))
-    upper.append(blob(M, "belly", "hoodie", (0, -0.17, 0.98), (0.19, 0.15, 0.19), (lean, 0, 0)))
-    # backpack (rounded box) strapped to the back, leaning with the torso
+    # torso: seat -> waist -> chest -> shoulders -> neck (oval sections, leaning over the bars)
+    upper.append(L("torso", M["hoodie"], [((0, -0.25, 0.90), 0.18, 0.13), ((0, -0.14, 0.99), 0.16, 0.12), ((0, 0.00, 1.09), 0.19, 0.13),
+                                          ((0, 0.13, 1.17), 0.215, 0.12), ((0, 0.22, 1.22), 0.17, 0.10), ((0, 0.26, 1.26), 0.075, 0.07)], 16, 1))
+    # hood pooled behind the neck + jacket collar
+    upper.append(L("hood", M["hoodie"], [((0, 0.10, 1.22), 0.11, 0.06), ((0, 0.19, 1.29), 0.115, 0.075), ((0, 0.25, 1.32), 0.09, 0.06)], 12, 1))
+    upper.append(L("collar", M["hoodie"], [((0, 0.24, 1.23), 0.09, 0.08), ((0, 0.27, 1.28), 0.08, 0.07)], 12, 1))
+    # backpack strapped on, leaning with the torso
     mb = MB("pack_rider")
     mb.box(-0.20, -0.12, -0.17, 0.20, 0.12, 0.17, M["pack"])
     mb.box(-0.205, -0.125, -0.03, 0.205, 0.125, 0.01, M["hivis"])
     mb.box(-0.205, -0.125, 0.09, 0.205, 0.125, 0.12, M["hivis"])
     pk = mb.finish()
-    C.add_bevel_subsurf(pk, 0.035, 1, 3)
+    C.add_bevel_subsurf(pk, 0.04, 0, 4)
     C.to_mesh_obj(pk)
     pk.rotation_euler = (lean, 0, 0)
-    pk.location = (0, -0.17, 1.36)
+    pk.location = (0, -0.17, 1.30)
     upper.append(pk)
-    # arms to the grips
     for s in (-1, 1):
-        sh = (0.20 * s, 0.10, 1.30)
-        el = (0.30 * s, 0.27, 1.13)
-        hd = (0.37 * s, 0.385, 1.06)
-        upper.append(limb(M, f"uarm{s}", M["hoodie"], [sh, el], 0.058, 0.05))
-        upper.append(limb(M, f"farm{s}", M["hoodie"], [el, hd], 0.05, 0.04))
-        upper.append(blob(M, f"shoulder{s}", "hoodie", sh, (0.075, 0.075, 0.075)))
-        upper.append(blob(M, f"elbow{s}", "hoodie", el, (0.055, 0.055, 0.055)))
-        upper.append(blob(M, f"hand{s}", "glove", hd, (0.052, 0.06, 0.05)))
-    # head + helmet
-    hc = Vector((0, 0.235, 1.50))
-    upper.append(blob(M, "neck", "skin", (0, 0.19, 1.37), (0.055, 0.055, 0.07)))
-    upper.append(blob(M, "face", "skin", (0, 0.275, 1.475), (0.085, 0.09, 0.10)))
-    helm = blob(M, "helmet", "helmet", tuple(hc + Vector((0, 0.0, 0.03))), (0.125, 0.16, 0.13), (math.radians(-12), 0, 0))
+        sh, el, hd = (0.205 * s, 0.14, 1.17), (0.30 * s, 0.28, 1.10), (0.375 * s, 0.385, 1.06)
+        upper.append(L(f"uarm{s}", M["hoodie"], [(sh, 0.078, 0.078), ((0.25 * s, 0.21, 1.14), 0.065, 0.068), (el, 0.055, 0.058)], 12, 1))
+        upper.append(L(f"farm{s}", M["hoodie"], [(el, 0.056, 0.058), ((0.34 * s, 0.335, 1.085), 0.05, 0.052), ((0.372 * s, 0.375, 1.07), 0.043, 0.045)], 12, 1))
+        gl = MB(f"glove{s}")
+        gl.box(hd[0] - 0.05, hd[1] - 0.05, hd[2] - 0.05, hd[0] + 0.05, hd[1] + 0.06, hd[2] + 0.045, M["glove"])
+        gob = gl.finish()
+        C.add_bevel_subsurf(gob, 0.02, 1, 3)
+        C.to_mesh_obj(gob)
+        upper.append(gob)
+    # head: neck, face, full-face helmet with visor, chin bar, vents and a reflective stripe
+    upper.append(L("neck", M["skin"], [((0, 0.26, 1.24), 0.05, 0.05), ((0, 0.30, 1.30), 0.05, 0.05)], 10, 1))
+    upper.append(blob(M, "face", "skin", (0, 0.385, 1.35), (0.072, 0.075, 0.085)))
+    helm = blob(M, "helmet", "helmet", (0, 0.335, 1.39), (0.108, 0.14, 0.115), (math.radians(-14), 0, 0))
     upper.append(helm)
-    upper.append(blob(M, "visor", "visor", (0, 0.335, 1.505), (0.105, 0.06, 0.055)))
-    mb = MB("chinbar")
-    mb.between((-0.075, 0.28, 1.43), (0, 0.345, 1.40), 0.02, M["helmet"], seg=8)
-    mb.between((0.075, 0.28, 1.43), (0, 0.345, 1.40), 0.02, M["helmet"], seg=8)
-    upper.append(mb.finish())
-    mb = MB("hstripe")
-    mb.between((0, 0.11, 1.64), (0, 0.32, 1.66), 0.014, M["stripe"], seg=6)
-    mb.between((-0.001, 0.32, 1.66), (0, 0.36, 1.58), 0.014, M["stripe"], seg=6)
+    upper.append(L("chinbar", M["helmet"], [((-0.07, 0.34, 1.30), 0.022, 0.028), ((-0.04, 0.42, 1.27), 0.026, 0.028), ((0.04, 0.42, 1.27), 0.026, 0.028), ((0.07, 0.34, 1.30), 0.022, 0.028)], 8, 1))
+    vis = blob(M, "visor", "visor", (0, 0.44, 1.385), (0.095, 0.05, 0.05), (math.radians(-8), 0, 0))
+    upper.append(vis)
+    mb = MB("hdetails")
+    for x in (-0.03, 0.0, 0.03):
+        mb.box(x - 0.007, 0.28, 1.52, x + 0.007, 0.37, 1.535, M["visor"])   # top vents
+    mb.between((0, 0.24, 1.522), (0, 0.42, 1.505), 0.011, M["stripe"], seg=6)
     upper.append(mb.finish())
     lo = C.join(lower, "rider_lower_mesh")
     up = C.join(upper, "rider_upper_mesh")

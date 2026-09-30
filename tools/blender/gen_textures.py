@@ -459,6 +459,25 @@ def neon_atlas(size=1024):
     return alb.resize((size, size), Image.LANCZOS), emi.resize((size, size), Image.LANCZOS)
 
 
+def leaf_tex(size=512, seed=41):
+    """Clustered leaf dabs in several greens (tiles)."""
+    rng = random.Random(seed)
+    n = size * S
+    im = Image.new("RGB", (n, n), (18, 46, 20))
+    d = ImageDraw.Draw(im)
+    for _ in range(2600):
+        x, y = rng.randrange(n), rng.randrange(n)
+        r = rng.randint(10, 26)
+        g = rng.randint(60, 150)
+        col = (int(g * rng.uniform(0.25, 0.55)), g, int(g * rng.uniform(0.2, 0.45)))
+        for dx in (-n, 0, n):
+            for dy in (-n, 0, n):
+                d.ellipse([x + dx - r, y + dy - r * 0.6, x + dx + r, y + dy + r * 0.6], fill=col)
+    im = im.resize((size, size), Image.LANCZOS)
+    a = np.asarray(im, np.float32) * (0.7 + 0.5 * fbm(size, size, seed=seed)[..., None])
+    return to_img(a)
+
+
 def tyre_tread(size=256):
     """Small tiling knobby tread albedo for tyres."""
     im = Image.new("RGB", (size, size), (26, 26, 28))
@@ -494,6 +513,7 @@ def generate(out):
     save(a, f"{out}/neon_a.jpg")
     save(e, f"{out}/neon_e.jpg", 92)
     save(tyre_tread(), f"{out}/tread_a.jpg")
+    save(leaf_tex(), f"{out}/leaf_a.jpg")
 
 
 if __name__ == "__main__":
