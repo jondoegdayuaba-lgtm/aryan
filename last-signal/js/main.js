@@ -69,7 +69,7 @@ function applyQuality(name) {
   game.qualityName = name;
   game.quality = q;
   const { renderer, post, sun, water, terrain } = game;
-  const dprCap = game.coarse ? 1.25 : 1.4;
+  const dprCap = game.coarse ? 1 : 1.25;
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, dprCap));
   post.setQuality({ scale: q.scale, msaa: q.msaa, bloom: q.bloom, godRays: q.godRays });
   const shadowsOn = q.shadows > 0;
@@ -185,7 +185,7 @@ function adapt(dt) {
   perf.cooldown -= 1.5;
   if (perf.cooldown > 0) return;
   const q = game.quality;
-  if (fps < 46) {
+  if (fps < 50) {
     perf.slowFor++; perf.fastFor = 0;
     if (perf.slowFor >= 1) {
       perf.slowFor = 0; perf.cooldown = 4;
