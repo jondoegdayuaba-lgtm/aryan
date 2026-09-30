@@ -18,9 +18,9 @@ Afterwards `npm run build:ski` packs everything into `desktop/alpine-descent.htm
 
 | Step | Script | Blender features used | Output (in `ski/assets/`) |
 | --- | --- | --- | --- |
-| `world` | `world_gen.py` | numpy/scipy: designed run + ridged, eroded height field (2.9 km of piste, 1379–2883 m), tree and boulder scatter, courses | `world/heightmap.u16`, `trees.f32`, `rocks.f32`, `poles.f32`, `world.json` |
+| `world` | `world_gen.py` | numpy/scipy: designed run + ridged, eroded height field (3.1 km of piste, 1379–2883 m), tree and boulder scatter, courses | `world/heightmap.u16`, `trees.f32`, `rocks.f32`, `poles.f32`, `world.json` |
 | `maps` | `world_maps.py` | numpy: macro snow / rock / needle-litter colour and the piste mask | `tex/terrain_color.jpg`, `terrain_mask.png` |
-| `sky` | `make_sky.py` | **Cycles** panorama camera + **Nishita sky**, sun placed by measuring the rendered sun disc, a 64 km mountain range built as a mesh with a procedural rock/snow material and aerial perspective | `tex/sky.hdr`, `sky_ibl.hdr`, `world/atmosphere.json` |
+| `sky` | `make_sky.py` | **Cycles** panorama camera + **Nishita sky** with a procedural cirrus layer, sun placed by measuring the rendered sun disc, a 64 km mountain range built as a mesh (thermal erosion, ridged noise) with a procedural rock/snow material, bump and aerial perspective | `tex/sky.hdr`, `sky_ibl.hdr`, `world/atmosphere.json` |
 | `branches` | `make_branches.py` | **Cycles** orthographic renders of snow-laden needle sprays, denoised, packed into one RGBA atlas | `tex/tree_branches.png` |
 | `trees` | `make_trees.py` | mesh generation, 4 conifer species x 4 levels of detail, **glTF exporter** with vertex colours | `models/trees.glb` |
 | `skier` | `make_skier.py` | **Skin modifier** body, **Subdivision**, helmet / goggles / boots / skis / poles, 18-bone **armature** with weights, glTF export with skinning | `models/skier.glb`, `skier_rig.json` |
