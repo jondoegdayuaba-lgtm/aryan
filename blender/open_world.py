@@ -35,6 +35,7 @@ ROOT = os.path.dirname(HERE)
 BUILD = os.path.join(HERE, "build")
 OUT = os.path.join(ROOT, "ski", "assets", "open")
 
+import imgio  # noqa: E402
 import open_terrain as ot  # noqa: E402
 from open_terrain import DX, N, X0, Z0, X1, Z1, H_MIN, H_QUANT, bilinear, grad  # noqa: E402
 from noise import smoothstep, spectral_noise  # noqa: E402
@@ -1002,21 +1003,11 @@ def make_poles(H, pistes):
 
 
 # ============================================================================ output
-def encode_heights(q):
-    """uint16 heights -> zigzag coded residuals of the 2-D predictor (left + above - above-left); ski/js/world-data.js decodes it"""
-    pred = np.zeros_like(q)
-    pred[1:, 1:] = q[1:, :-1] + q[:-1, 1:] - q[:-1, :-1]
-    pred[0, 1:] = q[0, :-1]
-    pred[1:, 0] = q[:-1, 0]
-    r = q - pred
-    return ((r << 1) ^ (r >> 31)).astype("<u2")
-
-
 def save_outputs(H, groom, slope, rock, trees, rocks, poles, pistes, lifts, buildings, lake, flags, landmarks, lakemask, dpiste):
     np.savez_compressed(os.path.join(BUILD, "open.npz"), H=H.astype(np.float32), groom=groom.astype(np.float32),
                         slope=slope, rock=rock, trees=trees, rocks=rocks, lake=lakemask, dpiste=dpiste)
     q = np.clip(np.round((H - H_MIN) * H_QUANT), 0, 65535).astype(np.int32)
-    encode_heights(q).tofile(os.path.join(OUT, "heightmap.pz"))
+    imgio.encode_heights(q).tofile(os.path.join(OUT, "heightmap.pz"))
     old_raw = os.path.join(OUT, "heightmap.u16")
     if os.path.exists(old_raw):
         os.remove(old_raw)

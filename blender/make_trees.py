@@ -239,7 +239,7 @@ def preview(objs):
     make_sky.sun_rot_global, make_sky.sun_elev_global = -2.2686, math.radians(36)
     make_sky.build_world(-2.2686, math.radians(36), True)
     # foliage material
-    img = bpy.data.images.load(os.path.join(C.ASSETS, 'tex', 'tree_branches.png'))
+    img = bpy.data.images.load(os.path.join(C.BUILD, 'tree_branches.png'))
     img.colorspace_settings.name = 'sRGB'
     m = C.Mat('foliage', base=(1, 1, 1, 1), rough=0.9)
     tex = m.node('ShaderNodeTexImage', -600, 200)

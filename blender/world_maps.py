@@ -4,7 +4,7 @@ Terrain macro maps for Alpine Descent (numpy + Pillow, no Blender needed).
 
 Reads build/world.npz (from world_gen.py) and writes into ski/assets/tex/:
     terrain_color.jpg   macro albedo (snow, rock, needle litter)   1024 x 4096
-    terrain_mask.png    R rock  G litter  B groomed piste  A wind drift
+    terrain_mask.webp   R rock  G litter  B groomed piste  A wind drift  (lossy WebP q95, lossless alpha)
 The texture rows run from z = Z0 (row 0) to z = Z1, columns from x = X0 to X1.
 """
 import os
@@ -115,9 +115,9 @@ def main():
     col, mask = build_maps()
     Image.fromarray((col * 255 + 0.5).astype(np.uint8)).save(
         os.path.join(OUT_TEX, "terrain_color.jpg"), quality=92, subsampling=0)
-    Image.fromarray((np.clip(mask, 0, 1) * 255 + 0.5).astype(np.uint8), "RGBA").save(
-        os.path.join(OUT_TEX, "terrain_mask.png"), optimize=True)
-    print("wrote terrain_color.jpg and terrain_mask.png to", OUT_TEX)
+    from imgio import save_webp
+    save_webp(Image.fromarray((np.clip(mask, 0, 1) * 255 + 0.5).astype(np.uint8), "RGBA"), os.path.join(OUT_TEX, "terrain_mask.webp"), 95)
+    print("wrote terrain_color.jpg and terrain_mask.webp to", OUT_TEX)
 
 
 if __name__ == "__main__":

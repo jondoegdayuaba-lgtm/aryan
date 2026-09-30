@@ -16,7 +16,7 @@ const FOOTPRINTS = {
 };
 
 /**
- * The open world stores its height field as prediction residuals (zigzag coded uint16 of h - (left + above - above-left)), which
+ * Both worlds store their height field as prediction residuals (zigzag coded uint16 of h - (left + above - above-left)), which
  * gzip shrinks four times better than the raw heights. Returns the raw uint16 heights.
  */
 export function decodePredictedHeights(res, nx, nz) {
@@ -134,9 +134,9 @@ export class WorldData {
     const info = await get('world.json', 'json');
     const open = info.kind === 'open';
     const [hb, tb, rb, pb, gb] = await Promise.all([
-      get(open ? 'heightmap.pz' : 'heightmap.u16'), get('trees.f32'), get('rocks.f32'), get('poles.f32'), open ? get('groom.u8') : null,
+      get('heightmap.pz'), get('trees.f32'), get('rocks.f32'), get('poles.f32'), open ? get('groom.u8') : null,
     ]);
-    const heights = open ? decodePredictedHeights(new Uint16Array(hb), info.grid.nx, info.grid.nz) : new Uint16Array(hb);
+    const heights = decodePredictedHeights(new Uint16Array(hb), info.grid.nx, info.grid.nz);
     return new WorldData(info, heights, new Float32Array(tb), new Float32Array(rb), new Float32Array(pb), gb ? new Uint8Array(gb) : null);
   }
 

@@ -73,11 +73,11 @@ export class Game {
     const [rigInfo, treeInfo] = await Promise.all([loader.json('models/skier_rig.json'), loader.json('models/tree_info.json')]);
     const [color, mask, light, sky, skyIbl, atlas, treeGltf, skierGltf, propsGltf, rockN, rockC, snowN, rockGltf, skierFreeGltf] = await Promise.all([
       loader.texture('tex/terrain_color.jpg'),
-      loader.texture('tex/terrain_mask.png', { srgb: false }),
+      loader.texture('tex/terrain_mask.webp', { srgb: false }),
       loader.texture('tex/terrain_light.jpg', { srgb: false }),
       loader.hdr('tex/sky.hdr'),
       loader.hdr('tex/sky_ibl.hdr'),
-      loader.texture('tex/tree_branches.png', { anisotropy: 8 }),
+      loader.texture('tex/tree_branches.webp', { anisotropy: 8 }),
       loader.gltf('models/trees.glb'),
       loader.gltf('models/skier.glb'),
       loader.gltf('models/props.glb'),
@@ -245,7 +245,7 @@ export class Game {
     ui.setLoading('Painting the mountain...', 0.72);
     const [color, mask, light, mapTex] = await Promise.all([
       loader.texture('open/color.jpg'),
-      loader.texture('open/mask.png', { srgb: false }),
+      loader.texture('open/mask.webp', { srgb: false }),
       loader.texture('open/light.jpg', { srgb: false }),
       loader.texture('open/map.jpg', { mip: false }),
     ]);

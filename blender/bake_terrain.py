@@ -9,7 +9,7 @@ Cycles' SHADOW bake type never reports an object shadowing itself (checked on a 
 ray-marched on the heightfield in numpy (soft sun disc), G = R x the Cycles shadow of the occluders
 (trees, rocks, buildings) and B is the Cycles AO bake, which does include the terrain.
 
-The terrain is rebuilt from ski/assets/world/heightmap.u16 (the exact heights the game uses),
+The terrain is rebuilt from ski/assets/world/heightmap.pz (the exact heights the game uses),
 trees are cone proxies (the same shapes as the LOD 3 meshes), rocks are lumpy ellipsoids and the
 buildings are boxes from world.json.  Output: ski/assets/tex/terrain_light.jpg (2048 x 4096).
 
@@ -32,7 +32,8 @@ TEX_W_DEFAULT = 2048
 def load_world():
     info = json.load(open(os.path.join(C.ASSETS, 'world', 'world.json')))
     g = info['grid']
-    u16 = np.fromfile(os.path.join(C.ASSETS, 'world', 'heightmap.u16'), dtype='<u2').reshape(g['nz'], g['nx'])
+    from imgio import decode_heights
+    u16 = decode_heights(np.fromfile(os.path.join(C.ASSETS, 'world', 'heightmap.pz'), dtype='<u2'), g['nz'], g['nx'])
     H = g['hMin'] + u16.astype(np.float32) / g['hQuant']
     trees = np.fromfile(os.path.join(C.ASSETS, 'world', 'trees.f32'), dtype='<f4').reshape(-1, 6)
     rocks = np.fromfile(os.path.join(C.ASSETS, 'world', 'rocks.f32'), dtype='<f4').reshape(-1, 6)

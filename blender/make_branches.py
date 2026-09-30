@@ -4,7 +4,8 @@ Conifer branch card atlas rendered with Cycles (transparent background, unlit al
 Each branch is modelled from thousands of individual needles (numpy-built geometry) with snow
 blobs on top. Four cells side by side (each 512 x 1024):
     [ light snow: top | light snow: underside | heavy snow: top | heavy snow: underside ]
-Result: ski/assets/tex/tree_branches.png  (RGBA, colour bled into transparent texels)
+Result: ski/assets/tex/tree_branches.webp  (RGBA, colour bled into transparent texels; lossy WebP q92 with lossless alpha)
+        build/tree_branches.png    (the lossless master that make_trees.py renders its previews with)
 
 usage: python make_branches.py [--samples 96] [--scale 1]
 """
@@ -314,16 +315,18 @@ def main():
                 col = (vi * 2 + side) * CELL_W
                 atlas[:, col:col + CELL_W] = arr
     atlas[:, 4 * CELL_W:] = bark_cell(np.random.default_rng(3))
-    out = os.path.join(C.ASSETS, 'tex', 'tree_branches.png')
-    # Pillow writes straight-alpha PNG
+    out = os.path.join(C.BUILD, 'tree_branches.png')                       # lossless master, read by make_trees.py
+    web = os.path.join(C.ASSETS, 'tex', 'tree_branches.webp')              # what the game loads
     from PIL import Image
-    a8 = (np.clip(atlas, 0, 1) ** (1 / 2.2) * 255 + 0.5).astype(np.uint8) if False else None
-    # Blender's PNG output is already display-referred sRGB; the array from image_to_numpy is linear again
+    from imgio import save_webp
+    # the array from image_to_numpy is linear; the game and the PNG want display-referred sRGB
     lin = np.clip(atlas[..., :3], 0, 1)
     srgb = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(lin, 1 / 2.4) - 0.055)
     rgba = np.dstack([srgb, atlas[..., 3:4]])
-    Image.fromarray((np.clip(rgba, 0, 1) * 255 + 0.5).astype(np.uint8), 'RGBA').save(out, optimize=True)
-    print('wrote', out, os.path.getsize(out) // 1024, 'KB')
+    img8 = Image.fromarray((np.clip(rgba, 0, 1) * 255 + 0.5).astype(np.uint8), 'RGBA')
+    img8.save(out, optimize=True)
+    save_webp(img8, web, 92)
+    print('wrote', web, os.path.getsize(web) // 1024, 'KB (PNG master', os.path.getsize(out) // 1024, 'KB)')
 
 
 if __name__ == '__main__':

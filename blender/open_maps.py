@@ -4,7 +4,7 @@ Terrain textures of the open world (numpy + Pillow, no Blender needed).  Reads b
 and writes into ski/assets/open/:
 
     color.jpg    macro albedo (snow, rock, needle litter, lake ice)          2048 x 2048
-    mask.png     R rock  G litter  B groomed piste  A wind drift              2048 x 2048
+    mask.webp    R rock  G litter  B groomed piste  A wind drift              2048 x 2048 (lossy WebP q95, lossless alpha)
     light.jpg    R terrain sun visibility, G x tree shadow, B ambient occlusion
     map.jpg      hillshaded base map for the in-game map and minimap          1024 x 1024
 
@@ -162,7 +162,8 @@ def main():
     print("maps ...")
     b = build(size)
     Image.fromarray((b["col"] * 255 + 0.5).astype(np.uint8)).save(os.path.join(OUT, "color.jpg"), quality=90, subsampling=0)
-    Image.fromarray((np.clip(b["mask"], 0, 1) * 255 + 0.5).astype(np.uint8), "RGBA").save(os.path.join(OUT, "mask.png"), optimize=True)
+    from imgio import save_webp
+    save_webp(Image.fromarray((np.clip(b["mask"], 0, 1) * 255 + 0.5).astype(np.uint8), "RGBA"), os.path.join(OUT, "mask.webp"), 95)
     print("light map ...")
     rgb = np.clip(light_map(b, size, quick), 0, 1)
     rgb[..., 1] = ndi.gaussian_filter(rgb[..., 1], 0.8)

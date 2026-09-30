@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { WorldData } from '../ski/js/world-data.js';
+import { WorldData, decodePredictedHeights } from '../ski/js/world-data.js';
 import { RunSession } from '../ski/js/session.js';
 import { Autopilot } from '../ski/js/ai.js';
 import { formatTime } from '../ski/js/util.js';
@@ -12,8 +12,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const base = resolve(root, 'ski/assets/world') + '/';
 const f32 = (n) => { const b = fs.readFileSync(base + n); return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
 const info = JSON.parse(fs.readFileSync(base + 'world.json', 'utf8'));
-const hb = fs.readFileSync(base + 'heightmap.u16');
-const world = new WorldData(info, new Uint16Array(hb.buffer.slice(hb.byteOffset, hb.byteOffset + hb.byteLength)), f32('trees.f32'), f32('rocks.f32'), f32('poles.f32'));
+const hb = fs.readFileSync(base + 'heightmap.pz');
+const heights = decodePredictedHeights(new Uint16Array(hb.buffer.slice(hb.byteOffset, hb.byteOffset + hb.byteLength)), info.grid.nx, info.grid.nz);
+const world = new WorldData(info, heights, f32('trees.f32'), f32('rocks.f32'), f32('poles.f32'));
 
 export function simulate(runId, skill = 1.0, opts = {}) {
   const run = world.runs.find((r) => r.id === runId);

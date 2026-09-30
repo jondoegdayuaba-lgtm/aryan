@@ -12,7 +12,7 @@ const read = (p) => readFileSync(resolve(root, p), 'utf8');
 
 const MIME = {
   '.hdr': 'application/octet-stream', '.glb': 'model/gltf-binary', '.json': 'application/json', '.png': 'image/png',
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.u16': 'application/octet-stream', '.f32': 'application/octet-stream', '.pz': 'application/octet-stream', '.u8': 'application/octet-stream',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.u16': 'application/octet-stream', '.f32': 'application/octet-stream', '.pz': 'application/octet-stream', '.u8': 'application/octet-stream', '.webp': 'image/webp',
 };
 
 // ---------------------------------------------------------------------------------------- code
@@ -31,6 +31,21 @@ const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const css = read('ski/css/ski.css');
 
 // -------------------------------------------------------------------------------------- assets
+// Binary assets are embedded as text in base 85 (four bytes -> five characters, 25 % overhead instead of base64's 33 %).
+// The alphabet has no < > & quotes, backslash or slash, so nothing in it can end a <script> element or start a comment.
+const B85 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!*?()[]{}@%$#;,|~';
+if (B85.length !== 85) throw new Error('base85 alphabet must have 85 characters');
+function encodeBase85(bytes) {
+  const groups = Math.ceil(bytes.length / 4);
+  const out = Buffer.alloc(groups * 5);
+  const table = Buffer.from(B85, 'latin1');
+  for (let g = 0, o = 0; g < groups; g++, o += 5) {
+    const i = g * 4;
+    let v = (((bytes[i] << 24) >>> 0) + ((bytes[i + 1] || 0) << 16) + ((bytes[i + 2] || 0) << 8) + (bytes[i + 3] || 0));
+    for (let k = 4; k >= 0; k--) { out[o + k] = table[v % 85]; v = Math.floor(v / 85); }
+  }
+  return out.toString('latin1');
+}
 function walk(dir) {
   return readdirSync(dir).flatMap((n) => {
     const p = resolve(dir, n);
@@ -51,7 +66,7 @@ for (const file of walk(assetRoot).sort()) {
   packTotal += bytes.length;
   // the open world is only unpacked when the player chooses it (window.__assetsEnsure('open/'))
   const lazy = name.startsWith('open/');
-  packs.push(`<script type="text/plain" data-asset="${name}" data-mime="${MIME[extname(file)] || 'application/octet-stream'}"${useGz ? ' data-gz="1"' : ''}${lazy ? ' data-lazy="1"' : ''}>${bytes.toString('base64')}</script>`);
+  packs.push(`<script type="text/plain" data-asset="${name}" data-mime="${MIME[extname(file)] || 'application/octet-stream'}" data-len="${bytes.length}"${useGz ? ' data-gz="1"' : ''}${lazy ? ' data-lazy="1"' : ''}>${encodeBase85(bytes)}</script>`);
 }
 
 // The unpacker turns every embedded asset into a blob: URL so the game's loaders work unchanged. Assets marked lazy (the open
@@ -60,10 +75,20 @@ const prelude = `
 window.__assetsReady = (async () => {
   const urls = {};
   if (typeof DecompressionStream === 'undefined') throw new Error('this browser is too old to unpack the game (use Chrome or Edge 80+, Firefox 113+ or Safari 16.4+)');
-  const b64 = (s) => { const bin = atob(s); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
+  const ALPHA = ${JSON.stringify(B85)};
+  const LUT = new Uint8Array(128);
+  for (let i = 0; i < 85; i++) LUT[ALPHA.charCodeAt(i)] = i;
+  const b85 = (s, len) => {
+    const out = new Uint8Array(Math.ceil(s.length / 5) * 4);
+    const dv = new DataView(out.buffer);
+    for (let i = 0, o = 0; i < s.length; i += 5, o += 4) {
+      dv.setUint32(o, ((((LUT[s.charCodeAt(i)] * 85 + LUT[s.charCodeAt(i + 1)]) * 85 + LUT[s.charCodeAt(i + 2)]) * 85 + LUT[s.charCodeAt(i + 3)]) * 85 + LUT[s.charCodeAt(i + 4)]) >>> 0);
+    }
+    return out.subarray(0, len);
+  };
   const inflate = async (bytes) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
   const decode = async (el) => {
-    let bytes = b64(el.textContent);
+    let bytes = b85(el.textContent, +el.dataset.len);
     if (el.dataset.gz) bytes = await inflate(bytes);
     urls[el.dataset.asset] = URL.createObjectURL(new Blob([bytes], { type: el.dataset.mime }));
     el.remove();

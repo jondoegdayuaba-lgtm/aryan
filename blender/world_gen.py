@@ -504,7 +504,10 @@ def save_outputs(path, world, props, trees, rocks, runs, poles, nets):
     )
     # heights -> uint16
     q = np.clip(np.round((world["H"].astype(np.float64) - H_MIN) * H_QUANT), 0, 65535).astype("<u2")
-    q.tofile(os.path.join(OUT_WORLD, "heightmap.u16"))
+    from imgio import encode_heights
+    encode_heights(q).tofile(os.path.join(OUT_WORLD, "heightmap.pz"))
+    if os.path.exists(os.path.join(OUT_WORLD, "heightmap.u16")):
+        os.remove(os.path.join(OUT_WORLD, "heightmap.u16"))
     trees.astype("<f4").tofile(os.path.join(OUT_WORLD, "trees.f32"))
     rocks.astype("<f4").tofile(os.path.join(OUT_WORLD, "rocks.f32"))
     poles.astype("<f4").tofile(os.path.join(OUT_WORLD, "poles.f32"))

@@ -19,10 +19,10 @@ Afterwards `npm run build:ski` packs everything into `desktop/alpine-descent.htm
 
 | Step | Script | Blender features used | Output (in `ski/assets/`) |
 | --- | --- | --- | --- |
-| `world` | `world_gen.py` | numpy/scipy: designed run + ridged, eroded height field (3.1 km of piste, 1379–2883 m), tree and boulder scatter, courses | `world/heightmap.u16`, `trees.f32`, `rocks.f32`, `poles.f32`, `world.json` |
-| `maps` | `world_maps.py` | numpy: macro snow / rock / needle-litter colour and the piste mask | `tex/terrain_color.jpg`, `terrain_mask.png` |
+| `world` | `world_gen.py` | numpy/scipy: designed run + ridged, eroded height field (3.1 km of piste, 1379–2883 m), tree and boulder scatter, courses | `world/heightmap.pz`, `trees.f32`, `rocks.f32`, `poles.f32`, `world.json` |
+| `maps` | `world_maps.py` | numpy: macro snow / rock / needle-litter colour and the piste mask | `tex/terrain_color.jpg`, `terrain_mask.webp` |
 | `sky` | `make_sky.py` | **Cycles** panorama camera + **Nishita sky** with a procedural cirrus layer, sun placed by measuring the rendered sun disc, a 64 km mountain range built as a mesh (thermal erosion, ridged noise) with a procedural rock/snow material, bump and aerial perspective | `tex/sky.hdr`, `sky_ibl.hdr`, `world/atmosphere.json` |
-| `branches` | `make_branches.py` | **Cycles** orthographic renders of snow-laden needle sprays, denoised, packed into one RGBA atlas | `tex/tree_branches.png` |
+| `branches` | `make_branches.py` | **Cycles** orthographic renders of snow-laden needle sprays, denoised, packed into one RGBA atlas | `tex/tree_branches.webp` |
 | `trees` | `make_trees.py` | mesh generation, 4 conifer species x 4 levels of detail, **glTF exporter** with vertex colours | `models/trees.glb` |
 | `skier` | `make_skier.py` | **Skin modifier** body with a modelled face (nose, lips, brows, ears), **Subdivision**, helmet / goggles / boots / skis / poles / backpack, 18-bone **armature** with weights, glTF export with skinning | `models/skier.glb`, `skier_rig.json` |
 | `skier_free` | `make_skier.py --style free` | the freerider outfit (beanie, jacket, baggy trousers) on the same skeleton | `models/skier_free.glb` |
@@ -36,11 +36,12 @@ Afterwards `npm run build:ski` packs everything into `desktop/alpine-descent.htm
 | Step | Script | What it does | Output (in `ski/assets/open/`) |
 | --- | --- | --- | --- |
 | `open` | `open_terrain.py`, `erosion.py`, `open_world.py` | a 4.6 km basin from a network of valleys, named peaks, droplet erosion (a small C helper compiled on first use, NumPy fallback) and thermal erosion; then the ski area: a village with lodge, chalets, chapel and frozen lake, seven chairlifts that follow the pistes they serve with pylons raised where the ground falls away, nine pistes found by a slope-aware Dijkstra route search and carved in (descent profile limited to the difficulty class, corridor relaxed), a terrain park, forest and boulder scatter, 24 collectible flags and 10 landmarks | `heightmap.pz`, `groom.u8`, `trees.f32`, `rocks.f32`, `poles.f32`, `world.json` |
-| `open_maps` | `open_maps.py`, `lightmap.py` | colour, mask and light-map textures and the map image, all numpy: streaked rock, needle litter, ice, ray-marched ridge shadows, tree-canopy shadows, horizon ambient occlusion | `color.jpg`, `mask.png`, `light.jpg`, `map.jpg` |
+| `open_maps` | `open_maps.py`, `lightmap.py` | colour, mask and light-map textures and the map image, all numpy: streaked rock, needle litter, ice, ray-marched ridge shadows, tree-canopy shadows, horizon ambient occlusion | `color.jpg`, `mask.webp`, `light.jpg`, `map.jpg` |
 
 `preview3d.py` is a small voxel renderer for looking at a height field from the side while tuning it. The height field is stored as
-residuals of a 2-D predictor (`heightmap.pz`), which gzip compresses four times better than raw heights; `encode_heights()` in
-`open_world.py` and `decodePredictedHeights()` in `ski/js/world-data.js` are the two halves.
+residuals of a 2-D predictor (`heightmap.pz`, both worlds), which gzip compresses four times better than raw heights;
+`encode_heights()` in `imgio.py` and `decodePredictedHeights()` in `ski/js/world-data.js` are the two halves. The smooth mask textures
+and the foliage atlas are lossy WebP (quality 92-95, lossless alpha) so the one-file desktop build stays under 30 MB.
 
 ## Lighting is measured, not guessed
 
