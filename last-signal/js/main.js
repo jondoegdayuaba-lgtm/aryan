@@ -79,7 +79,7 @@ function applyQuality(name) {
   if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
   terrain?.setShadows(shadowsOn);
   game.grass?.setDensity(q.grass);
-  if (game.flora) { game.flora.lodScale = q.trees; game.flora.setShadows(shadowsOn); }
+  if (game.flora) { game.flora.lodScale = q.trees; game.flora.shadowLods = name === 'high' ? 2 : 1; game.flora.setShadows(shadowsOn); }
   water?.setReflection(q.reflections);
   game.camera.far = q.view * 2.2;
   game.camera.updateProjectionMatrix();

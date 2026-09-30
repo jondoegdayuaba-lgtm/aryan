@@ -83,6 +83,7 @@ export class Flora {
     this.cells = [{}, {}, {}];
     this.models = {};
     this.lodScale = 1;
+    this.shadowLods = 2;              // how many LOD levels cast shadows (1 = near trees only)
     this.shadows = true;
   }
 
@@ -196,7 +197,7 @@ export class Flora {
           mesh.setColorAt(i, col.setScalar(it.tint));
         });
         mesh.instanceMatrix.needsUpdate = true;
-        mesh.castShadow = this.shadows && def.shadow[cell.lod];
+        mesh.castShadow = this.shadows && def.shadow[cell.lod] && cell.lod < this.shadowLods;
         mesh.receiveShadow = true;
         group.add(mesh);
       }
@@ -229,7 +230,7 @@ export class Flora {
     this.shadows = on;
     for (let l = 0; l < 3; l++) for (const key in this.cells[l]) {
       const c = this.cells[l][key];
-      if (c.meshes) c.meshes.traverse((o) => { if (o.isInstancedMesh) o.castShadow = on && KINDS[c.kind].shadow[l]; });
+      if (c.meshes) c.meshes.traverse((o) => { if (o.isInstancedMesh) o.castShadow = on && KINDS[c.kind].shadow[l] && l < this.shadowLods; });
     }
   }
 }
