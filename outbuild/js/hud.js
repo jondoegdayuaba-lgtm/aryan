@@ -252,6 +252,16 @@ export class Hud {
     // storm warning edge + sky-dive speed lines
     $('speedlines').classList.toggle('on', a.mode === 'sky' && (a.dive || 0) > 0.4);
     $('jump-hint').hidden = a.mode !== 'bus';
+    if (a.mode === 'bus') $('jump-hint').innerHTML = g.airship.canDrop ? '<kbd>Space</kbd> Jump' : 'You can jump once the airship is over the island';
+    const inStorm = a.alive && a.mode === 'ground' && g.storm.isOutside(a.pos.x, a.pos.z);
+    $('storm-warn').hidden = !inStorm;
+    if (inStorm) {
+      const d = Math.max(0, Math.round(g.storm.distOutside(a.pos.x, a.pos.z)));
+      $('storm-dist').textContent = `Safe zone ${d} m away`;
+    }
+    const spec = !a.alive && g.spectating && g.spectating.alive && $('death').hidden;
+    $('spectate').hidden = !spec;
+    if (spec) $('spectate-name').textContent = g.spectating.name;
     $('glide-hint').hidden = !(a.mode === 'sky' && a.pos.y - g.terrain.heightAt(a.pos.x, a.pos.z) < 150);
   }
 

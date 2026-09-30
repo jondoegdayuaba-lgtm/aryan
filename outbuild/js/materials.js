@@ -34,12 +34,14 @@ function patchAO(sh) {
 }
 
 function patchWind(sh, amount) {
-  Object.assign(sh.uniforms, { uTime: shared.uTime, uWind: shared.uWind });
+  Object.assign(sh.uniforms, { uTime: shared.uTime, uWind: shared.uWind, uSunDir: shared.uSunDir, uSunColor: shared.uSunColor });
   sh.vertexShader = sh.vertexShader
     .replace('#include <common>', `#include <common>
       attribute float aWind;
       uniform float uTime;
-      uniform vec2 uWind;`)
+      uniform vec2 uWind;
+      varying float vFolVar;
+      varying float vFolW;`)
     .replace('#include <begin_vertex>', `#include <begin_vertex>
       {
         vec3 base = vec3(0.0);
@@ -47,6 +49,8 @@ function patchWind(sh, amount) {
           base = instanceMatrix[3].xyz;
         #endif
         base += modelMatrix[3].xyz;
+        vFolVar = fract(sin(dot(base.xz, vec2(12.9898, 78.233))) * 43758.5453);
+        vFolW = aWind;
         float ph = base.x * 0.13 + base.z * 0.11;
         float sway = sin(uTime * 1.3 + ph) * 0.6 + sin(uTime * 2.1 + ph * 1.7) * 0.3;
         float flutter = sin(uTime * 7.0 + position.x * 3.0 + position.y * 2.0 + ph) * 0.05;
@@ -54,6 +58,27 @@ function patchWind(sh, amount) {
         transformed.x += (uWind.x * sway + flutter) * w;
         transformed.z += (uWind.y * sway + flutter) * w;
         transformed.y -= abs(sway) * 0.1 * w;
+      }`);
+  // leaves: a little colour variation per plant, and light glowing through them when backlit
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', `#include <common>
+      uniform vec3 uSunDir;
+      uniform vec3 uSunColor;
+      varying float vFolVar;
+      varying float vFolW;`)
+    .replace('#include <map_fragment>', `#include <map_fragment>
+      {
+        float leaf = smoothstep(0.1, 0.35, vFolW);
+        vec3 tint = mix(vec3(0.86, 0.95, 0.8), vec3(1.12, 1.06, 0.84), vFolVar);
+        diffuseColor.rgb *= mix(vec3(1.0), tint, leaf);
+      }`)
+    .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      {
+        float leaf = smoothstep(0.1, 0.35, vFolW);
+        vec3 L = normalize((viewMatrix * vec4(uSunDir, 0.0)).xyz);
+        vec3 V = normalize(vViewPosition);
+        float back = pow(max(dot(-V, L), 0.0), 5.0);
+        totalEmissiveRadiance += diffuseColor.rgb * uSunColor * back * 0.55 * leaf;
       }`);
 }
 
@@ -289,7 +314,19 @@ let farMat = null;
 export function farMaterial() {
   if (!farMat) {
     farMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
-    farMat.onBeforeCompile = (sh) => { patchAO(sh); patchWind(sh, 0.3); };
+    farMat.onBeforeCompile = (sh) => {
+      patchAO(sh);
+      patchWind(sh, 0.3);
+      // only the painted parts take the per-instance colour
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float aTint;')
+        .replace('#include <color_vertex>', `
+          vColor = vec4(1.0);
+          vColor.xyz *= color.xyz;
+          #ifdef USE_INSTANCING_COLOR
+            vColor.xyz *= mix(vec3(1.0), instanceColor.xyz, aTint);
+          #endif`);
+    };
     farMat.customProgramCacheKey = () => 'prop-far';
   }
   return farMat;
@@ -306,6 +343,7 @@ export function textureTint(name) {
 export function updateShared(time, renderer) {
   shared.uTime.value = time;
   shared.uSunDir.value.copy(renderer.sunDir);
+  shared.uSunColor.value.copy(renderer.sun.color).multiplyScalar(renderer.sun.intensity * 0.35);
   const w = shared.uWind.value;
   w.set(0.8 + Math.sin(time * 0.13) * 0.3, 0.35 + Math.cos(time * 0.09) * 0.2);
 }

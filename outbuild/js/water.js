@@ -69,10 +69,11 @@ void main() {
   col += uSunColor * spec;
   // shore foam
   float foamN = texture2D(tNormal, uv * 0.2 + vec2(uTime * 0.02, 0.0)).b;
-  float wave = sin(depth * 5.0 - uTime * 1.6 + foamN * 4.0) * 0.5 + 0.5;
-  float foam = smoothstep(0.9, 0.0, depth) * (0.55 + 0.45 * wave);
-  foam *= smoothstep(0.25, 0.7, foamN + 0.2);
-  col = mix(col, uFoam, clamp(foam, 0.0, 1.0) * 0.85);
+  // a thin band right at the shore plus lines of surf rolling in
+  float edge = smoothstep(0.28, 0.0, depth);
+  float lines = smoothstep(0.82, 1.0, sin(depth * 16.0 - uTime * 1.7 + foamN * 5.0) * 0.5 + 0.5) * smoothstep(1.1, 0.15, depth);
+  float foam = (edge * 0.9 + lines * 0.55) * smoothstep(0.3, 0.75, foamN + 0.25);
+  col = mix(col, uFoam, clamp(foam, 0.0, 1.0) * 0.8);
   float alpha = mix(0.55, 0.97, smoothstep(0.0, 2.5, depth));
   alpha = max(alpha, fres);
   alpha = max(alpha, foam * 0.9);

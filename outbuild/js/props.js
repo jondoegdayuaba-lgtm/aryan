@@ -95,9 +95,12 @@ function farGeometry(parts, cell) {
     if (t) c.multiply(t);
     if (p.material.emissive && p.material.emissiveIntensity > 0.5) c.add(p.material.emissive.clone().multiplyScalar(0.5));
     const n = g.attributes.position.count;
+    const tint = TINTABLE.has(p.matName) ? 1 : 0;
+    if (tint) c.setRGB(1, 1, 1);
     const col = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setAttribute('aTint', new THREE.BufferAttribute(new Float32Array(n).fill(tint), 1));
     list.push(g);
   }
   if (!list.length) return null;
@@ -115,7 +118,7 @@ class LodBatch {
       m.receiveShadow = true;
       m.frustumCulled = false;
       m.name = name;
-      m.userData.tint = TINTABLE.has(part.matName);
+      m.userData.tint = TINTABLE.has(part.matName) || part.matName === 'FarTint';
       if (m.userData.tint) m.setColorAt(0, new THREE.Color(1, 1, 1));
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       scene.add(m);
@@ -222,7 +225,8 @@ export class PropSystem {
       const size = type.proto.box.getSize(new THREE.Vector3());
       const cell = Math.max(0.35, Math.max(size.x, size.y, size.z) / 4.5);
       const fg = farGeometry(parts, cell);
-      const farParts = fg ? [{ geometry: fg, material: farMaterial(), matName: 'Far' }] : parts;
+      const tintable = parts.some((p) => TINTABLE.has(p.matName));
+      const farParts = fg ? [{ geometry: fg, material: farMaterial(), matName: tintable ? 'FarTint' : 'Far' }] : parts;
       type.near = new LodBatch(this.scene, parts, n, true, type.name);
       type.far = new LodBatch(this.scene, farParts, n, false, type.name + '_far');
       // big landmarks are visible from far away, small things fade out sooner

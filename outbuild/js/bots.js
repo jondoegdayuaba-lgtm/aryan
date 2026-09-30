@@ -103,6 +103,7 @@ export class BotBrain {
       return;
     }
     if (a.mode === 'sky' || a.mode === 'glide') { this.fly(dt); return; }
+    if (this.landedAt === undefined) this.landedAt = g.time;
     this.thinkT -= dt;
     this.goalTimer -= dt;
     this.switchT -= dt;
@@ -144,11 +145,19 @@ export class BotBrain {
     const hurt = a.health + a.shield < 90;
     const armed = this.bestWeaponSlot() >= 0;
     if (this.target && armed) {
+      // freshly landed and badly equipped: keep looting unless someone is close or shooting at us
+      const d = a.pos.distanceTo(this.target.pos);
+      const early = now - (this.landedAt ?? now) < 45;
+      const attacked = now - a.lastDamageTime < 4;
+      if (early && this.lootNeed() >= 2 && d > 22 && !attacked && this.goalKind === 'loot' && this.goalTimer > 0) {
+        this.state = 'travel';
+        return;
+      }
       if (this.state !== 'fight') this.reactT = this.skill.react;
       this.state = 'fight';
       return;
     }
-    if (this.target && !armed && a.pos.distanceTo(this.target.pos) < 5) { this.state = 'fight'; return; }
+    if (this.target && !armed && a.pos.distanceTo(this.target.pos) < 4 && now - a.lastDamageTime < 3) { this.state = 'fight'; return; }
     if (hurt && now - a.lastDamageTime > 4 && this.healSlot() >= 0 && this.healCooldown <= 0) { this.state = 'heal'; return; }
     this.state = 'travel';
     // storm first
