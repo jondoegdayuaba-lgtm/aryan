@@ -1,6 +1,6 @@
 // The mountain as data: heightfield, piste path, tree / rock colliders.
 // Pure JS (no three.js) so the same code drives rendering, physics and Node tests.
-import { clamp } from './util.js';
+import { clamp, assetUrl } from './util.js';
 
 const CELL = 16;   // collision hash cell size (m)
 
@@ -32,7 +32,7 @@ export class WorldData {
 
   static async load(base = 'assets/world/', onProgress = () => {}) {
     const get = async (name, type) => {
-      const r = await fetch(base + name);
+      const r = await fetch(assetUrl(base + name));
       if (!r.ok) throw new Error(`Could not load ${base}${name} (${r.status})`);
       const out = type === 'json' ? await r.json() : await r.arrayBuffer();
       onProgress(name);

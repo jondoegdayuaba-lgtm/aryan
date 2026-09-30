@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { assetUrl } from './util.js';
 
 export class Loader {
   constructor(base = 'assets/', onProgress = () => {}) {
@@ -30,7 +31,7 @@ export class Loader {
     const { srgb = true, repeat = false, anisotropy = 8, mip = true, optional = true, filter = true } = opts;
     const p = new Promise((resolve) => {
       this._tex.load(
-        this.base + path,
+        assetUrl(this.base + path),
         (t) => {
           t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
           t.flipY = false;
@@ -53,7 +54,7 @@ export class Loader {
   }
 
   hdr(path) {
-    const p = this._hdr.loadAsync(this.base + path).then((t) => {
+    const p = this._hdr.loadAsync(assetUrl(this.base + path)).then((t) => {
       t.mapping = THREE.EquirectangularReflectionMapping;
       t.colorSpace = THREE.LinearSRGBColorSpace;
       t.minFilter = THREE.LinearFilter;
@@ -68,7 +69,7 @@ export class Loader {
   }
 
   gltf(path) {
-    const p = this._gltf.loadAsync(this.base + path).catch((e) => {
+    const p = this._gltf.loadAsync(assetUrl(this.base + path)).catch((e) => {
       this.missing.push(path);
       console.warn('could not load', path, e && e.message);
       return null;
@@ -77,7 +78,7 @@ export class Loader {
   }
 
   async json(path) {
-    return this._track(fetch(this.base + path).then((r) => (r.ok ? r.json() : null)).catch(() => null), path);
+    return this._track(fetch(assetUrl(this.base + path)).then((r) => (r.ok ? r.json() : null)).catch(() => null), path);
   }
 }
 

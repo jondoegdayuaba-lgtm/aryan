@@ -4,14 +4,146 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Alpine Descent</title>
-  <meta name="description" content="A realistic 3D downhill skiing game. The mountain, trees, sky and skier were built and lit in Blender.">
-  <meta name="theme-color" content="#0d1b2a">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d1b2a'/%3E%3Cpath d='M8 44l20-26 8 10 6-8 14 24z' fill='%23eef4ff'/%3E%3Cpath d='M28 18l8 10 6-8 3 4-9 12-8-10z' fill='%2389b4e8'/%3E%3C/svg%3E">
+  <meta name="description" content="A realistic 3D downhill skiing game. The mountain, forest, sky and skier were built and lit in Blender.">
+  <meta name="theme-color" content="#0b1a2b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1a2b'/%3E%3Cpath d='M6 46l20-26 8 10 6-8 18 24z' fill='%23eef4ff'/%3E%3Cpath d='M26 20l8 10 6-8 4 5-10 13-8-10z' fill='%2389b4e8'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="css/ski.css">
   <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js", "three/addons/": "../vendor/three/addons/" } }</script>
 </head>
 <body>
   <canvas id="game" aria-label="Game view"></canvas>
+
+  <!-- ============================== HUD ============================== -->
+  <div id="hud" hidden>
+    <div class="hud-top">
+      <div class="hud-run">
+        <span id="hud-run-name" class="hud-run-name"></span>
+        <span id="hud-gates" class="hud-gates"></span>
+      </div>
+      <div class="hud-time">
+        <span id="hud-time" class="hud-time-value">0:00.00</span>
+        <span id="hud-penalty" class="hud-penalty"></span>
+        <span id="hud-split" class="hud-split"></span>
+      </div>
+      <div class="hud-right">
+        <button id="btn-cam" class="icon-btn" type="button" aria-label="Change camera" title="Camera (C)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l1.5-2h7L17 7h3v12H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+        </button>
+        <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause" title="Pause (Esc)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="hud-center">
+      <div id="countdown" class="countdown"></div>
+      <div id="toasts" class="toasts" aria-live="polite"></div>
+    </div>
+
+    <div class="hud-bl">
+      <div class="speedo">
+        <svg viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="speedo-track" cx="60" cy="60" r="52" transform="rotate(135 60 60)"/>
+          <circle id="speedo-fill" class="speedo-fill" cx="60" cy="60" r="52" transform="rotate(135 60 60)"/>
+        </svg>
+        <div class="speedo-num"><span id="speed">0</span><small>km/h</small></div>
+      </div>
+      <div class="hud-mini">
+        <div><span id="hud-alt">0</span><small>m altitude</small></div>
+        <div><span id="hud-drop">0</span><small>m descended</small></div>
+      </div>
+    </div>
+
+    <div class="hud-br">
+      <svg id="profile" class="profile" viewBox="0 0 300 70" preserveAspectRatio="none" aria-hidden="true">
+        <path id="profile-area" class="profile-area" d=""/>
+        <path id="profile-line" class="profile-line" d=""/>
+        <line id="profile-cursor" class="profile-cursor" x1="0" y1="0" x2="0" y2="70"/>
+        <circle id="profile-dot" class="profile-dot" r="4" cx="0" cy="0"/>
+      </svg>
+      <div class="profile-label"><span id="hud-remaining">0 m</span> to the finish</div>
+    </div>
+
+    <div id="hint" class="hint"></div>
+
+    <div id="touch" class="touch" hidden>
+      <button id="tb-brake" type="button">Brake</button>
+      <button id="tb-jump" type="button">Jump</button>
+      <button id="tb-tuck" type="button">Tuck</button>
+    </div>
+  </div>
+
+  <!-- ============================== title / run select ============================== -->
+  <section id="menu" class="screen menu" hidden aria-labelledby="title">
+    <div class="menu-inner">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64"><path d="M4 50l22-28 9 11 7-9 18 26z" fill="#eef4ff"/><path d="M26 22l9 11 7-9 4 6-11 14-9-11z" fill="#8fb8f0"/></svg>
+        </div>
+        <h1 id="title" class="title">Alpine <span>Descent</span></h1>
+        <p class="tagline">A real-time downhill through a mountain built and lit in Blender.</p>
+      </div>
+
+      <div id="run-list" class="run-list" role="list"></div>
+
+      <div class="menu-foot">
+        <div class="menu-opts">
+          <label class="opt">Graphics
+            <select id="opt-quality">
+              <option value="auto">Auto</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="ultra">Ultra</option>
+            </select>
+          </label>
+          <label class="opt">Camera
+            <select id="opt-camera">
+              <option value="chase">Chase</option>
+              <option value="far">Far chase</option>
+              <option value="helmet">Helmet cam</option>
+            </select>
+          </label>
+          <button id="btn-sound" class="text-btn" type="button">Sound on</button>
+        </div>
+        <dl class="controls">
+          <div><dt>A D / ← →</dt><dd>Steer</dd></div>
+          <div><dt>W / ↑ / Shift</dt><dd>Tuck (hold)</dd></div>
+          <div><dt>S / ↓</dt><dd>Brake</dd></div>
+          <div><dt>Space</dt><dd>Crouch, release to jump</dd></div>
+          <div><dt>C</dt><dd>Camera</dd></div>
+          <div><dt>R / Esc</dt><dd>Restart / Pause</dd></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section id="paused" class="screen center" hidden>
+    <div class="card">
+      <h2>Paused</h2>
+      <button id="btn-resume" class="big-btn" type="button">Resume</button>
+      <button id="btn-restart" class="ghost-btn" type="button">Restart run</button>
+      <button id="btn-quit" class="ghost-btn" type="button">Back to menu</button>
+    </div>
+  </section>
+
+  <section id="results" class="screen center" hidden>
+    <div class="card results">
+      <div id="result-medal" class="medal" aria-hidden="true"></div>
+      <h2 id="result-title">Finished</h2>
+      <div id="result-time" class="result-time">0:00.00</div>
+      <div id="result-best" class="result-best"></div>
+      <dl id="result-stats" class="result-stats"></dl>
+      <div class="result-actions">
+        <button id="btn-again" class="big-btn" type="button">Race again</button>
+        <button id="btn-next" class="ghost-btn" type="button">Next run</button>
+        <button id="btn-menu" class="ghost-btn" type="button">Menu</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="flash" class="flash" aria-hidden="true"></div>
+
   <div id="loading" class="loading">
     <div class="loading-title">Alpine Descent</div>
     <div class="loading-bar"><div id="loading-fill"></div></div>

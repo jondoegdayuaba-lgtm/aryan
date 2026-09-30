@@ -189,6 +189,7 @@ export class SkierPhysics {
 
     // ---- hazards
     this._collide();
+    this._collideNets();
     if (!this.crashed && this.grounded && this.ny < 0.70) this.crash('cliff');   // steeper than ~45 degrees
     if (!w.inside(this.x, this.z, 12)) this.crash('boundary');
     // visual compression: crouch charge + absorbing bumps
@@ -361,6 +362,25 @@ export class SkierPhysics {
         this.vx *= 0.3; this.vz *= 0.3;
       }
     });
+  }
+
+  /** the safety nets along the piste edges: they stop you, and hurt if you hit them fast */
+  _collideNets() {
+    const nets = this.world.info.nets;
+    if (!nets || this.crashed) return;
+    for (let k = 0; k < nets.length; k++) {
+      const n = nets[k];
+      if (this.pathS < n.s0 || this.pathS > n.s1) continue;
+      const p = this.world.path.at(this.pathS, _pathTmp);
+      const over = this.pathT * n.side - (p.width * 0.5 + n.off - 0.4);
+      if (over <= 0) continue;
+      const ox = p.rx * n.side, oz = p.rz * n.side;          // pointing out of the piste
+      const vOut = this.vx * ox + this.vz * oz;
+      if (vOut > 11) { this.crash('net'); return; }
+      this.x -= ox * over; this.z -= oz * over;
+      if (vOut > 0) { this.vx -= ox * vOut * 1.3; this.vz -= oz * vOut * 1.3; }
+      this.vx *= 0.985; this.vz *= 0.985;
+    }
   }
 
   crash(cause) {

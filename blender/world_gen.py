@@ -37,8 +37,8 @@ H_MIN = 1200.0          # height quantisation origin (metres)
 H_QUANT = 16.0          # 1/16 m steps -> uint16
 
 # sun (toward the sun): behind-left of the direction of travel, low in the sky
-SUN_AZIMUTH_DEG = 155.0   # angle from the travel direction (-Z), turning toward -X (sun behind-left)
-SUN_ELEVATION_DEG = 36.0
+SUN_AZIMUTH_DEG = 158.0   # angle from the travel direction (-Z), turning toward -X (sun behind-left)
+SUN_ELEVATION_DEG = 38.0
 
 SEED = 20260929
 
@@ -237,7 +237,7 @@ def build_world():
     M += 75.0 * smoothstep(0.55, 1.0, far) * ridged(n_r) * (0.5 + 0.5 * np.tanh(n_a))
     # enclosing walls, the summit headwall above the start and the rise behind the lodge
     M += 170.0 * smoothstep(400.0, 560.0, np.abs(X)) ** 1.3
-    M += 320.0 * smoothstep(20.0, 440.0, Z) ** 1.4
+    M += 190.0 * smoothstep(20.0, 440.0, Z) ** 1.15      # headwall behind the start: kept below the sun's elevation
     M += 110.0 * smoothstep(-3080.0, -3300.0, Z) ** 1.3
     M = thermal_erosion(M.astype(np.float64), int(os.environ.get('WG_EROSION', '24')), 0.85, 0.5)
     M = ndi.gaussian_filter(M, 0.9)
@@ -282,11 +282,11 @@ def build_world():
     def yaw_of(i):
         return math.atan2(-path["tz"][i], path["tx"][i])      # three.js rotation about +Y aligning local +X with the piste
 
-    props["startHut"] = dict(s=24.0, t=44.0, x=hx, z=hz, size=[10.0, 4.5, 6.0], yaw=yaw_of(hi))
+    props["startHut"] = dict(s=24.0, t=44.0, x=hx, z=hz, size=[10.0, 4.5, 6.0], yaw=yaw_of(hi) + math.pi)
     fx, fz, fi = path_point(3000.0, -70.0)
     props["lodge"] = dict(s=3000.0, t=-70.0, x=fx, z=fz, size=[36.0, 12.0, 16.0], yaw=yaw_of(fi))
     lx, lz, li = path_point(2935.0, 88.0)
-    props["liftStation"] = dict(s=2935.0, t=88.0, x=lx, z=lz, size=[10.0, 8.0, 12.0], yaw=yaw_of(li))
+    props["liftStation"] = dict(s=2935.0, t=88.0, x=lx, z=lz, size=[10.0, 8.0, 12.0], yaw=yaw_of(li) + math.pi)
     for name, radius, blend in (("startHut", 16.0, 22.0), ("lodge", 30.0, 70.0), ("liftStation", 18.0, 45.0)):
         p = props[name]
         p["y"] = float(flatten_disc(H, p["x"], p["z"], radius, blend))
@@ -306,6 +306,16 @@ def build_world():
         ang = np.degrees(np.arctan(slope[band]))
         print(f"slope deg d {lo}-{hi}: p10 {np.percentile(ang, 10):.0f} p50 {np.percentile(ang, 50):.0f} "
               f"p90 {np.percentile(ang, 90):.0f}; rock {rock[band].mean() * 100:.0f}%")
+
+    # chairlift: bottom station beside the finish plaza, climbing the right side of the piste
+    lift = []
+    s_ = 2935.0
+    while s_ > 1350.0:
+        t_ = 92.0 + 10.0 * math.sin(s_ / 260.0)
+        px_, pz_, _i = path_point(s_, t_)
+        lift.append([float(px_), float(pz_)])
+        s_ -= 92.0
+    props["lift"] = dict(points=lift)
 
     world = dict(
         H=H.astype(np.float32), slope=slope.astype(np.float32), rock=rock.astype(np.float32),
@@ -352,6 +362,14 @@ def scatter(path, world, props, rng):
     for name, r in (("startHut", 30.0), ("lodge", 52.0), ("liftStation", 30.0)):
         p = props[name]
         prob *= smoothstep(r * 0.7, r * 1.15, np.hypot(x - p["x"], z - p["z"]))
+    lp = np.array(props["lift"]["points"], dtype=np.float64)
+    if len(lp) > 1:
+        dmin = np.full(x.shape, 1e9)
+        for a_, b_ in zip(lp[:-1], lp[1:]):
+            ab = b_ - a_
+            u = np.clip(((x - a_[0]) * ab[0] + (z - a_[1]) * ab[1]) / (ab @ ab), 0, 1)
+            dmin = np.minimum(dmin, np.hypot(x - (a_[0] + u * ab[0]), z - (a_[1] + u * ab[1])))
+        prob *= smoothstep(6.0, 12.0, dmin)
     keep = rng.random(x.shape) < prob
     tx, tz, ty = x[keep], z[keep], y[keep]
     tnf, tnl = nf[keep], nl[keep]

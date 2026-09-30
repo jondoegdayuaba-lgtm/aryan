@@ -54,3 +54,9 @@ export function formatDelta(seconds) {
   const txt = a >= 60 ? formatTime(a) : a.toFixed(2);
   return (seconds < 0 ? '-' : '+') + txt;
 }
+
+/**
+ * Where a bundled asset really lives. The single-file desktop build unpacks its embedded assets into
+ * blob: URLs and publishes the lookup as window.__assetUrl; from a web server the path is used as is.
+ */
+export const assetUrl = (path) => (typeof window !== 'undefined' && window.__assetUrl && window.__assetUrl(path)) || path;

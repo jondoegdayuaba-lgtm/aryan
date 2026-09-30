@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:desktop": "node tools/build-desktop.mjs"
+    "build:desktop": "node tools/build-desktop.mjs",
+    "build:ski": "node tools/build-ski-desktop.mjs",
+    "sim:ski": "node tools/ski-sim.mjs all"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

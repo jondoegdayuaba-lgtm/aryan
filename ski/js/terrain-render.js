@@ -159,15 +159,24 @@ const SURFACE = /* glsl */`
 		vec3 w = pow( abs( nG ), vec3( 4.0 ) );
 		w /= ( w.x + w.y + w.z );
 		vec3 p3 = tp * 0.16;
+		vec3 p4 = tp * 0.71 + 0.37;
+		float f4 = 1.0 - smoothstep( 40.0, 160.0, tDist );
 		vec3 rx = texture2D( uRockN, p3.zy ).xyz * 2.0 - 1.0;
 		vec3 ry = texture2D( uRockN, p3.xz ).xyz * 2.0 - 1.0;
 		vec3 rz = texture2D( uRockN, p3.xy ).xyz * 2.0 - 1.0;
+		if ( f4 > 0.0 ) {
+			rx.xy += ( texture2D( uRockN, p4.zy ).xy * 2.0 - 1.0 ) * 0.7 * f4;
+			ry.xy += ( texture2D( uRockN, p4.xz ).xy * 2.0 - 1.0 ) * 0.7 * f4;
+			rz.xy += ( texture2D( uRockN, p4.xy ).xy * 2.0 - 1.0 ) * 0.7 * f4;
+		}
 		rx = vec3( rx.xy + nG.zy, abs( rx.z ) * nG.x );
 		ry = vec3( ry.xy + nG.xz, abs( ry.z ) * nG.y );
 		rz = vec3( rz.xy + nG.xy, abs( rz.z ) * nG.z );
 		vec3 nR = normalize( rx.zyx * w.x + ry.xzy * w.y + rz.xyz * w.z );
 		nW = normalize( mix( nSnow, nR, rockAmt ) );
 		vec3 c3 = texture2D( uRockC, p3.zy ).rgb * w.x + texture2D( uRockC, p3.xz ).rgb * w.y + texture2D( uRockC, p3.xy ).rgb * w.z;
+		vec3 c4 = texture2D( uRockC, p4.zy ).rgb * w.x + texture2D( uRockC, p4.xz ).rgb * w.y + texture2D( uRockC, p4.xy ).rgb * w.z;
+		c3 = mix( c3, c3 * c4 * 1.5, 0.55 * f4 );
 		rockTint = mix( vec3( 1.0 ), c3 * 1.55, rockAmt );
 	}
 	diffuseColor.rgb = tMacro * rockTint;
