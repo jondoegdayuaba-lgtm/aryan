@@ -248,6 +248,7 @@ export class Hud {
     this.updateNumbers(dt);
     this.updateFeed(dt);
     this.drawMinimap();
+    this.drawCompass();
     if (g.mapOpen) this.drawBigMap();
     // storm warning edge + sky-dive speed lines
     $('speedlines').classList.toggle('on', a.mode === 'sky' && (a.dive || 0) > 0.4);
@@ -270,7 +271,7 @@ export class Hud {
     const a = g.player;
     const el = $('prompt');
     const t = g.interactTarget(a);
-    if ((!t || a.buildMode) && g.controller.editPiece && a.mode === 'ground') {
+    if (!t && !a.buildMode && g.controller.editPiece && a.mode === 'ground') {
       el.hidden = false;
       const p = g.controller.editPiece;
       const what = p.kind === 'ramp' ? 'Turn ramp' : { null: 'Add window', bwindow: 'Make door', bdoor: 'Close wall' }[p.opening];
@@ -376,6 +377,45 @@ export class Hud {
     el.classList.add('on');
   }
 
+  // ------------------------------------------------------------------ compass
+  drawCompass() {
+    const g = this.game;
+    const strip = $('compass-strip');
+    const W = $('compass').clientWidth;
+    const yaw = g.rig.yaw;
+    // heading in degrees, 0 = north (-Z), clockwise
+    const heading = ((Math.atan2(-Math.sin(yaw), -Math.cos(yaw)) * 180 / Math.PI) + 360) % 360;
+    const pxPerDeg = W / 120;
+    const parts = [];
+    const labels = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
+    for (let d = -60; d <= 60; d += 5) {
+      const deg = Math.round((heading + d) / 5) * 5;
+      const off = deg - heading;
+      const x = W / 2 + off * pxPerDeg;
+      const n = ((deg % 360) + 360) % 360;
+      if (labels[n] !== undefined) parts.push(`<span class="major" style="left:${x}px">${labels[n]}</span>`);
+      else if (n % 15 === 0) parts.push(`<span class="tick" style="left:${x}px">${n}</span>`);
+    }
+    const a = g.player;
+    const bearing = (tx, tz) => {
+      const b = (Math.atan2(tx - a.pos.x, -(tz - a.pos.z)) * 180 / Math.PI + 360) % 360;
+      let off = b - heading;
+      if (off > 180) off -= 360;
+      if (off < -180) off += 360;
+      return off;
+    };
+    if (g.marker) {
+      const off = bearing(g.marker.x, g.marker.z);
+      if (Math.abs(off) < 60) parts.push(`<span class="mark" style="left:${W / 2 + off * pxPerDeg}px">&#9660;</span>`);
+    }
+    const s = g.storm;
+    if (s.state !== 'idle' && s.state !== 'pre' && s.distOutside(a.pos.x, a.pos.z) > -20) {
+      const off = bearing(s.next.c.x, s.next.c.y);
+      if (Math.abs(off) < 60) parts.push(`<span class="storm" style="left:${W / 2 + off * pxPerDeg}px">&#9679;</span>`);
+    }
+    strip.innerHTML = parts.join('');
+  }
+
   // ------------------------------------------------------------------ maps
   worldToMap(x, z, size, cx = 0, cz = 0, scale = 1) {
     return [(x - cx) * scale + size / 2, (z - cz) * scale + size / 2];
@@ -455,6 +495,13 @@ export class Hud {
     // airship route
     if (g.airship && g.airship.active) this.drawRoute(ctx, map);
     this.drawDrops(ctx, map);
+    if (g.marker) {
+      const [mx, my] = map(g.marker.x, g.marker.z);
+      ctx.fillStyle = '#ffe14d';
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(mx, my, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
     const [px, py] = map(a.pos.x, a.pos.z);
     this.drawPlayer(ctx, px, py, a.mode === 'bus' ? g.rig.yaw : g.rig.yaw);
     ctx.restore();

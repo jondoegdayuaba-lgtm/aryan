@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { GRID, MATS, BUILD_COST } from './config.js';
 import { BUILD_MODEL, slotTransform } from './pieces.js';
 import { clamp } from './util.js';
+import { RAMP, RAMP_DIRS } from './physics.js';
 
 const S = GRID.cell;
 const H = GRID.level;
@@ -56,7 +57,18 @@ export class Building {
     if (kind === 'floor') return { ix: cx, iy: clampLvl(Math.floor((P.y + 1.0) / H)), iz: cz };
     if (kind === 'ramp') {
       const dirI = Math.abs(fx) > Math.abs(fz) ? (fx > 0 ? 1 : 3) : (fz > 0 ? 0 : 2);
-      return { ix: cx, iy: clamp(Math.floor(P.y / H), feet - 1, feet + 1), iz: cz, dir: dirI };
+      // on a ramp going the same way: the next one starts where this one ends
+      const gc = actor.groundCollider;
+      if (gc && gc.type === RAMP && gc.dir === dirI) {
+        const lvl = Math.round(gc.y0 / H);
+        const rx = Math.floor((gc.minX + 0.1) / S), rz = Math.floor((gc.minZ + 0.1) / S);
+        const d = RAMP_DIRS[dirI];
+        return { ix: rx + d[0], iy: lvl + 1, iz: rz + d[1], dir: dirI };
+      }
+      // otherwise start at our feet (or one up when looking up)
+      let iy = Math.floor((actor.pos.y + 0.3) / H);
+      if (P.y - actor.pos.y > 3.2) iy++;
+      return { ix: cx, iy, iz: cz, dir: dirI };
     }
     return { ix: cx, iy: clampLvl(Math.floor((P.y + 1.2) / H)), iz: cz, dir: 0 };
   }
@@ -96,8 +108,8 @@ export class Building {
   tryPlace(actor, slot, kind, mat) {
     const g = this.game;
     const now = g.time;
-    const last = this.lastPlace.get(actor) || 0;
-    if (now - last < 0.1) return false;
+    const last = this.lastPlace.get(actor);
+    if (last !== undefined && now - last < 0.1) return false;
     if (!this.canAfford(actor, mat)) {
       if (g.onNoMats) g.onNoMats(actor, mat);
       this.lastPlace.set(actor, now);

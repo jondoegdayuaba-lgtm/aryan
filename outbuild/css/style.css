@@ -109,6 +109,15 @@ select { background: rgba(0,0,0,0.3); color: var(--ink); border: 1px solid var(-
 .ico-alive { clip-path: polygon(50% 0, 68% 30%, 60% 30%, 60% 55%, 90% 100%, 10% 100%, 40% 55%, 40% 30%, 32% 30%); }
 .ico-kill { clip-path: polygon(20% 0, 80% 0, 100% 40%, 75% 100%, 25% 100%, 0 40%); background: var(--danger); }
 
+#compass { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: min(460px, 44vw); height: 26px; overflow: hidden;
+  -webkit-mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); }
+#compass-strip { position: absolute; top: 0; left: 0; height: 100%; white-space: nowrap; font-weight: 700; font-size: 13px; text-shadow: 0 1px 2px #000; }
+#compass-strip span { position: absolute; top: 4px; transform: translateX(-50%); }
+#compass-strip span.major { color: var(--accent); font-size: 15px; top: 2px; }
+#compass-strip span.tick { color: rgba(255,255,255,0.55); }
+#compass-strip span.mark { color: #ffe14d; font-size: 16px; top: 1px; }
+#compass-strip span.storm { color: #d9a6ff; font-size: 14px; top: 3px; }
+#compass .needle { position: absolute; left: 50%; bottom: 0; width: 2px; height: 7px; background: #fff; transform: translateX(-50%); }
 #killfeed { position: absolute; top: 16px; left: 18px; display: grid; gap: 4px; max-width: 42vw; }
 .feed-item { background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 6px; font-size: 13px; transition: opacity 0.3s; }
 .feed-item b { color: #fff; }

@@ -144,8 +144,18 @@ class Game {
       this.audio.breakPiece(p.mat, new THREE.Vector3((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2));
     };
     this.input.onLockChange = (locked) => {
-      if (!locked && this.state === 'match' && !this.mapOpen && !this.over) this.setPaused(true);
+      if (!locked && this.state === 'match' && !this.mapOpen && !this.over && this.player && this.player.alive) this.setPaused(true);
     };
+    $('bigmap').addEventListener('mousedown', (e) => { e.preventDefault(); this.placeMarker(e, e.button === 2); });
+    $('bigmap').addEventListener('contextmenu', (e) => e.preventDefault());
+    window.addEventListener('keydown', (e) => {
+      // the map must close with M/Tab/Esc even while the pointer is free
+      if (this.state === 'match' && this.mapOpen && ['KeyM', 'Tab', 'Escape'].includes(e.code)) {
+        e.preventDefault();
+        this.input.pressed.delete(e.code);
+        this.toggleMap(false);
+      }
+    });
     bar.style.width = '100%';
     // warm up shaders so the first frames don't hitch
     this.renderer.renderer.compile(this.scene, this.camera);
@@ -342,6 +352,21 @@ class Game {
   toggleMap(open = !this.mapOpen) {
     this.mapOpen = open;
     $('bigmap-wrap').hidden = !open;
+    // free the mouse so a marker can be placed; take it back when the map closes
+    if (this.state === 'match' && !this.over) {
+      if (open) this.input.unlock();
+      else if (!this.paused && (!this.player || this.player.alive)) this.input.lock();
+    }
+  }
+
+  placeMarker(e, clear = false) {
+    if (clear) { this.marker = null; return; }
+    const c = $('bigmap');
+    const r = c.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * WORLD.size - WORLD.size / 2;
+    const z = (e.clientY - r.top) / r.height * WORLD.size - WORLD.size / 2;
+    this.marker = { x, z };
+    this.audio.ui();
   }
 
   // ------------------------------------------------------------------ interaction
@@ -699,7 +724,7 @@ class Game {
     const inp = this.input;
     // menus
     if (inp.hit('Escape') || inp.hit('KeyP')) { if (this.mapOpen) this.toggleMap(false); else this.setPaused(!this.paused); }
-    if (inp.hit('KeyM') || inp.hit('Tab')) this.toggleMap();
+    if ((inp.hit('KeyM') || inp.hit('Tab')) && !this.mapOpen) this.toggleMap(true);
     if (this.paused) { this.rig.update(0, this.player); return; }
     this.time += dt;
     const p = this.player;
