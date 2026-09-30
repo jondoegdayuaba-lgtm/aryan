@@ -2,8 +2,10 @@
 // with colliders, hit points, harvesting and destruction.
 import * as THREE from 'three';
 import { Collider, CYL, OBB } from './physics.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { farMaterial, textureTint } from './materials.js';
 
-const NEAR = 150;          // metres: full detail + shadows inside this radius
+const NEAR = 130;          // metres: full detail + shadows inside this radius
 const TINTABLE = new Set(['CarPaint', 'MetalPainted', 'GliderFabric']);
 
 // Vertex-clustering simplifier for the far LOD.
@@ -20,7 +22,8 @@ export function simplify(src, cell) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
     const nx = nor ? nor.getX(i) : 0, ny = nor ? nor.getY(i) : 1, nz = nor ? nor.getZ(i) : 0;
     // keep opposite-facing sheets apart so thin shells don't collapse into each other
-    const dirKey = (nx > 0.3 ? 1 : nx < -0.3 ? 2 : 0) + (ny > 0.3 ? 3 : ny < -0.3 ? 6 : 0) + (nz > 0.3 ? 9 : nz < -0.3 ? 18 : 0);
+    const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+    const dirKey = ay >= ax && ay >= az ? (ny > 0 ? 0 : 1) : ax >= az ? (nx > 0 ? 2 : 3) : (nz > 0 ? 4 : 5);
     const k = `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)},${dirKey}`;
     let c = map.get(k);
     if (c === undefined) {
@@ -59,6 +62,48 @@ export function simplify(src, cell) {
   g.setIndex(out);
   g.computeBoundingSphere();
   return g;
+}
+
+// Average colour of a texture image (linear), cached.
+const tintCache = new Map();
+function averageTexture(tex) {
+  if (!tex || !tex.image) return null;
+  if (tintCache.has(tex)) return tintCache.get(tex);
+  let col = null;
+  try {
+    const c = document.createElement('canvas');
+    c.width = c.height = 8;
+    const x = c.getContext('2d');
+    x.drawImage(tex.image, 0, 0, 8, 8);
+    const d = x.getImageData(0, 0, 8, 8).data;
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < 64; i++) { r += d[i * 4]; g += d[i * 4 + 1]; b += d[i * 4 + 2]; }
+    col = new THREE.Color().setRGB(r / 64 / 255, g / 64 / 255, b / 64 / 255, THREE.SRGBColorSpace);
+  } catch { col = null; }
+  tintCache.set(tex, col);
+  return col;
+}
+
+// One merged, vertex-coloured, simplified geometry for the far level of detail.
+function farGeometry(parts, cell) {
+  const list = [];
+  for (const p of parts) {
+    const g = simplify(p.geometry, cell);
+    if (!g.index || g.index.count === 0) continue;
+    const c = p.material.color ? p.material.color.clone() : new THREE.Color(1, 1, 1);
+    const t = averageTexture(textureTint(p.matName) || p.material.map);
+    if (t) c.multiply(t);
+    if (p.material.emissive && p.material.emissiveIntensity > 0.5) c.add(p.material.emissive.clone().multiplyScalar(0.5));
+    const n = g.attributes.position.count;
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    list.push(g);
+  }
+  if (!list.length) return null;
+  const m = mergeGeometries(list, false);
+  m.computeBoundingSphere();
+  return m;
 }
 
 class LodBatch {
@@ -175,8 +220,9 @@ export class PropSystem {
       const n = type.list.length;
       const parts = type.proto.parts;
       const size = type.proto.box.getSize(new THREE.Vector3());
-      const cell = Math.max(0.25, Math.max(size.x, size.y, size.z) / 9);
-      const farParts = parts.map((p) => ({ ...p, geometry: simplify(p.geometry, cell) }));
+      const cell = Math.max(0.35, Math.max(size.x, size.y, size.z) / 4.5);
+      const fg = farGeometry(parts, cell);
+      const farParts = fg ? [{ geometry: fg, material: farMaterial(), matName: 'Far' }] : parts;
       type.near = new LodBatch(this.scene, parts, n, true, type.name);
       type.far = new LodBatch(this.scene, farParts, n, false, type.name + '_far');
       // big landmarks are visible from far away, small things fade out sooner

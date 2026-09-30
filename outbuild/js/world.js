@@ -44,6 +44,14 @@ export class World {
     this.terrain.markFlat(x0 - 1, z0 - 1, x1 + 1, z1 + 1, 1);
   }
 
+  houseAt(x, z) {
+    for (const h of this.houses) {
+      const n = h.nav;
+      if (n && x > n.x0 && x < n.x1 && z > n.z0 && z < n.z1) return h;
+    }
+    return null;
+  }
+
   isFree(x, z, pad = 0) {
     for (const [x0, z0, x1, z1] of this.occupied) {
       if (x > x0 - pad && x < x1 + pad && z > z0 - pad && z < z1 + pad) return false;
@@ -150,7 +158,24 @@ export class World {
       const s = spots[rng.int(0, spots.length - 1)];
       this.ammoBoxes.push({ x: s.x + rng.float(-1, 1), y: s.y, z: s.z + rng.float(-1, 1), yaw: rng.float(0, 6.28) });
     }
-    this.houses.push({ ox, oz, w, d, L, floors });
+    // navigation hints for bots: the front door and the stairs
+    const dc = doorCell + 0.5;
+    const doorInfo = [
+      [(ox + dc) * S, oz * S, 0, -1], [(ox + w) * S, (oz + dc) * S, 1, 0],
+      [(ox + dc) * S, (oz + d) * S, 0, 1], [ox * S, (oz + dc) * S, -1, 0],
+    ][door];
+    const [dx, dz, nx, nz] = doorInfo;
+    const nav = {
+      x0, z0, x1, z1, L, floors, y: L * H,
+      door: { ox: dx + nx * 2.2, oz: dz + nz * 2.2, ix: dx - nx * 1.6, iz: dz - nz * 1.6 },
+      stairs: null,
+    };
+    if (stairCell) {
+      const dv = [[0, 1], [1, 0], [0, -1], [-1, 0]][stairCell.dir];
+      const cx = stairCell.ix * S + S / 2, cz = stairCell.iz * S + S / 2;
+      nav.stairs = { lx: cx - dv[0] * 2.8, lz: cz - dv[1] * 2.8, tx: cx + dv[0] * 2.6, tz: cz + dv[1] * 2.6 };
+    }
+    this.houses.push({ ox, oz, w, d, L, floors, nav });
     return { x0, z0, x1, z1 };
   }
 

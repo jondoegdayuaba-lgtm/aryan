@@ -253,6 +253,7 @@ export class Physics {
     const steps = Math.max(1, Math.ceil(Math.hypot(hx, hz) / (r * 0.8)));
     let nx = p.x, nz = p.z;
     body.blocked = false;
+    body.blockedBy = null;
     for (let s = 0; s < steps; s++) {
       nx += hx / steps;
       nz += hz / steps;

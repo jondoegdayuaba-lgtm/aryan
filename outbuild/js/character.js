@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { clamp, lerp, damp, wrapAngle } from './util.js';
-import { libMaterial } from './materials.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // ----------------------------------------------------------------------------- outfits (all original)
 const BASE_PARTS = ['Body', 'Head', 'HandL', 'HandR', 'BootL', 'BootR'];
@@ -26,28 +26,101 @@ export const OUTFITS = [
 ];
 export const SKIN_TONES = ['#f1c7a5', '#e0a882', '#c68a5e', '#9c6644', '#6e4630', '#f5d6bf'];
 
-// ----------------------------------------------------------------------------- materials
-const matCache = new Map();
-function charMaterial(src, name, color) {
-  const key = name + '|' + color;
-  let m = matCache.get(key);
-  if (!m) {
-    m = new THREE.MeshStandardMaterial({ name, color: new THREE.Color(color || src.color), roughness: src.roughness,
-      metalness: src.metalness });
-    if (src.emissive && src.emissiveIntensity > 0 && (src.emissive.r + src.emissive.g + src.emissive.b) > 0) {
-      m.emissive = src.emissive.clone();
-      m.emissiveIntensity = 1.6;
-    }
-    if (['Top', 'Sleeve', 'Bottom', 'Gear', 'Accent', 'Gloves'].includes(name)) {
-      const fab = libMaterial('Cloth');
-      m.roughness = 0.85;
-      if (fab) m.userData.fabric = true;
-    }
-    if (name === 'Skin') { m.roughness = 0.6; }
-    if (name === 'Visor') { m.roughness = 0.08; m.metalness = 0.3; m.envMapIntensity = 2; }
-    matCache.set(key, m);
+// ----------------------------------------------------------------------------- merged outfit mesh
+// Every visible part of an outfit is merged into ONE skinned mesh: material colours become vertex colours,
+// roughness/metalness/emission a per-vertex attribute. One draw call per character instead of ~30.
+const ROUGH = { Skin: 0.6, Top: 0.85, Sleeve: 0.85, Bottom: 0.85, Gear: 0.8, Accent: 0.75, Gloves: 0.8, Boots: 0.6,
+  Hair: 0.55, EyeWhite: 0.2, Iris: 0.15, Dark: 0.4, Lips: 0.5, Metal: 0.35, Visor: 0.08 };
+const METAL = { Metal: 1, Visor: 0.3 };
+const EMIT = { Visor: 1.2 };
+
+export const CHAR_MATERIAL = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+CHAR_MATERIAL.onBeforeCompile = (sh) => {
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute vec3 aRM;\nvarying vec3 vRM;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRM = aRM;');
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\nvarying vec3 vRM;')
+    .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vRM.x;')
+    .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vRM.y;')
+    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vRM.z;');
+};
+CHAR_MATERIAL.customProgramCacheKey = () => 'character-merged';
+
+const mergedCache = new Map();
+const lodCache = new Map();
+
+// Low-detail version for distant characters: vertex clustering that keeps each cluster's first vertex.
+function simplifySkinned(src, cell) {
+  const pos = src.attributes.position;
+  const n = pos.count;
+  const map = new Map();
+  const rep = new Int32Array(n);
+  const keep = [];
+  for (let i = 0; i < n; i++) {
+    const nx = src.attributes.normal.getX(i), ny = src.attributes.normal.getY(i), nz = src.attributes.normal.getZ(i);
+    const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+    const dk = ay >= ax && ay >= az ? (ny > 0 ? 0 : 1) : ax >= az ? (nx > 0 ? 2 : 3) : (nz > 0 ? 4 : 5);
+    const k = `${Math.floor(pos.getX(i) / cell)},${Math.floor(pos.getY(i) / cell)},${Math.floor(pos.getZ(i) / cell)},${dk}`;
+    let c = map.get(k);
+    if (c === undefined) { c = keep.length; map.set(k, c); keep.push(i); }
+    rep[i] = c;
   }
-  return m;
+  const g = new THREE.BufferGeometry();
+  for (const [name, attr] of Object.entries(src.attributes)) {
+    const size = attr.itemSize;
+    const arr = new attr.array.constructor(keep.length * size);
+    keep.forEach((vi, j) => { for (let k = 0; k < size; k++) arr[j * size + k] = attr.array[vi * size + k]; });
+    g.setAttribute(name, new THREE.BufferAttribute(arr, size, attr.normalized));
+  }
+  const idx = src.index.array;
+  const out = [];
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = rep[idx[t]], b = rep[idx[t + 1]], c = rep[idx[t + 2]];
+    if (a !== b && b !== c && a !== c) out.push(a, b, c);
+  }
+  g.setIndex(out);
+  g.computeBoundingSphere();
+  return g;
+}
+function buildMergedGeometry(parts, show, colors) {
+  const list = [];
+  const c = new THREE.Color();
+  for (const [name, obj] of Object.entries(parts)) {
+    if (!show.has(name)) continue;
+    obj.traverse((m) => {
+      if (!m.isSkinnedMesh) return;
+      const src = m.geometry;
+      const mn = m.material.name;
+      const g = new THREE.BufferGeometry();
+      g.setIndex(src.index ? src.index.clone() : null);
+      g.setAttribute('position', src.attributes.position.clone());
+      g.setAttribute('normal', src.attributes.normal.clone());
+      const n = src.attributes.position.count;
+      const si = src.attributes.skinIndex, sw = src.attributes.skinWeight;
+      const idx = new Uint16Array(n * 4), wt = new Float32Array(n * 4);
+      for (let i = 0; i < n; i++) {
+        idx[i * 4] = si.getX(i); idx[i * 4 + 1] = si.getY(i); idx[i * 4 + 2] = si.getZ(i); idx[i * 4 + 3] = si.getW(i);
+        wt[i * 4] = sw.getX(i); wt[i * 4 + 1] = sw.getY(i); wt[i * 4 + 2] = sw.getZ(i); wt[i * 4 + 3] = sw.getW(i);
+      }
+      g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(idx, 4));
+      g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(wt, 4));
+      c.set(colors[mn] || m.material.color);
+      const col = new Float32Array(n * 3), rm = new Float32Array(n * 3);
+      const r = ROUGH[mn] ?? m.material.roughness, me = METAL[mn] ?? 0, em = EMIT[mn] ?? 0;
+      for (let i = 0; i < n; i++) {
+        col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+        rm[i * 3] = r; rm[i * 3 + 1] = me; rm[i * 3 + 2] = em;
+      }
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      g.setAttribute('aRM', new THREE.BufferAttribute(rm, 3));
+      list.push(g);
+    });
+  }
+  const merged = mergeGeometries(list, false);
+  merged.computeBoundingSphere();
+  for (const g of list) g.dispose();
+  return merged;
 }
 
 // ----------------------------------------------------------------------------- model
@@ -70,9 +143,16 @@ export class CharacterModel {
         o.frustumCulled = false;
       }
     });
-    // top-level parts (Group or SkinnedMesh directly under Rig)
+    // top-level parts (Group or SkinnedMesh directly under Rig) - kept only as sources for the merged mesh
     const rig = this.model.getObjectByName('Rig') || this.model;
+    this.rig = rig;
     for (const c of rig.children) if (!c.isBone) this.meshes[c.name] = c;
+    let first = null;
+    this.model.traverse((o) => { if (o.isSkinnedMesh && !first) first = o; });
+    this.skeleton = first.skeleton;
+    this.bindMatrix = first.bindMatrix.clone();
+    for (const obj of Object.values(this.meshes)) rig.remove(obj);
+    this.body = null;
     this.bones = {};
     this.model.traverse((o) => { if (o.isBone) this.bones[o.name] = o; });
     this.rest = {};
@@ -110,17 +190,32 @@ export class CharacterModel {
   setOutfit(index, skinTone) {
     const o = OUTFITS[index % OUTFITS.length];
     this.outfit = o;
-    const colors = { ...o.colors, Skin: skinTone || o.skin || SKIN_TONES[1] };
-    const show = new Set([...BASE_PARTS, ...o.parts]);
-    for (const [name, obj] of Object.entries(this.meshes)) {
-      obj.visible = show.has(name);
-      obj.traverse((m) => {
-        if (!m.isSkinnedMesh) return;
-        const mn = (m.userData.srcMat || m.material).name;
-        m.userData.srcMat = m.userData.srcMat || m.material;
-        m.material = charMaterial(m.userData.srcMat, mn, colors[mn]);
-      });
+    const tone = skinTone || o.skin || SKIN_TONES[1];
+    const colors = { ...o.colors, Skin: tone };
+    const key = (index % OUTFITS.length) + '|' + tone;
+    let geo = mergedCache.get(key);
+    if (!geo) {
+      geo = buildMergedGeometry(this.meshes, new Set([...BASE_PARTS, ...o.parts]), colors);
+      mergedCache.set(key, geo);
     }
+    let lod = lodCache.get(key);
+    if (!lod) { lod = simplifySkinned(geo, 0.055); lodCache.set(key, lod); }
+    this.geoNear = geo;
+    this.geoFar = lod;
+    if (this.body) this.rig.remove(this.body);
+    const body = new THREE.SkinnedMesh(geo, CHAR_MATERIAL);
+    body.bind(this.skeleton, this.bindMatrix);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    body.frustumCulled = false;
+    this.rig.add(body);
+    this.body = body;
+  }
+
+  // Swap to the low-detail body when far from the camera.
+  setLod(far) {
+    const g = far ? this.geoFar : this.geoNear;
+    if (this.body && g && this.body.geometry !== g) this.body.geometry = g;
   }
 
   // Attach a weapon/tool Object3D (from assets.instance) or null.
@@ -345,7 +440,7 @@ export class CharacterModel {
     const s = this.state;
     const sock = this.socket;
     const kind = this.holdKind;
-    sock.visible = !!this.weapon;
+    sock.visible = !!this.weapon && !sock.userData.far;
     if (a.mode === 'sky') {
       // arms spread like a skydiver
       for (const side of ['L', 'R']) {

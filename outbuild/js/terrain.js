@@ -418,22 +418,43 @@ export class Terrain {
             p += 3;
           }
         }
-        const idx = new Uint32Array(quads * quads * 6);
-        let q = 0;
-        for (let j = 0; j < quads; j++) {
-          for (let i = 0; i < quads; i++) {
-            const a = j * vn + i;
-            const b = a + 1;
-            const c = a + vn;
-            const d = c + 1;
-            idx[q++] = a; idx[q++] = c; idx[q++] = b;
-            idx[q++] = b; idx[q++] = c; idx[q++] = d;
-          }
+        // skirt: a copy of the edge vertices hanging 4 m lower hides cracks between LOD levels
+        const edge = [];
+        for (let k = 0; k < vn; k++) edge.push(k, (vn - 1) * vn + k, k * vn, k * vn + vn - 1);
+        const skirtOf = new Map();
+        const allPos = Array.from(pos), allNor = Array.from(nor);
+        let next = vn * vn;
+        for (const e of edge) {
+          if (skirtOf.has(e)) continue;
+          skirtOf.set(e, next++);
+          allPos.push(pos[e * 3], pos[e * 3 + 1] - 4, pos[e * 3 + 2]);
+          allNor.push(nor[e * 3], nor[e * 3 + 1], nor[e * 3 + 2]);
         }
+        const lods = [1, 2, 4].map((st) => {
+          const out = [];
+          for (let j = 0; j < quads; j += st) {
+            for (let i = 0; i < quads; i += st) {
+              const a = j * vn + i, b = a + st, c = a + st * vn, d = c + st;
+              out.push(a, c, b, b, c, d);
+            }
+          }
+          const side = (list) => {
+            for (let k = 0; k + st < list.length; k += st) {
+              const e0 = list[k], e1 = list[k + st], s0 = skirtOf.get(e0), s1 = skirtOf.get(e1);
+              out.push(e0, s0, e1, e1, s0, s1, e0, e1, s0, e1, s1, s0);
+            }
+          };
+          const top = [], bottom = [], left = [], right = [];
+          for (let k = 0; k < vn; k++) { top.push(k); bottom.push((vn - 1) * vn + k); left.push(k * vn); right.push(k * vn + vn - 1); }
+          side(top); side(bottom); side(left); side(right);
+          return new THREE.BufferAttribute(new Uint32Array(out), 1);
+        });
         const g = new THREE.BufferGeometry();
-        g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-        g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-        g.setIndex(new THREE.BufferAttribute(idx, 1));
+        g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(allPos), 3));
+        g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(allNor), 3));
+        g.setIndex(lods[0]);
+        g.userData.lods = lods;
+        g.userData.lod = 0;
         g.computeBoundingSphere();
         g.computeBoundingBox();
         const m = new THREE.Mesh(g, material);
@@ -445,6 +466,18 @@ export class Terrain {
     }
     this.mesh = group;
     return group;
+  }
+
+  // Pick a mesh resolution per chunk from the camera distance.
+  updateLod(cam) {
+    if (!this.mesh) return;
+    for (const m of this.mesh.children) {
+      const g = m.geometry;
+      const c = g.boundingSphere.center;
+      const d = Math.hypot(c.x - cam.x, c.z - cam.z);
+      const lod = d < 170 ? 0 : d < 380 ? 1 : 2;
+      if (lod !== g.userData.lod) { g.userData.lod = lod; g.setIndex(g.userData.lods[lod]); }
+    }
   }
 
   makeMaterial(tex) {

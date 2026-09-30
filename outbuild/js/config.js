@@ -118,8 +118,8 @@ export const STORM = {
 export const QUALITY = {
   low: { pixelRatio: 0.75, shadows: false, shadowSize: 1024, ao: false, bloom: false, aa: 'fxaa', grass: 0, drawDist: 420 },
   medium: { pixelRatio: 1, shadows: true, shadowSize: 2048, ao: false, bloom: true, aa: 'fxaa', grass: 0.5, drawDist: 600 },
-  high: { pixelRatio: 1, shadows: true, shadowSize: 2048, ao: true, bloom: true, aa: 'smaa', grass: 1, drawDist: 800 },
-  epic: { pixelRatio: 1.5, shadows: true, shadowSize: 4096, ao: true, bloom: true, aa: 'smaa', grass: 1.5, drawDist: 1000 },
+  high: { pixelRatio: 1, shadows: true, shadowSize: 2048, ao: false, bloom: true, aa: 'smaa', grass: 1, drawDist: 800 },
+  epic: { pixelRatio: 1.25, shadows: true, shadowSize: 4096, ao: true, bloom: true, aa: 'smaa', grass: 1.4, drawDist: 1000 },
 };
 
 export const DEFAULT_SETTINGS = {

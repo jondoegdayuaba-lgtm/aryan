@@ -124,6 +124,7 @@ function make(name, opts) {
   if (clearcoat) { m.clearcoat = clearcoat; m.clearcoatRoughness = 0.15; }
   if (flat) m.flatShading = true;
   if (map && !triplanar) { m.map = map; }
+  if (map && triplanar) m.userData.triMap = map;
   if (normal && !triplanar) { m.normalMap = normal; m.normalScale.set(normalScale, normalScale); }
   if (emissive) { m.emissive = new THREE.Color(emissive); m.emissiveIntensity = emissiveI; }
   if (transparent) { m.transparent = true; m.opacity = opacity; m.depthWrite = false; }
@@ -259,6 +260,47 @@ export function tinted(name, color, extra = {}) {
     tintCache.set(k, m);
   }
   return m;
+}
+
+// One material for small multi-part models (weapons, items, chests): colour, roughness, metalness and glow
+// are baked per vertex so each model is a single draw call.
+let flatMat = null;
+export function flatMaterial() {
+  if (!flatMat) {
+    flatMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+    flatMat.onBeforeCompile = (sh) => {
+      patchAO(sh);
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec3 aRM;\nvarying vec3 vRM;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRM = aRM;');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vRM;')
+        .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vRM.x;')
+        .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vRM.y;')
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vRM.z;');
+    };
+    flatMat.customProgramCacheKey = () => 'flat-rm';
+  }
+  return flatMat;
+}
+
+// Flat vertex-coloured material for the far level of detail of props.
+let farMat = null;
+export function farMaterial() {
+  if (!farMat) {
+    farMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
+    farMat.onBeforeCompile = (sh) => { patchAO(sh); patchWind(sh, 0.3); };
+    farMat.customProgramCacheKey = () => 'prop-far';
+  }
+  return farMat;
+}
+
+// Average colour of each loaded texture (for the far LOD tint of textured materials).
+export function textureTint(name) {
+  const m = LIB[name];
+  if (!m) return null;
+  const map = m.map || (m.onBeforeCompile && m.userData.triMap);
+  return map || null;
 }
 
 export function updateShared(time, renderer) {

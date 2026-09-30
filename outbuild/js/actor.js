@@ -186,9 +186,7 @@ export class Actor {
 
   setGlider(on) {
     if (on && !this.glider) {
-      this.glider = this.game.assets.instance('Glider', {
-        override: (mn) => (mn === 'GliderFabric' ? tinted('GliderFabric', this.model.outfit.colors.Accent) : null),
-      });
+      this.glider = this.game.assets.flat('Glider', { tints: { GliderFabric: this.model.outfit.colors.Accent } });
       this.model.setGlider(this.glider);
     } else if (!on && this.glider) {
       this.model.setGlider(null);
@@ -394,6 +392,20 @@ export class Actor {
   updateConsumable(dt, item) {
     const it = this.intent;
     const def = CONSUMABLES[item.id];
+    if (def.throw) {
+      // throwables: click to throw toward the aim point
+      if (it.firePressed && this.fireCooldown <= 0) {
+        this.fireCooldown = 0.9;
+        this.fired = 0.6;
+        this.game.combat.throwGrenade(this, def);
+        item.count--;
+        if (item.count <= 0) {
+          this.inv.slots[this.inv.selected] = null;
+          this.select(this.inv.slots.findIndex((s) => s));
+        }
+      }
+      return;
+    }
     const canUse = (def.hp && this.health < def.cap) || (def.shield && this.shield < def.cap);
     if (this.useT > 0) {
       this.useT += dt;
@@ -432,17 +444,17 @@ export class Actor {
     const c = this.current();
     if (this.buildMode) { this.model.hold(null, 'build'); return; }
     if (!c) {
-      const obj = a.instance('W_Pickaxe', { override: (mn) => (mn === 'Rarity' ? tinted('Rarity', this.model.outfit.colors.Accent) : null) });
+      const obj = a.flat('W_Pickaxe', { tints: { Rarity: this.model.outfit.colors.Accent } });
       this.model.hold(obj, 'tool');
       return;
     }
     if (c.type === 'weapon') {
       const def = WEAPONS[c.id];
-      const obj = a.instance(def.model, { override: (mn) => (mn === 'Rarity' ? tinted('Rarity', RARITIES[c.rarity].color) : null) });
+      const obj = a.flat(def.model, { tints: { Rarity: RARITIES[c.rarity].color } });
       this.model.hold(obj, def.hold);
       return;
     }
-    const obj = a.instance(CONSUMABLES[c.id].model);
+    const obj = a.flat(CONSUMABLES[c.id].model);
     this.model.hold(obj, 'item');
   }
 
@@ -461,6 +473,8 @@ export class Actor {
     const cam = g.camera.position;
     const d2 = this.pos.distanceToSquared(cam);
     if (!this.isPlayer && d2 > 260 * 260) { m.root.visible = false; return; }
+    m.setLod(d2 > 32 * 32);
+    m.socket.userData.far = d2 > 70 * 70;
     this.refreshHeld();
     m.root.position.copy(this.pos);
     m.root.rotation.y = this.yaw;

@@ -263,7 +263,7 @@ export class Hud {
     if (!t || a.mode !== 'ground' || a.buildMode) { el.hidden = true; return; }
     el.hidden = false;
     if (t.kind === 'container') {
-      el.innerHTML = `<kbd>E</kbd> ${t.obj.kind === 'chest' ? 'Open chest' : 'Open ammo box'}`;
+      el.innerHTML = `<kbd>E</kbd> ${t.obj.kind === 'chest' ? 'Open chest' : t.obj.kind === 'supply' ? 'Open supply drop' : 'Open ammo box'}`;
       el.style.removeProperty('--rar');
     } else {
       const it = t.obj.item;
@@ -437,7 +437,7 @@ export class Hud {
     this.drawCircles(ctx, map);
     // airship route
     if (g.airship && g.airship.active) this.drawRoute(ctx, map);
-    // teammates? no - just the player
+    this.drawDrops(ctx, map);
     const [px, py] = map(a.pos.x, a.pos.z);
     this.drawPlayer(ctx, px, py, a.mode === 'bus' ? g.rig.yaw : g.rig.yaw);
     ctx.restore();
@@ -446,6 +446,18 @@ export class Hud {
     ctx.font = '700 11px Chakra Petch, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('N', S / 2, 12);
+  }
+
+  drawDrops(ctx, map) {
+    for (const d of this.game.drops || []) {
+      if (d.container && d.container.opened) continue;
+      const [x, y] = map(d.x, d.z);
+      ctx.fillStyle = '#3d9bff';
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.fillRect(x - 5, y - 5, 10, 10);
+      ctx.strokeRect(x - 5, y - 5, 10, 10);
+    }
   }
 
   drawRoute(ctx, map) {
@@ -497,6 +509,7 @@ export class Hud {
       ctx.fillStyle = '#fff';
       ctx.fillText(p.name.toUpperCase(), x, y);
     }
+    this.drawDrops(ctx, map);
     if (g.marker) {
       const [mx, my] = map(g.marker.x, g.marker.z);
       ctx.fillStyle = '#ffe14d';

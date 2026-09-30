@@ -108,7 +108,8 @@ class Batch {
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.setColorAt(0, new THREE.Color(1, 1, 1));
       mesh.count = 0;
-      mesh.frustumCulled = false;
+      mesh.visible = false;
+      mesh.frustumCulled = true;
       mesh.castShadow = !part.material.transparent;
       mesh.receiveShadow = true;
       if (old[i]) {
@@ -116,6 +117,7 @@ class Batch {
         mesh.instanceColor.array.set(old[i].instanceColor.array.subarray(0, this.capacity * 3));
         state.array.set(old[i].geometry.attributes.aState.array.subarray(0, this.capacity * 2));
         mesh.count = old[i].count;
+        mesh.visible = mesh.count > 0;
         this.scene.remove(old[i]);
         old[i].geometry.dispose();
         old[i].dispose();
@@ -136,6 +138,8 @@ class Batch {
       m.setMatrixAt(i, matrix);
       m.setColorAt(i, color);
       m.count = this.items.length;
+      m.visible = true;
+      m.boundingSphere = null;
       m.instanceMatrix.needsUpdate = true;
       m.instanceColor.needsUpdate = true;
     }
@@ -165,6 +169,8 @@ class Batch {
     this.items.pop();
     for (const m of this.meshes) {
       m.count = this.items.length;
+      m.visible = this.items.length > 0;
+      m.boundingSphere = null;
       m.instanceMatrix.needsUpdate = true;
       m.instanceColor.needsUpdate = true;
     }
@@ -306,11 +312,14 @@ export class PieceSystem {
     this._c = new THREE.Color();
   }
 
-  batch(model) {
-    let b = this.batches.get(model);
+  // One batch per model per 128 m region, so whole towns can be frustum culled (camera and shadows).
+  batch(model, slot) {
+    const rx = Math.floor((slot.ix * S) / 128), rz = Math.floor((slot.iz * S) / 128);
+    const key = model + '|' + rx + ',' + rz;
+    let b = this.batches.get(key);
     if (!b) {
-      b = new Batch(this.scene, this.assets.proto(model), MODELS[model].kind === 'wall' ? 256 : 128);
-      this.batches.set(model, b);
+      b = new Batch(this.scene, this.assets.proto(model), MODELS[model].kind === 'wall' ? 64 : 32);
+      this.batches.set(key, b);
     }
     return b;
   }
@@ -335,7 +344,7 @@ export class PieceSystem {
     this.pieces.set(key, p);
     slotTransform(p.kind, p, this._m);
     this._c.set(opts.color || 0xffffff);
-    this.batch(model).add(p, this._m, this._c);
+    this.batch(model, slot).add(p, this._m, this._c);
     p.colliders = makeColliders(p);
     for (const c of p.colliders) this.physics.add(c);
     p.grounded = this.touchesGround(p);

@@ -6,13 +6,13 @@ export class Airship {
   constructor(game) {
     this.game = game;
     this.group = new THREE.Group();
-    this.model = game.assets.instance('Airship');
+    this.model = game.assets.flat('Airship');
     this.group.add(this.model);
     this.props = [];
     for (const name of ['Airship_Prop_L', 'Airship_Prop_R']) {
       if (!game.assets.has(name)) continue;
       const proto = game.assets.proto(name);
-      const p = game.assets.instance(name);
+      const p = game.assets.flat(name);
       const pivot = new THREE.Group();
       pivot.position.copy(proto.position);
       pivot.quaternion.copy(proto.quaternion);

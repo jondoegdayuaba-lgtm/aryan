@@ -24,7 +24,7 @@ import { Storm } from './storm.js';
 import { Effects } from './effects.js';
 import { Audio } from './audio.js';
 import { Hud } from './hud.js';
-import { PickupSystem, floorLoot, chestLoot, ammoBoxLoot, WEAPONS, CONSUMABLES, itemName } from './items.js';
+import { PickupSystem, floorLoot, chestLoot, ammoBoxLoot, supplyLoot, WEAPONS, CONSUMABLES, itemName } from './items.js';
 import { OUTFITS, SKIN_TONES, CharacterModel } from './character.js';
 import { UI } from './ui.js';
 import { LOBBY } from './layout.js';
@@ -188,6 +188,7 @@ class Game {
 
   // ------------------------------------------------------------------ level
   buildLevel() {
+    if (this.drops) { for (const d of this.drops) this.scene.remove(d.group); this.drops = []; }
     if (this.props) { this.props.dispose(); this.pieces.clear(); this.pickups.clear(); }
     this.props = new PropSystem(this.scene, this.physics, this.assets);
     this.props.onDestroyed = (p) => {
@@ -372,7 +373,7 @@ class Game {
     if (t.kind === 'container') {
       const c = t.obj;
       c.opened = true;
-      const items = c.kind === 'chest' ? chestLoot(this.rng) : ammoBoxLoot(this.rng);
+      const items = c.kind === 'chest' ? chestLoot(this.rng) : c.kind === 'supply' ? supplyLoot(this.rng) : ammoBoxLoot(this.rng);
       const fwd = new THREE.Vector3(Math.sin(c.yaw), 0, Math.cos(c.yaw));
       items.forEach((it) => {
         const p = this.pickups.spawn(it, c.x + fwd.x * 0.6, c.y + 0.6, c.z + fwd.z * 0.6, { toss: true });
@@ -541,7 +542,68 @@ class Game {
     if (actor.isPlayer) this.hud.announce(CONSUMABLES[item.id].shield ? 'Shield is full' : 'Health is full', '', 1, 'small');
   }
   onExplosion(pos) { this.audio.explosion(pos); }
+  // A crate that floats down under a balloon with top-tier loot.
+  spawnSupplyDrop() {
+    const s = this.storm;
+    let x = 0, z = 0;
+    for (let i = 0; i < 30; i++) {
+      const a = this.rng.float(0, Math.PI * 2), r = Math.sqrt(this.rng.next()) * s.next.r * 0.7;
+      x = s.next.c.x + Math.cos(a) * r;
+      z = s.next.c.y + Math.sin(a) * r;
+      if (this.terrain.heightAt(x, z) > 1.5 && this.world.isFree(x, z, 3)) break;
+    }
+    const group = new THREE.Group();
+    const crate = this.assets.flat('SupplyCrate');
+    const balloon = this.assets.flat('SupplyBalloon');
+    const bp = this.assets.proto('SupplyBalloon');
+    balloon.position.copy(bp.position.lengthSq() > 0 ? bp.position : new THREE.Vector3(0, 1.52, 0));
+    group.add(crate, balloon);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 400, 12, 1, true).translate(0, 200, 0),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.7, 2.2), transparent: true, opacity: 0.28, depthWrite: false,
+        blending: THREE.AdditiveBlending, fog: false }));
+    group.add(beam);
+    const ground = this.physics.groundAt(x, z, 400, 0.6, 500);
+    group.position.set(x, ground + 150, z);
+    this.scene.add(group);
+    const drop = { group, crate, balloon, beam, x, z, y: ground + 150, ground, landed: false, t: 0 };
+    this.drops = this.drops || [];
+    this.drops.push(drop);
+    this.hud.announce('Supply drop incoming', 'Look for the blue beam', 3, 'small');
+  }
+
+  updateDrops(dt) {
+    if (!this.drops) return;
+    for (const d of this.drops) {
+      d.t += dt;
+      if (!d.landed) {
+        d.y = Math.max(d.ground, d.y - 5.5 * dt);
+        d.group.position.set(d.x + Math.sin(d.t * 0.7) * 0.4, d.y, d.z);
+        d.group.rotation.y += dt * 0.3;
+        if (d.y <= d.ground + 0.01) {
+          d.landed = true;
+          d.group.position.set(d.x, d.ground, d.z);
+          this.effects.landingDust(d.group.position);
+          // becomes a container anyone can open
+          const c = { kind: 'supply', group: d.group, lid: null, x: d.x, y: d.ground, z: d.z, yaw: d.group.rotation.y, opened: false,
+            open: 0, light: null, sparkle: 0, drop: d };
+          this.pickups.chests.push(c);
+          d.container = c;
+        }
+      } else if (d.balloon.visible) {
+        // the balloon lets go and drifts away
+        d.balloon.position.y += dt * 6;
+        d.balloon.scale.multiplyScalar(1 - dt * 0.25);
+        if (d.balloon.position.y > 40) d.balloon.visible = false;
+      }
+      if (d.container && d.container.opened) {
+        d.beam.visible = false;
+        d.crate.scale.multiplyScalar(Math.max(0.001, 1 - dt * 3));
+      }
+    }
+  }
+
   onStorm(phase, storm) {
+    if (phase === 'wait' && storm.phase >= 1 && storm.phase <= 4) setTimeout(() => { if (this.state === 'match' && !this.over) this.spawnSupplyDrop(); }, 6000);
     if (phase === 'wait') {
       this.hud.announce('Storm eye forming', `Shrinks in ${formatTime(storm.timer)} — get inside the white circle`, 4, 'storm');
     } else if (phase === 'shrink') {
@@ -576,11 +638,39 @@ class Game {
     window.__frames = (window.__frames || 0) + 1;
   }
 
+  // Debug helper: run the match logic for a while without rendering (used by the automated tests).
+  simulate(seconds, step = 1 / 30) {
+    let t = 0;
+    const cam = this.camera.position;
+    while (t < seconds && this.state === 'match') {
+      this.updateMatch(step);
+      this.props.update(step, cam);
+      this.pieces.update(step);
+      this.pickups.update(step, cam);
+      this.effects.update(step);
+      this.input.endFrame();
+      t += step;
+    }
+    const bots = this.bots.map((b) => b.a.alive ? b.state : 'dead');
+    const count = (k) => bots.filter((x) => x === k).length;
+    return {
+      time: +this.time.toFixed(1), alive: this.aliveCount(), storm: this.storm.state, phase: this.storm.phase,
+      radius: +this.storm.radius.toFixed(0), states: { bus: count('bus'), travel: count('travel'), fight: count('fight'), heal: count('heal') },
+      modes: this.actors.reduce((m, a) => { const k = a.alive ? a.mode : 'dead'; m[k] = (m[k] || 0) + 1; return m; }, {}),
+      kills: this.actors.filter((a) => a.kills).map((a) => a.name + ':' + a.kills).join(' '),
+      armed: this.actors.filter((a) => a.alive && a.inv.slots.some((x) => x && x.type === 'weapon')).length,
+      pieces: [...this.pieces.pieces.values()].filter((p) => !p.house).length,
+      chestsOpened: this.pickups.chests.filter((c) => c.opened).length,
+      over: this.over, winner: this.winner ? this.winner.name : null,
+    };
+  }
+
   updateWorld(dt) {
     this.worldTime = (this.worldTime || 0) + dt;
     updateShared(this.worldTime, this.renderer);
     const cam = this.camera.position;
     this.water.userData.update(this.worldTime, this.renderer);
+    this.terrain.updateLod(cam);
     if (this.grass) this.grass.userData.update(cam);
     this.props.update(dt, cam);
     this.pieces.update(dt);
@@ -628,8 +718,13 @@ class Game {
       }
     }
     this.weakPoint.update(dt);
+    this.updateDrops(dt);
     // camera
-    if (p.alive || !this.spectating) {
+    if (this.photo) {
+      this.camera.position.copy(this.photo.pos);
+      this.camera.lookAt(this.photo.target);
+      if (this.photo.fov) { this.camera.fov = this.photo.fov; this.camera.updateProjectionMatrix(); }
+    } else if (p.alive || !this.spectating) {
       this.controller.updateCamera(dt);
     } else {
       if (!this.spectating.alive) this.spectating = this.actors.find((a) => a.alive && a !== p) || null;

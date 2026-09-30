@@ -37,6 +37,8 @@ export const CONSUMABLES = {
   medkit: { name: 'Med Kit', model: 'Medkit', hp: 100, cap: 100, time: 9, max: 3, pickup: 1 },
   shieldSmall: { name: 'Shield Flask', model: 'ShieldSmall', shield: 25, cap: 50, time: 2, max: 6, pickup: 3 },
   shieldBig: { name: 'Shield Jug', model: 'ShieldBig', shield: 50, cap: 100, time: 5, max: 3, pickup: 1 },
+  // thrown, not used on yourself
+  grenade: { name: 'Grenade', model: 'Grenade', throw: true, max: 6, pickup: 3, dmg: 75, radius: 5, fuse: 2.2, structure: 4 },
 };
 for (const [id, c] of Object.entries(CONSUMABLES)) c.id = id;
 
@@ -86,6 +88,7 @@ const WEAPON_TABLE = [
 ];
 const CONSUMABLE_TABLE = [
   { id: 'bandage', w: 30 }, { id: 'medkit', w: 10 }, { id: 'shieldSmall', w: 28 }, { id: 'shieldBig', w: 14 },
+  { id: 'grenade', w: 12 },
 ];
 const RARITY_WEIGHTS = [40, 30, 18, 9, 3];
 
@@ -130,6 +133,20 @@ export function chestLoot(rng) {
   out.push(rng.chance(0.55) ? rollConsumable(rng) : rollWeapon(rng, 0.2));
   if (out[2].type === 'weapon') out.push(ammoFor(out[2].id, rng));
   out.push({ type: 'mat', id: rng.pick(['wood', 'wood', 'stone', 'metal']), count: 30 });
+  return out;
+}
+
+export function supplyLoot(rng) {
+  const out = [];
+  for (let i = 0; i < 2; i++) {
+    const pick = rng.weighted(WEAPON_TABLE.filter((t) => t.id !== 'pistol'));
+    const w = WEAPONS[pick.id];
+    const r = w.rarities.includes(4) ? (rng.chance(0.6) ? 4 : 3) : w.rarities[w.rarities.length - 1];
+    const it = makeWeapon(pick.id, r);
+    out.push(it, ammoFor(it.id, rng, 2));
+  }
+  out.push({ type: 'consumable', id: 'shieldBig', count: 2 });
+  out.push({ type: 'mat', id: 'metal', count: 60 });
   return out;
 }
 
@@ -249,6 +266,26 @@ function glowMat(color, kind) {
   return glowMats.get(k);
 }
 
+let haloMat = null;
+function haloMaterial() {
+  if (!haloMat) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const x = c.getContext('2d');
+    const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,220,140,0.9)');
+    g.addColorStop(0.4, 'rgba(255,190,80,0.35)');
+    g.addColorStop(1, 'rgba(255,160,40,0)');
+    x.fillStyle = g;
+    x.fillRect(0, 0, 64, 64);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    haloMat = new THREE.SpriteMaterial({ map: t, color: new THREE.Color(1.6, 1.3, 0.8), transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending, fog: true });
+  }
+  return haloMat;
+}
+
 let pickupId = 1;
 
 export class PickupSystem {
@@ -264,8 +301,8 @@ export class PickupSystem {
 
   spawn(item, x, y, z, { toss = false } = {}) {
     const group = new THREE.Group();
-    const model = this.assets.instance(itemModel(item), { shadows: false,
-      override: (mn) => (mn === 'Rarity' && item.type === 'weapon' ? tinted('Rarity', RARITIES[item.rarity].color) : null) });
+    const model = this.assets.flat(itemModel(item), { shadows: false,
+      tints: item.type === 'weapon' ? { Rarity: RARITIES[item.rarity].color } : {} });
     const scale = item.type === 'weapon' ? 0.9 : 1.1;
     model.scale.setScalar(scale);
     // weapons lie on their side, floating a bit
@@ -314,14 +351,14 @@ export class PickupSystem {
   // Chests and ammo boxes
   addContainer(kind, x, y, z, yaw) {
     const isChest = kind === 'chest';
-    const body = this.assets.instance(isChest ? 'Chest' : 'AmmoBox');
+    const body = this.assets.flat(isChest ? 'Chest' : 'AmmoBox');
     const lidName = isChest ? 'Chest_Lid' : 'AmmoBox_Lid';
     const group = new THREE.Group();
     group.add(body);
     let lid = null;
     if (this.assets.has(lidName)) {
       const lp = this.assets.proto(lidName);
-      lid = this.assets.instance(lidName);
+      lid = this.assets.flat(lidName);
       const pivot = new THREE.Group();
       pivot.position.copy(lp.position);
       pivot.quaternion.copy(lp.quaternion);
@@ -334,9 +371,11 @@ export class PickupSystem {
     this.scene.add(group);
     let light = null;
     if (isChest) {
-      light = new THREE.PointLight(0xffc860, 2.5, 6, 2);
-      light.position.set(0, 0.8, 0);
-      light.castShadow = false;
+      // a soft additive halo instead of a real light (dozens of point lights would slow every shader down)
+      light = new THREE.Sprite(haloMaterial());
+      light.position.set(0, 0.55, 0);
+      light.scale.set(2.2, 2.2, 1);
+      light.renderOrder = 14;
       group.add(light);
     }
     const c = { kind, group, lid, x, y, z, yaw, opened: false, open: 0, light, sparkle: Math.random() * 6 };
@@ -372,20 +411,23 @@ export class PickupSystem {
       }
       // gentle bob and spin (skip far ones)
       const d2 = (p.x - camPos.x) ** 2 + (p.z - camPos.z) ** 2;
-      p.group.visible = d2 < 160 * 160;
+      p.group.visible = d2 < 95 * 95;
       if (d2 < 60 * 60) {
         p.model.position.y = p.baseY + Math.sin(this.time * 2 + p.phase) * 0.06;
         p.model.rotation.y += dt * 0.8;
       }
     }
     for (const c of this.chests) {
+      const d2 = (c.x - camPos.x) ** 2 + (c.z - camPos.z) ** 2;
+      c.group.visible = d2 < 140 * 140;
       if (c.opened && c.open < 1) {
         c.open = Math.min(1, c.open + dt * 3);
         if (c.lid) c.lid.rotation.x = -c.open * 1.9;
-        if (c.light) c.light.intensity = 2.5 * (1 - c.open);
-      } else if (!c.opened && c.light) {
-        c.light.intensity = 2 + Math.sin(this.time * 3 + c.sparkle) * 0.6;
-        c.light.visible = (c.x - camPos.x) ** 2 + (c.z - camPos.z) ** 2 < 70 * 70;
+        if (c.light) { if (c.light.material === haloMat) c.light.material = haloMat.clone(); c.light.material.opacity = 1 - c.open; }
+        if (c.light && c.open >= 1) c.light.visible = false;
+      } else if (!c.opened && c.light && d2 < 60 * 60) {
+        const s = 2.0 + Math.sin(this.time * 3 + c.sparkle) * 0.25;
+        c.light.scale.set(s, s, 1);
       }
     }
   }

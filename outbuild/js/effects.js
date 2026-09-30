@@ -382,9 +382,10 @@ export class Effects {
   }
 
   landingDust(p) {
-    for (let i = 0; i < 12; i++) {
-      const a = i / 12 * Math.PI * 2;
-      this.smoke.emit(p.x, p.y + 0.1, p.z, Math.cos(a) * 3, 0.4, Math.sin(a) * 3, 0.8, 0.74, 0.62, 0.5, 0.8, 1.2, { grow: 1.5, drag: 0.2 });
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * Math.PI * 2;
+      this.smoke.emit(p.x + Math.cos(a) * 0.4, p.y + 0.15, p.z + Math.sin(a) * 0.4, Math.cos(a) * 2.2, 0.3, Math.sin(a) * 2.2,
+        0.62, 0.57, 0.5, 0.22, 0.35, 0.9, { grow: 0.9, drag: 0.15 });
     }
   }
 

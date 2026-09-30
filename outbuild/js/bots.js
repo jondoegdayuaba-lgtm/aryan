@@ -16,9 +16,9 @@ export function botName(rng) {
 }
 
 const DIFF = {
-  easy: { aim: 0.11, react: 0.9, build: 0.15, burst: 0.6, sight: 80 },
-  normal: { aim: 0.065, react: 0.55, build: 0.35, burst: 0.8, sight: 110 },
-  hard: { aim: 0.035, react: 0.3, build: 0.6, burst: 1, sight: 140 },
+  easy: { aim: 0.11, react: 0.9, build: 0.25, burst: 0.6, sight: 80 },
+  normal: { aim: 0.065, react: 0.55, build: 0.5, burst: 0.8, sight: 110 },
+  hard: { aim: 0.035, react: 0.3, build: 0.8, burst: 1, sight: 140 },
 };
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
@@ -56,6 +56,11 @@ export class BotBrain {
     this.landing = null;
     this.healCooldown = 0;
     this.switchT = 0;
+    this._wp = new THREE.Vector3();
+    this.goalHouse = null;
+    this.progT = 1;
+    this.curWp = null;
+    this.breaking = false;
   }
 
   // Called when the airship takes off: choose where to land and when to jump.
@@ -183,6 +188,9 @@ export class BotBrain {
   }
 
   setGoal(p, kind, time, ref = null) {
+    this.goalHouse = this.game.world.houseAt(p.x, p.z);
+    this.atDoor = false;
+    this.onStairs = false;
     this.goal = p;
     this.goalKind = kind;
     this.goalTimer = time;
@@ -230,7 +238,7 @@ export class BotBrain {
     let weapons = 0;
     let best = 0;
     for (const s of inv.slots) if (s && s.type === 'weapon') { weapons++; best = Math.max(best, Inventory.score(s)); }
-    const heals = inv.slots.some((s) => s && s.type === 'consumable');
+    const heals = inv.slots.some((s) => s && s.type === 'consumable' && !CONSUMABLES[s.id].throw);
     if (weapons === 0) return 3;
     if (weapons < 2 || best < 9) return 2;
     if (!heals) return 1;
@@ -240,10 +248,11 @@ export class BotBrain {
   findLoot(need) {
     const a = this.a;
     const g = this.game;
-    let best = null, bd = need >= 3 ? 70 : 45;
+    let best = null, bd = need >= 3 ? 95 : 50;
     for (const c of g.pickups.chests) {
       if (c.opened || this.blacklist.has(c)) continue;
-      const d = Math.hypot(c.x - a.pos.x, c.z - a.pos.z) + Math.abs(c.y - a.pos.y) * 2;
+      let d = Math.hypot(c.x - a.pos.x, c.z - a.pos.z) + Math.abs(c.y - a.pos.y) * 2;
+      if (c.kind === 'supply') d *= 0.3;
       if (d < bd) { bd = d; best = c; }
     }
     for (const p of g.pickups.list) {
@@ -301,14 +310,44 @@ export class BotBrain {
     return d;
   }
 
+  // Route into houses through the front door and up the stairs instead of walking into walls.
+  waypoint(goal) {
+    const a = this.a;
+    const h = this.goalHouse;
+    if (!h || !h.nav) return goal;
+    const n = h.nav;
+    const inside = a.pos.x > n.x0 + 0.3 && a.pos.x < n.x1 - 0.3 && a.pos.z > n.z0 + 0.3 && a.pos.z < n.z1 - 0.3;
+    if (!inside) {
+      if (a.pos.y > n.y + 2) return goal; // came in over the roof or through a window: carry on
+      const dOut = Math.hypot(a.pos.x - n.door.ox, a.pos.z - n.door.oz);
+      if (!this.atDoor && dOut > 1.4) return this._wp.set(n.door.ox, n.y, n.door.oz);
+      this.atDoor = true;
+      return this._wp.set(n.door.ix, n.y, n.door.iz);
+    }
+    this.atDoor = false;
+    if (goal.y > a.pos.y + 1.6 && n.stairs) {
+      const s = n.stairs;
+      const dLow = Math.hypot(a.pos.x - s.lx, a.pos.z - s.lz);
+      if (!this.onStairs && dLow > 1.1) return this._wp.set(s.lx, a.pos.y, s.lz);
+      this.onStairs = true;
+      return this._wp.set(s.tx, a.pos.y + 3, s.tz);
+    }
+    this.onStairs = false;
+    return goal;
+  }
+
   travel(dt) {
     const a = this.a;
     const it = a.intent;
     it.crouch = false;
     if (!this.goal) { it.moveZ = 0; return; }
-    const d = this.steer(this.goal, dt, true);
+    const wp = this.waypoint(this.goal);
+    this.curWp = wp;
+    const d0 = this.breaking ? Math.hypot(wp.x - a.pos.x, wp.z - a.pos.z) : this.steer(wp, dt, true);
+    if (this.breaking) { it.moveZ = 0.2; }
+    const d = wp === this.goal ? d0 : Math.hypot(this.goal.x - a.pos.x, this.goal.z - a.pos.z);
     // keep the best gun out while walking
-    this.holdBest();
+    if (!this.breaking) this.holdBest();
     if (this.goalKind === 'loot' && d < 2.2 && Math.abs(this.goal.y - a.pos.y) < 2.2) {
       const ref = this.goalRef;
       if (ref && ref.item && ref.item.type === 'weapon' && this.a.inv.freeSlot() < 0) {
@@ -328,21 +367,45 @@ export class BotBrain {
     if (this.goalTimer <= 0 && this.goalKind === 'loot' && this.goalRef) this.blacklist.add(this.goalRef);
   }
 
+  // Progress-based stuck detection: if we are not getting closer to where we are walking, hop, then
+  // smash whatever is in the way with the harvesting tool, then give up on that goal.
   unstick(dt) {
     const a = this.a;
     const it = a.intent;
-    const moved = a.pos.distanceTo(this.lastPos);
-    this.lastPos.copy(a.pos);
-    if (it.moveZ > 0 && moved < 0.8 * dt) this.stuckT += dt; else this.stuckT = Math.max(0, this.stuckT - dt * 2);
-    if (this.stuckT > 0.8 && a.grounded) it.jump = true;
-    if (this.stuckT > 1.4) {
-      // break through whatever is in front of us
-      a.select(-1);
-      it.fire = true;
-      this.aimPitch = 0;
+    const target = this.state === 'travel' ? this.curWp : null;
+    this.progT -= dt;
+    if (!target || it.moveZ <= 0) { this.stuckT = 0; this.lastD = undefined; this.breaking = false; return; }
+    const d = Math.hypot(target.x - a.pos.x, target.z - a.pos.z);
+    if (this.progT <= 0) {
+      if (this.lastD !== undefined && this.lastD - d < 0.6) this.stuckT += 1; else { this.stuckT = 0; this.breaking = false; }
+      this.lastD = d;
+      this.progT = 1;
     }
-    if (this.stuckT > 5) {
+    if (this.stuckT >= 1 && this.stuckT < 2 && a.grounded && this.rng.chance(dt * 3)) it.jump = true;
+    if (this.stuckT >= 2) {
+      // break through whatever is in front of us
+      let c = a.blockedBy;
+      if (!c) {
+        const px = a.pos.x + Math.sin(this.aimYaw) * 1.0, pz = a.pos.z + Math.cos(this.aimYaw) * 1.0;
+        for (const q of this.game.physics.query(px - 0.5, pz - 0.5, px + 0.5, pz + 0.5)) {
+          if (q.blocksMove && q.owner && q.maxY > a.pos.y + 0.4 && q.minY < a.pos.y + 1.8) { c = q; break; }
+        }
+      }
+      if (c && c.owner && c.owner.alive !== false) {
+        this.breaking = true;
+        if (a.inv.selected !== -1) a.select(-1);
+        it.fire = true;
+        it.moveZ = 0.2;
+        const cx = clamp(a.pos.x, c.minX, c.maxX), cz = clamp(a.pos.z, c.minZ, c.maxZ);
+        this.aimYaw = Math.atan2(cx - a.pos.x, cz - a.pos.z);
+        const cy = clamp(a.pos.y + 1.1, c.minY, c.maxY);
+        this.aimPitch = Math.atan2(cy - (a.pos.y + a.eyeHeight), Math.max(0.3, Math.hypot(cx - a.pos.x, cz - a.pos.z)));
+      }
+    }
+    const limit = this.breaking ? 14 : 5;
+    if (this.stuckT > limit) {
       this.stuckT = 0;
+      this.breaking = false;
       if (this.goalRef) this.blacklist.add(this.goalRef);
       this.goal = null;
       this.goalTimer = 0;
@@ -381,6 +444,7 @@ export class BotBrain {
     a.inv.slots.forEach((s, i) => {
       if (!s || s.type !== 'consumable') return;
       const def = CONSUMABLES[s.id];
+      if (def.throw) return;
       if (def.shield && a.shield < def.cap) best = i;
       else if (def.hp && a.health < def.cap && best < 0) best = i;
     });
@@ -432,6 +496,17 @@ export class BotBrain {
     if (g.time - a.lastDamageTime < 0.3 && g.time - this.lastBuild > 1.6 && this.rng.chance(this.skill.build)) {
       this.buildCover(t);
     }
+    // now and then lob a grenade at mid range
+    const gi = a.inv.slots.findIndex((s) => s && s.type === 'consumable' && CONSUMABLES[s.id].throw);
+    if (gi >= 0 && dist > 8 && dist < 26 && this.rng.chance(dt * 0.18) && g.time - this.lastSeen < 1) {
+      a.select(gi);
+      this.switchT = 0.8;
+      this.aimPitch += 0.25;
+      it.firePressed = true;
+      it.fire = true;
+      return;
+    }
+    if (cur && cur.type === 'consumable') { this.switchT = 0; this.holdBest(dist); return; }
     if (!cur) {
       // no gun: swing the pickaxe up close
       it.fire = dist < 2.8;

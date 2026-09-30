@@ -133,12 +133,60 @@ export class Combat {
     }
   }
 
+  // ------------------------------------------------------------------ grenades
+  throwGrenade(actor, def) {
+    const g = this.game;
+    const aim = this.aim(actor);
+    const start = actor.eye(new THREE.Vector3()).addScaledVector(actor.forward(new THREE.Vector3()), 0.4);
+    const vel = aim.dir.clone().multiplyScalar(19);
+    vel.y += 4.5;
+    vel.add(actor.vel.clone().multiplyScalar(0.5));
+    const mesh = g.assets.flat('Grenade', { shadows: true });
+    mesh.scale.setScalar(1.3);
+    mesh.position.copy(start);
+    g.scene.add(mesh);
+    this.grenades = this.grenades || [];
+    this.grenades.push({ actor, def, pos: start, vel, t: def.fuse, mesh, spin: new THREE.Vector3(Math.random() * 8, Math.random() * 8, 0) });
+    if (g.onThrow) g.onThrow(actor);
+  }
+
+  updateGrenades(dt) {
+    if (!this.grenades) return;
+    const g = this.game;
+    for (let i = this.grenades.length - 1; i >= 0; i--) {
+      const n = this.grenades[i];
+      n.t -= dt;
+      n.vel.y -= 20 * dt;
+      const step = n.vel.length() * dt;
+      if (step > 1e-4) {
+        _dir.copy(n.vel).normalize();
+        const h = g.physics.raycast(n.pos, _dir, step + 0.08, { water: true }, this.hit);
+        if (h.kind !== 'none') {
+          n.pos.copy(h.point).addScaledVector(h.normal, 0.08);
+          // bounce
+          const vn = n.vel.dot(h.normal);
+          n.vel.addScaledVector(h.normal, -1.6 * vn).multiplyScalar(0.45);
+          if (h.kind === 'water') n.vel.multiplyScalar(0.2);
+          if (Math.abs(vn) > 2 && g.audio) g.audio.footstep(n.pos, false, 'metal', 2);
+        } else n.pos.addScaledVector(n.vel, dt);
+      }
+      n.mesh.position.copy(n.pos);
+      n.mesh.rotation.x += n.spin.x * dt * Math.min(1, n.vel.length() / 5);
+      n.mesh.rotation.y += n.spin.y * dt * Math.min(1, n.vel.length() / 5);
+      if (n.t <= 0) {
+        g.scene.remove(n.mesh);
+        this.grenades.splice(i, 1);
+        this.explode(n.pos, n.def.radius, n.def.dmg, n.def.structure, n.actor);
+      }
+    }
+  }
+
   // ------------------------------------------------------------------ projectiles
   spawnProjectile(actor, w, pos, dir, def) {
     const g = this.game;
     let mesh = null;
     if (def.id === 'rocket') {
-      mesh = g.assets.instance('Projectile_Rocket', { shadows: false });
+      mesh = g.assets.flat('Projectile_Rocket', { shadows: false });
       mesh.lookAt(mesh.position.clone().sub(dir)); // model nose points +Z after export
     }
     const p = { actor, w, def, pos, vel: dir.clone().multiplyScalar(def.projectile.speed), grav: def.projectile.gravity,
@@ -149,6 +197,7 @@ export class Combat {
 
   update(dt) {
     const g = this.game;
+    this.updateGrenades(dt);
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       p.life -= dt;
