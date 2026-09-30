@@ -365,6 +365,7 @@ function respawn(f) {
   f.hp = 100;
   f.alive = true;
   f.bloom = 0;
+  f.recoilDebt = 0;
   f.yaw = Math.atan2(f.pos.x, f.pos.z); // face the middle
   f.pitch = 0;
   if (f.isPlayer) {
@@ -612,6 +613,8 @@ function updatePlayer(dt) {
   const sensScale = 0.0022 * settings.sens * (fov / 75);
   p.yaw -= input.dx * sensScale;
   p.pitch -= input.dy * sensScale;
+  // Pulling down against the kick counts toward recovery, so it doesn't overshoot.
+  if (input.dy > 0 && p.recoilDebt > 0) p.recoilDebt = Math.max(0, p.recoilDebt - input.dy * sensScale);
   p.pitch = Math.max(-1.55, Math.min(1.55, p.pitch));
   vmAnim.sway.x += input.dx * 0.00015;
   vmAnim.sway.y += input.dy * 0.00015;
@@ -645,7 +648,7 @@ function updatePlayer(dt) {
   const hSpeed = Math.hypot(p.vel.x, p.vel.z);
   if (p.onGround) vmAnim.bob += dt * hSpeed * 1.5;
   const bobAmt = Math.min(1, hSpeed / 6) * (1 - vmAnim.ads * 0.9) * (p.onGround ? 1 : 0.2);
-  camera.rotation.set(p.pitch + vmAnim.kick * 0.5, p.yaw, Math.sin(vmAnim.bob) * 0.004 * bobAmt);
+  camera.rotation.set(p.pitch + vmAnim.kick * 0.006, p.yaw, Math.sin(vmAnim.bob) * 0.004 * bobAmt);
 
   // Shooting
   p.bloom = Math.max(0, p.bloom - dt * 0.12);
@@ -658,8 +661,11 @@ function updatePlayer(dt) {
       const muzzle = scoped ? camera.localToWorld(new V3(0, -0.1, -0.5)) : camera.localToWorld(vm.muzzle.getWorldPosition(new V3()));
       shoot(p, camera.position.clone(), camera.getWorldDirection(new V3()), Math.max(0, spread), muzzle);
       p.bloom = Math.min(0.06, p.bloom + (def.auto ? 0.004 : 0.01));
-      p.pitch += def.recoil * (0.7 + Math.random() * 0.6);
-      p.yaw += (Math.random() - 0.5) * def.recoil * 0.5;
+      // Kick the aim up (less when aiming down sights); it settles back below.
+      const kick = def.recoil * (0.8 + Math.random() * 0.4) * (1 - vmAnim.ads * 0.35);
+      p.pitch += kick;
+      p.recoilDebt = (p.recoilDebt || 0) + kick;
+      p.yaw += (Math.random() - 0.5) * def.recoil * 0.3;
       vmAnim.kick = 1;
       vm.flash.visible = !scoped;
       vm.flash.rotation.z = Math.random() * Math.PI;
@@ -667,6 +673,12 @@ function updatePlayer(dt) {
     }
   }
   input.firePressed = false;
+  // Recoil recovery: pull the aim back toward where it was before firing.
+  if (p.recoilDebt > 0 && clock >= w.next - 0.02) {
+    const back = Math.min(p.recoilDebt, p.recoilDebt * dt * 8 + dt * 0.02);
+    p.pitch -= back;
+    p.recoilDebt -= back;
+  }
   if (w.mag === 0 && !w.reloading && w.reserve > 0 && clock >= w.next + 0.2) startReload(p);
 
   if (p.hp < 100 && clock - p.lastHurt > REGEN_DELAY) p.hp = Math.min(100, p.hp + REGEN_RATE * dt);

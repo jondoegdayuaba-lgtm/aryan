@@ -4,16 +4,16 @@ import * as THREE from 'three';
 // spread values are cone radii in radians. rpm = rounds per minute.
 export const WEAPONS = [
   { id: 'pistol', name: 'Pistol', dmg: 26, head: 2, rpm: 380, auto: false, mag: 12, reserve: Infinity, reload: 1.1,
-    spread: 0.012, adsSpread: 0.004, moveSpread: 0.02, pellets: 1, range: 60, recoil: 0.022, adsFov: 62,
+    spread: 0.012, adsSpread: 0.004, moveSpread: 0.02, pellets: 1, range: 60, recoil: 0.01, adsFov: 62,
     pref: 14, pitch: 0.9, hip: [0.15, -0.13, -0.36], ads: [0, -0.105, -0.34] },
   { id: 'rifle', name: 'Assault Rifle', dmg: 21, head: 1.8, rpm: 620, auto: true, mag: 30, reserve: 150, reload: 1.9,
-    spread: 0.022, adsSpread: 0.005, moveSpread: 0.03, pellets: 1, range: 90, recoil: 0.016, adsFov: 52,
+    spread: 0.022, adsSpread: 0.005, moveSpread: 0.03, pellets: 1, range: 90, recoil: 0.0055, adsFov: 52,
     pref: 20, pitch: 0.75, hip: [0.14, -0.12, -0.36], ads: [0, -0.125, -0.3] },
   { id: 'shotgun', name: 'Shotgun', dmg: 12, head: 1.5, rpm: 75, auto: false, mag: 6, reserve: 30, reload: 2.2,
-    spread: 0.075, adsSpread: 0.06, moveSpread: 0.01, pellets: 9, range: 22, recoil: 0.08, adsFov: 64,
+    spread: 0.075, adsSpread: 0.06, moveSpread: 0.01, pellets: 9, range: 22, recoil: 0.035, adsFov: 64,
     pref: 6, pitch: 0.45, hip: [0.14, -0.12, -0.38], ads: [0, -0.12, -0.34] },
   { id: 'sniper', name: 'Sniper Rifle', dmg: 95, head: 2.5, rpm: 46, auto: false, mag: 5, reserve: 20, reload: 2.6,
-    spread: 0.09, adsSpread: 0, moveSpread: 0.07, pellets: 1, range: 250, recoil: 0.09, adsFov: 22,
+    spread: 0.09, adsSpread: 0, moveSpread: 0.07, pellets: 1, range: 250, recoil: 0.04, adsFov: 22,
     pref: 35, pitch: 0.55, scope: true, hip: [0.14, -0.12, -0.38], ads: [0, -0.16, -0.3] },
 ];
 
