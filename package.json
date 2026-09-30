@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build:desktop": "node tools/build-desktop.mjs",
+    "build:ebike-desktop": "node tools/build-ebike-desktop.mjs",
     "build:ebike-assets": "python3 tools/blender/build_assets.py"
   },
   "devDependencies": {

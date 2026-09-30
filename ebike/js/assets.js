@@ -10,7 +10,10 @@ export async function loadAssets(renderer, onProgress = () => {}) {
   const out = {};
   let done = 0;
   await Promise.all(FILES.map(async (name) => {
-    const gltf = await loader.loadAsync(`assets/${name}.glb`);
+    const embedded = globalThis.__EMBEDDED_ASSETS && globalThis.__EMBEDDED_ASSETS[name];
+    const gltf = embedded   // single-file build: models are inlined as base64
+      ? await loader.parseAsync(Uint8Array.from(atob(embedded), (c) => c.charCodeAt(0)).buffer, '')
+      : await loader.loadAsync(`assets/${name}.glb`);
     tune(gltf.scene, aniso);
     out[name] = gltf.scene;
     onProgress(++done / FILES.length);
