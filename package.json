@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build:desktop": "node tools/build-desktop.mjs",
-    "build:wheelie": "node tools/build-wheelie.mjs"
+    "build:wheelie": "node tools/build-wheelie.mjs",
+    "build:wheelie2d": "node tools/build-wheelie2d.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

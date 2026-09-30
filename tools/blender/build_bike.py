@@ -258,56 +258,6 @@ def export():
 
 export()
 
-# ---- side-view sprites for the 2D game ------------------------------------
-if '--sprites' in sys.argv:
-    from mathutils import Euler
-    SPR = os.path.join(ROOT, 'wheelie-life-2d', 'assets')
-    os.makedirs(SPR, exist_ok=True)
-    sc = bpy.context.scene
-    sc.render.engine = 'CYCLES'
-    sc.cycles.device = 'CPU'
-    sc.cycles.samples = int(sys.argv[sys.argv.index('--samples') + 1]) if '--samples' in sys.argv else 96
-    sc.cycles.use_denoising = True
-    sc.render.film_transparent = True
-    sc.view_settings.view_transform = 'AgX'
-    sc.view_settings.exposure = -0.4
-    sc.render.image_settings.file_format = 'PNG'
-    sc.render.image_settings.color_mode = 'RGBA'
-    world = bpy.data.worlds.new('sky'); sc.world = world; world.use_nodes = True
-    sky = world.node_tree.nodes.new('ShaderNodeTexSky')
-    sky.sky_type = 'NISHITA'; sky.sun_elevation = math.radians(20); sky.sun_disc = False
-    world.node_tree.links.new(sky.outputs['Color'], world.node_tree.nodes['Background'].inputs['Color'])
-    world.node_tree.nodes['Background'].inputs['Strength'].default_value = 1.0
-    sun = bpy.data.lights.new('sun', 'SUN'); sun.energy = 4.0; sun.color = (1.0, 0.88, 0.72); sun.angle = math.radians(3)
-    so = bpy.data.objects.new('sun', sun); bpy.context.collection.objects.link(so)
-    so.location = (5, -2.5, 6)
-    so.rotation_euler = (Vector((0, 0, 0.8)) - so.location).to_track_quat('-Z', 'Y').to_euler()
-    cd = bpy.data.cameras.new('cam'); cd.type = 'ORTHO'
-    cam = bpy.data.objects.new('cam', cd); bpy.context.collection.objects.link(cam)
-    sc.camera = cam
-    cam.rotation_euler = Euler((math.pi / 2, 0, math.pi / 2))  # looks along -X, image right = +Y (bike front)
-
-    def shoot(name, cx, cz, width_m, px_w, px_h, show):
-        for part, items in parts.items():
-            for obj, _ in items:
-                obj.hide_render = part not in show
-        cd.ortho_scale = width_m
-        cam.location = (12, cx, cz)
-        sc.render.resolution_x, sc.render.resolution_y = px_w, px_h
-        sc.render.filepath = os.path.join(SPR, name + '.png')
-        bpy.ops.render.render(write_still=True)
-
-    W, H, CY, CZ, WM = 2000, 1250, 0.0, 0.88, 3.2   # 625 px per metre
-    shoot('body', CY, CZ, WM, W, H, {'body'})
-    shoot('wheel', RA.y, RA.z, 0.8, 500, 500, {'wheelR'})
-    ppm = W / WM
-    meta = {'ppm': ppm, 'body': {'w': W, 'h': H,
-            'axleX': W / 2 + (RA.y - CY) * ppm, 'axleY': H / 2 - (RA.z - CZ) * ppm},
-            'wheel': {'w': 500, 'h': 500, 'radius_m': 0.32}, 'wheelbase_m': FA.y - RA.y}
-    json.dump(meta, open(os.path.join(SPR, 'sprites.json'), 'w'), indent=1)
-    print('sprites done', meta)
-    sys.exit(0)
-
 # ---- hero render ----------------------------------------------------------
 if '--no-render' in sys.argv:
     sys.exit(0)
