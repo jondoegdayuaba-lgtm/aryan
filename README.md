@@ -82,3 +82,7 @@ Four extra missile skins unlock as your best score climbs.
 | `js/collision.js` | Simple collision shapes |
 
 three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+## Scratch Tycoon
+
+`scratch-tycoon.html` is a separate game: an idle game about scratching virtual scratch cards. All the money in it is pretend. The whole game is that one file, with no images or outside libraries. Double-click it to play in your browser. It saves your progress in your browser's local storage.
