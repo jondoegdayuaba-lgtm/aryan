@@ -74,7 +74,22 @@ export class Storm {
     this.state = 'idle';
     this.timer = 0;
     this.dps = 1;
+    this.net = false;
     this.mesh.visible = false;
+  }
+
+  // Online client: the host runs the storm; we copy its state and only count the timer down between updates.
+  applyNet(st) {
+    this.net = true;
+    const changed = st.state !== this.state || st.phase !== this.phase;
+    this.state = st.state;
+    this.timer = st.timer;
+    this.phase = st.phase;
+    this.center.set(st.cx, st.cz);
+    this.radius = st.r;
+    this.next = { c: new THREE.Vector2(st.nx, st.nz), r: st.nr };
+    this.dps = st.dps;
+    if (changed && (st.state === 'wait' || st.state === 'shrink') && this.game.onStorm) this.game.onStorm(st.state, this);
   }
 
   start(rng, delay = STORM.startDelay) {
@@ -117,6 +132,11 @@ export class Storm {
     u.uTime.value += dt;
     if (this.state === 'idle') return;
     this.timer -= dt;
+    if (this.net) {
+      this.timer = Math.max(0, this.timer);
+      this.updateMesh();
+      return;
+    }
     if (this.state === 'pre' && this.timer <= 0) {
       this.phase = 0;
       this.state = 'wait';
@@ -149,6 +169,11 @@ export class Storm {
         }
       }
     }
+    this.updateMesh();
+  }
+
+  updateMesh() {
+    const u = this.uniforms;
     this.mesh.visible = this.state === 'wait' || this.state === 'shrink' || this.state === 'final';
     const r = Math.max(0.5, this.radius);
     this.mesh.position.set(this.center.x, -30, this.center.y);

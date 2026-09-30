@@ -19,8 +19,17 @@ export function newIntent() {
 }
 
 export class Actor {
-  constructor(game, { name, isPlayer = false, outfit = 0, skin = null }) {
-    this.id = actorId++;
+  constructor(game, { name, isPlayer = false, outfit = 0, skin = null, id = null }) {
+    this.id = id ?? actorId++;
+    if (this.id >= actorId) actorId = this.id + 1;
+    // online play: `remote` = a friend's player simulated on the host from their input,
+    // `puppet` = anyone shown on a client from host snapshots, `netLocal` = a client's own player
+    this.remote = false;
+    this.puppet = false;
+    this.netLocal = false;
+    this.netFired = 0;
+    this.human = isPlayer;
+    this.look = { outfit, skin };
     this.game = game;
     this.name = name;
     this.isPlayer = isPlayer;
@@ -115,21 +124,80 @@ export class Actor {
 
   // ------------------------------------------------------------------ update
   update(dt) {
-    const g = this.game;
     const it = this.intent;
+    if (this.puppet) { this.updatePuppet(dt); return; }
     if (!this.alive) {
       this.updateVisual(dt);
       return;
     }
-    this.fired = 0;
+    this.fired = this.netFired;
+    this.netFired = 0;
+    if (this.remote) {
+      // a friend's player: they move on their own machine, the host runs everything else
+      this.game.net.hostApplyInput(this);
+      this.yaw = it.yaw;
+      this.pitch = clamp(it.pitch, -1.45, 1.45);
+      if (this.mode === 'ground') {
+        this.height = it.crouch && !it.sprint ? PLAYER.crouchHeight : PLAYER.height;
+        this.actGround(dt);
+      }
+      this.updateVisual(dt);
+      return;
+    }
     this.yaw = it.yaw;
     this.pitch = clamp(it.pitch, -1.45, 1.45);
     switch (this.mode) {
       case 'bus': this.updateBus(dt); break;
       case 'sky': this.updateSky(dt); break;
       case 'glide': this.updateGlide(dt); break;
-      default: this.updateGround(dt);
+      default:
+        this.moveGround(dt);
+        if (this.netLocal) this.actGroundLocal(dt); else this.actGround(dt);
     }
+    this.updateVisual(dt);
+  }
+
+  // Someone else in an online match, placed from the host's snapshots.
+  updatePuppet(dt) {
+    const s = this.netState;
+    if (s && this.alive) {
+      const age = clamp((performance.now() - this.netT) / 1000, 0, 0.2);
+      const tx = s[1] + s[6] * age, ty = s[2] + s[7] * age, tz = s[3] + s[8] * age;
+      const d2 = (tx - this.pos.x) ** 2 + (ty - this.pos.y) ** 2 + (tz - this.pos.z) ** 2;
+      if (!this.netSeen || d2 > 64) this.pos.set(tx, ty, tz);
+      else {
+        const k = 1 - Math.exp(-dt * 14);
+        this.pos.x += (tx - this.pos.x) * k; this.pos.y += (ty - this.pos.y) * k; this.pos.z += (tz - this.pos.z) * k;
+      }
+      this.netSeen = true;
+      this.vel.set(s[6], s[7], s[8]);
+      let dy = s[4] - this.yaw;
+      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      this.yaw += dy * Math.min(1, dt * 16);
+      this.pitch = s[5];
+      const mode = ['bus', 'sky', 'glide', 'ground', 'dead'][s[9]];
+      if (mode !== 'dead' && mode !== this.mode) {
+        this.setGlider(mode === 'glide');
+        this.mode = mode;
+      }
+      const f = s[10];
+      this.grounded = !!(f & 1);
+      this.intent.crouch = !!(f & 2);
+      this.intent.sprint = !!(f & 4);
+      this.dancing = !!(f & 16);
+      this.swimming = !!(f & 32);
+      this.health = s[11];
+      this.shield = s[12];
+      this.netHeld = s[13];
+      this.harvestT = s[14];
+      this.netReload = s[15];
+      this.netUse = s[16];
+      this.intent.moveX = s[17];
+      this.intent.moveZ = s[18];
+      this.dive = s[19];
+    }
+    this.fired = this.netFired;
+    this.netFired = 0;
     this.updateVisual(dt);
   }
 
@@ -238,10 +306,9 @@ export class Actor {
     this.pos.z = clamp(this.pos.z, -b, b);
   }
 
-  updateGround(dt) {
+  moveGround(dt) {
     const g = this.game;
     const it = this.intent;
-    const cur = this.current();
     const usingItem = this.useT > 0;
     const crouch = it.crouch && !it.sprint;
     this.height = crouch ? PLAYER.crouchHeight : PLAYER.height;
@@ -286,11 +353,21 @@ export class Actor {
     }
     if (this.landed) {
       const fall = this.fallStartY - this.pos.y;
-      if (fall > PLAYER.fallSafe) this.takeDamage((fall - PLAYER.fallSafe) * PLAYER.fallDmgPerM, null, { fall: true });
+      if (fall > PLAYER.fallSafe) {
+        const dmg = (fall - PLAYER.fallSafe) * PLAYER.fallDmgPerM;
+        if (this.netLocal) g.net.clientAction('fall', dmg);
+        else this.takeDamage(dmg, null, { fall: true });
+      }
       if (g.onLand && fall > 1.5) g.onLand(this, fall);
       this.fallStartY = this.pos.y;
     }
     this.hittable = true;
+  }
+
+  actGround(dt) {
+    const g = this.game;
+    const it = this.intent;
+    const cur = this.current();
 
     // ---- selection
     if (it.select !== null && it.select !== undefined) this.select(it.select);
@@ -318,6 +395,31 @@ export class Actor {
     }
     if (it.interact) g.interact(this);
     it.interact = false;
+  }
+
+  // A client's own player: the host decides what happens; we only predict what is cheap to predict.
+  actGroundLocal(dt) {
+    const g = this.game;
+    const it = this.intent;
+    if (it.select !== null && it.select !== undefined) {
+      g.net.clientAction('select', it.select);
+      this.select(it.select);
+    }
+    it.select = null;
+    this.buildMode = !!it.buildMode;
+    if (this.reloadT > 0) this.reloadT = Math.max(0, this.reloadT - dt);
+    if (this.useT > 0) this.useT += dt;
+    const cur = this.current();
+    if (!this.buildMode && !cur) {
+      if (this.harvestT >= 0) {
+        this.harvestT += dt / HARVEST.swingTime;
+        if (this.harvestT >= 1) this.harvestT = -1;
+      }
+      if (this.harvestT < 0 && it.fire) {
+        this.harvestT = 0;
+        if (g.onSwing) g.onSwing(this);
+      }
+    } else this.harvestT = -1;
   }
 
   select(i) {
@@ -430,6 +532,7 @@ export class Actor {
 
   // ------------------------------------------------------------------ visuals
   heldSignature() {
+    if (this.puppet) return this.netHeld || 'tool';
     if (this.buildMode) return 'build';
     const c = this.current();
     if (!c) return 'tool';
@@ -441,21 +544,20 @@ export class Actor {
     if (sig === this.heldSig) return;
     this.heldSig = sig;
     const a = this.game.assets;
-    const c = this.current();
-    if (this.buildMode) { this.model.hold(null, 'build'); return; }
-    if (!c) {
-      const obj = a.flat('W_Pickaxe', { tints: { Rarity: this.model.outfit.colors.Accent } });
-      this.model.hold(obj, 'tool');
-      return;
-    }
-    if (c.type === 'weapon') {
-      const def = WEAPONS[c.id];
-      const obj = a.flat(def.model, { tints: { Rarity: RARITIES[c.rarity].color } });
+    if (sig === 'build') { this.model.hold(null, 'build'); return; }
+    const [type, id, rarity] = sig.split(':');
+    if (type === 'weapon' && WEAPONS[id]) {
+      const def = WEAPONS[id];
+      const obj = a.flat(def.model, { tints: { Rarity: RARITIES[+rarity || 0].color } });
       this.model.hold(obj, def.hold);
       return;
     }
-    const obj = a.flat(CONSUMABLES[c.id].model);
-    this.model.hold(obj, 'item');
+    if (type === 'consumable' && CONSUMABLES[id]) {
+      this.model.hold(a.flat(CONSUMABLES[id].model), 'item');
+      return;
+    }
+    const obj = a.flat('W_Pickaxe', { tints: { Rarity: this.model.outfit.colors.Accent } });
+    this.model.hold(obj, 'tool');
   }
 
   updateVisual(dt) {
@@ -472,18 +574,21 @@ export class Actor {
     // skip animation work for far-away actors that are off screen
     const cam = g.camera.position;
     const d2 = this.pos.distanceToSquared(cam);
+    // a friend's player arrives in steps (their input rate): smooth what we draw
+    if (this.remote && m.root.position.distanceToSquared(this.pos) < 25) m.root.position.lerp(this.pos, 1 - Math.exp(-dt * 20));
+    else m.root.position.copy(this.pos);
+    m.root.rotation.y = this.yaw;
+    // off-screen far away: skip the animation (the root still moves so muzzles and effects start in the right place)
     if (!this.isPlayer && d2 > 260 * 260) { m.root.visible = false; return; }
     m.setLod(d2 > 32 * 32);
     m.socket.userData.far = d2 > 70 * 70;
     this.refreshHeld();
-    m.root.position.copy(this.pos);
-    m.root.rotation.y = this.yaw;
-    const cur = this.current();
-    const reload = this.reloadT > 0 ? 1 - this.reloadT / this.reloadTotal : 0;
+    const reload = this.puppet ? this.netReload || 0 : this.reloadT > 0 ? 1 - this.reloadT / this.reloadTotal : 0;
+    const use = this.puppet ? this.netUse || 0 : this.useT > 0 ? this.useT / this.useTotal : 0;
     m.update(dt, {
       vel: this.vel, yaw: this.yaw, aimPitch: this.pitch, grounded: this.grounded || this.swimming,
       crouch: this.intent.crouch && this.mode === 'ground', sprint: this.intent.sprint, mode: this.alive ? this.mode : 'dead',
-      fired: this.fired, harvest: this.harvestT, reload, use: this.useT > 0 ? this.useT / this.useTotal : 0,
+      fired: this.fired, harvest: this.harvestT, reload, use,
       dive: this.dive || 0, dance: this.dancing,
     });
     if (this.glider) {
@@ -491,7 +596,7 @@ export class Actor {
       this.glider.rotation.x = damp(this.glider.rotation.x, this.intent.moveZ * -0.15, 4, dt);
     }
     // swimming: sink the model a bit
-    m.root.position.y += this.swimming ? -0.2 : 0;
+    if (this.swimming) m.root.position.y = this.pos.y - 0.2;
   }
 
   dispose() {

@@ -1,6 +1,6 @@
 # Outbuild
 
-An original island battle royale for the browser. You drop from an airship with 29 bots, grab weapons from chests and the floor, harvest wood, stone and metal, build walls, ramps and roofs, and try to be the last one standing while the storm shrinks the island.
+An original island battle royale for the browser. You drop from an airship with 29 bots (or with your friends online), grab weapons from chests and the floor, harvest wood, stone and metal, build walls, ramps and roofs, and try to be the last one standing while the storm shrinks the island.
 
 Everything here is original: the characters, weapons, map, place names, models, textures, sounds and music. It is not affiliated with any other game.
 
@@ -20,6 +20,23 @@ python3 -m http.server 8000
 Or open `desktop/outbuild.html`. It is the whole game in one file (about 11 MB) and runs by double-clicking it. Rebuild it with `npm install && npm run build:outbuild`.
 
 A mouse and keyboard are needed. Click the game to lock the pointer.
+
+## Play with friends
+
+Online play is peer-to-peer (WebRTC through [PeerJS](https://peerjs.com)). There is no game server to run.
+
+1. One player clicks **Play with friends → Host a room** and shares the 5-letter room code.
+2. Everyone else types the code under **Play with friends** and clicks **Join**. Up to 16 players can be in a room.
+3. The host clicks **Start match**. Bots fill the rest of the match size set in Settings.
+
+The host's computer runs the match: bots, loot, the storm, damage and builds. Each player's own movement runs on their own computer, so moving feels instant, and shots and builds take one trip to the host. The player with the fastest computer and connection should host.
+
+Notes:
+
+- Rooms are found through the free public PeerJS server, so you need an internet connection. For a LAN or a private server, run `npx peerjs --port 9000` and open the game with `?peer=your-server:9000` on every computer.
+- Some strict company or school networks block peer-to-peer connections. If joining keeps timing out, try another network.
+- Opening the menu with Esc does not pause an online match. If the host leaves, the match ends for everyone.
+- Each player can use either version: `desktop/outbuild.html` or the served `/outbuild/` page.
 
 ## Controls
 
@@ -42,7 +59,7 @@ A mouse and keyboard are needed. Click the game to lock the pointer.
 | **F** | Edit your own build: walls cycle window → door → solid; ramps turn |
 | **M** or **Tab** | Map |
 | **B** | Dance |
-| **Esc** | Pause |
+| **Esc** | Pause (online: menu; the match keeps going) |
 
 ## How a match goes
 
@@ -114,7 +131,8 @@ The game swaps materials by name for its own shaders, which add triplanar textur
 | `js/bots.js` | Bot AI: drop planning, looting through doors and stairs, storm rotation, fighting, building cover |
 | `js/combat.js`, `js/items.js` | Weapons, projectiles, explosions, harvesting; items, loot tables, inventory, pickups and chests |
 | `js/storm.js`, `js/airship.js` | The storm circle and wall; the drop airship |
+| `js/net.js` | Online play: rooms, host snapshots and events, client input, split messages |
 | `js/hud.js`, `js/ui.js` | HUD, minimap and full map, item icons rendered from the models; menus and end screens |
 | `js/audio.js`, `js/effects.js` | Synthesised sound and music; particles, debris, tracers, explosions |
 
-three.js is MIT licensed (`../vendor/three/LICENSE`).
+three.js is MIT licensed (`../vendor/three/LICENSE`). PeerJS is MIT licensed (`../vendor/peerjs.LICENSE`).

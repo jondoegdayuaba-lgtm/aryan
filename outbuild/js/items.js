@@ -299,7 +299,7 @@ export class PickupSystem {
     this.time = 0;
   }
 
-  spawn(item, x, y, z, { toss = false } = {}) {
+  spawn(item, x, y, z, { toss = false, id = null } = {}) {
     const group = new THREE.Group();
     const model = this.assets.flat(itemModel(item), { shadows: false,
       tints: item.type === 'weapon' ? { Rarity: RARITIES[item.rarity].color } : {} });
@@ -319,18 +319,24 @@ export class PickupSystem {
     }
     group.position.set(x, y, z);
     this.scene.add(group);
-    const p = { id: pickupId++, item, group, model, x, y, z, vy: toss ? 5 + Math.random() * 2 : 0,
+    if (id !== null && id >= pickupId) pickupId = id + 1;
+    const p = { id: id ?? pickupId++, item, group, model, x, y, z, vy: toss ? 5 + Math.random() * 2 : 0,
       vx: toss ? (Math.random() - 0.5) * 5 : 0, vz: toss ? (Math.random() - 0.5) * 5 : 0, settled: !toss, phase: Math.random() * 6,
       alive: true, baseY: model.position.y };
     this.list.push(p);
+    if (this.onSpawn) this.onSpawn(p);
     return p;
   }
+
+  byId(id) { return this.list.find((p) => p.id === id) || null; }
+  containerById(id) { return this.chests.find((c) => c.id === id) || null; }
 
   spawnMany(items, x, y, z, toss = true) {
     return items.map((it) => this.spawn(it, x, y + 0.5, z, { toss }));
   }
 
   remove(p) {
+    if (p.alive && this.onRemove) this.onRemove(p);
     p.alive = false;
     this.scene.remove(p.group);
     const i = this.list.indexOf(p);
@@ -349,7 +355,7 @@ export class PickupSystem {
   }
 
   // Chests and ammo boxes
-  addContainer(kind, x, y, z, yaw) {
+  addContainer(kind, x, y, z, yaw, id = null) {
     const isChest = kind === 'chest';
     const body = this.assets.flat(isChest ? 'Chest' : 'AmmoBox');
     const lidName = isChest ? 'Chest_Lid' : 'AmmoBox_Lid';
@@ -378,10 +384,12 @@ export class PickupSystem {
       light.renderOrder = 14;
       group.add(light);
     }
-    const c = { kind, group, lid, x, y, z, yaw, opened: false, open: 0, light, sparkle: Math.random() * 6 };
+    const c = { id: id ?? this.nextContainerId(), kind, group, lid, x, y, z, yaw, opened: false, open: 0, light, sparkle: Math.random() * 6 };
     this.chests.push(c);
     return c;
   }
+
+  nextContainerId() { this.containerSeq = (this.containerSeq || 0) + 1; return this.containerSeq; }
 
   nearestContainer(pos, maxDist) {
     let best = null;
@@ -436,5 +444,6 @@ export class PickupSystem {
     for (const p of [...this.list]) this.remove(p);
     for (const c of this.chests) this.scene.remove(c.group);
     this.chests.length = 0;
+    this.containerSeq = 0;
   }
 }

@@ -80,8 +80,9 @@ export class PlayerController {
         this.buildKind = kinds[(kinds.indexOf(this.buildKind) + inp.mouse.wheel + 4) % 4];
       }
       if (inp.hit('KeyE')) it.interact = true;
-      if (inp.hit('KeyF') && this.editPiece) g.building.edit(a, this.editPiece);
-      if (inp.hit('KeyG')) g.dropCurrent(a);
+      // online, the host makes these changes
+      if (inp.hit('KeyF') && this.editPiece) { if (a.netLocal) g.net.clientAction('edit', this.editPiece.key); else g.building.edit(a, this.editPiece); }
+      if (inp.hit('KeyG')) { if (a.netLocal) g.net.clientAction('drop'); else g.dropCurrent(a); }
       if (inp.hit('KeyB') && a.mode === 'ground') a.dancing = !a.dancing;
     }
     if (a.mode !== 'ground') this.buildMode = false;

@@ -1,5 +1,5 @@
-// Builds desktop/outbuild.html: the whole of Outbuild (three.js, code, models and textures) in one file
-// that runs by double-clicking it, no web server needed.
+// Builds desktop/outbuild.html: the whole of Outbuild (three.js, PeerJS for online play, code, models and
+// textures) in one file that runs by double-clicking it, no web server needed.
 //   npm install && npm run build:outbuild
 import { build } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
@@ -29,6 +29,8 @@ const result = await build({
   logLevel: 'warning',
 });
 const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+// PeerJS (online play) goes in as a classic script so window.Peer is there before the game asks for it
+const peerjs = readFileSync(resolve(root, 'vendor/peerjs.min.js'), 'utf8').replace(/\/\/# sourceMappingURL=.*$/m, '').replace(/<\/script/gi, '<\\/script');
 
 // every model and texture as a data: URL
 const assets = {};
@@ -47,7 +49,7 @@ const swap = (from, to) => {
 swap('<link rel="stylesheet" href="css/style.css">', `<style>\n${read('css/style.css')}</style>`);
 swap(/\s*<script type="importmap">.*<\/script>/.exec(html)[0], '');
 swap('<script type="module" src="js/main.js"></script>',
-  `<script>window.__OUTBUILD_ASSETS = ${JSON.stringify(assets)};</script>\n  <script>\n${js}</script>`);
+  `<script>window.__OUTBUILD_ASSETS = ${JSON.stringify(assets)};</script>\n  <script>\n${peerjs}\n</script>\n  <script>\n${js}</script>`);
 
 mkdirSync(resolve(root, 'desktop'), { recursive: true });
 writeFileSync(resolve(root, 'desktop/outbuild.html'), html);

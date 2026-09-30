@@ -12,6 +12,8 @@ export class UI {
     $('title-b').textContent = GAME.subtitle;
     const click = (id, fn) => $(id).addEventListener('click', () => { game.audio.init(); game.audio.ui(); fn(); });
     click('btn-play', () => this.play());
+    click('btn-online', () => this.panel('online'));
+    this.bindOnline();
     click('btn-settings', () => this.panel('settings'));
     click('btn-howto', () => this.panel('howto'));
     click('btn-dance', () => { this.dancing = !this.dancing; $('btn-dance').classList.toggle('on', this.dancing); });
@@ -31,25 +33,118 @@ export class UI {
     this.refreshStats();
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape' && this.openPanel) { this.panel(null); e.preventDefault(); }
-      if (e.code === 'Enter' && game.state === 'lobby' && !this.openPanel) this.play();
+      if (e.code === 'Enter' && game.state === 'lobby' && !this.openPanel && !/INPUT|SELECT/.test(e.target.tagName)) this.play();
     });
   }
 
   play() {
     const g = this.game;
-    if (g.state !== 'lobby') return;
+    if (g.state !== 'lobby' || this.starting) return;
+    // in a friend's room only the host can start
+    if (g.net.isClient) { this.panel('online'); return; }
+    this.starting = true;
+    const friends = g.net.isHost ? g.net.conns.size : 0;
     $('menu').hidden = true;
+    this.panel(null);
     $('matchmaking').hidden = false;
-    $('mm-text').textContent = 'Finding a match…';
-    setTimeout(() => { $('mm-text').textContent = `${g.settings.bots + 1} players found — boarding the airship`; }, 700);
+    $('mm-text').textContent = friends ? `Starting a match with ${friends} friend${friends > 1 ? 's' : ''}…` : 'Finding a match…';
+    setTimeout(() => { $('mm-text').textContent = `${Math.max(g.settings.bots + 1, friends + 1)} players found — boarding the airship`; }, 700);
     setTimeout(() => {
       $('matchmaking').hidden = true;
-      g.startMatch();
+      this.starting = false;
+      if (g.state === 'lobby') g.startMatch();
     }, 1500);
   }
 
-  toLobby() {
+  // ------------------------------------------------------------------ play with friends
+  bindOnline() {
     const g = this.game;
+    const net = g.net;
+    const name = $('net-name');
+    name.value = g.settings.name || '';
+    name.addEventListener('input', () => {
+      g.settings.name = name.value.replace(/[<>&"]/g, '').slice(0, 16);
+      g.saveSettings();
+    });
+    const code = $('net-code');
+    code.addEventListener('input', () => { code.value = code.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+    code.addEventListener('keydown', (e) => { if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); $('net-join').click(); } });
+    const busy = (on) => { $('net-host').disabled = on; $('net-join').disabled = on; };
+    const click = (id, fn) => $(id).addEventListener('click', () => { g.audio.init(); g.audio.ui(); fn(); });
+    click('net-host', async () => {
+      busy(true);
+      this.netStatus('Creating a room…');
+      try {
+        await net.host();
+        this.netStatus('Room ready. Send the code to your friends.');
+      } catch (e) {
+        this.netStatus(netError(e), true);
+      }
+      busy(false);
+    });
+    click('net-join', async () => {
+      const c = code.value.trim();
+      if (c.length < 5) { this.netStatus('Type the 5-letter room code your friend gave you', true); return; }
+      busy(true);
+      this.netStatus('Joining…');
+      try {
+        await net.join(c);
+        this.netStatus('Joined! Waiting for the host to start the match.');
+      } catch (e) {
+        net.leave();
+        this.netStatus(netError(e), true);
+      }
+      busy(false);
+    });
+    click('net-leave', () => { net.leave(); this.netStatus(''); });
+    click('net-go', () => this.play());
+    click('net-copy', async () => {
+      try { await navigator.clipboard.writeText(net.code); this.netStatus('Code copied'); } catch { this.netStatus('Select the code and copy it'); }
+    });
+    net.onChange = () => this.refreshOnline();
+    net.onStatus = (t, err) => this.netStatus(t, err);
+    this.refreshOnline();
+  }
+
+  netStatus(text, err = false) {
+    const el = $('net-status');
+    el.textContent = text;
+    el.classList.toggle('err', !!err);
+  }
+
+  refreshOnline() {
+    const g = this.game;
+    const net = g.net;
+    const inRoom = net.active && !!net.code;
+    $('net-choose').hidden = inRoom;
+    $('net-room').hidden = !inRoom;
+    $('net-name').disabled = inRoom;
+    $('net-code-show').textContent = net.code;
+    $('net-go').hidden = !net.isHost;
+    $('net-wait').hidden = !net.isClient;
+    const ul = $('net-roster');
+    ul.innerHTML = '';
+    for (const r of net.roster) {
+      const li = document.createElement('li');
+      const dot = document.createElement('i');
+      dot.style.background = SKIN_TONES[r.skin ?? 1] || SKIN_TONES[1];
+      li.appendChild(dot);
+      li.appendChild(document.createTextNode(r.name));
+      if (r.host) { const t = document.createElement('small'); t.textContent = 'host'; li.appendChild(t); }
+      ul.appendChild(li);
+    }
+    const n = net.roster.length;
+    if (net.isHost) $('net-go').textContent = n > 1 ? `Start match (${n} players)` : 'Start match (waiting for friends)';
+    // the big buttons show the room too
+    $('btn-online').classList.toggle('room', inRoom);
+    $('online-sub').textContent = inRoom ? `Room ${net.code} · ${n} player${n === 1 ? '' : 's'}` : 'Online · share a room code';
+    $('play-sub').textContent = net.isHost ? (n > 1 ? `Start with ${n - 1} friend${n > 2 ? 's' : ''}` : 'Solo · Island Royale')
+      : net.isClient ? 'Waiting for the host' : 'Solo · Island Royale';
+  }
+
+  toLobby(silent = false) {
+    const g = this.game;
+    g.leaveMatch(silent);
     $('death').hidden = true;
     $('victory').hidden = true;
     $('pause').hidden = true;
@@ -62,6 +157,8 @@ export class UI {
     this.openPanel = name;
     $('settings').hidden = name !== 'settings';
     $('howto').hidden = name !== 'howto';
+    $('online').hidden = name !== 'online';
+    if (name === 'online') this.refreshOnline();
   }
 
   showLobby() {
@@ -197,4 +294,12 @@ export class UI {
       host.appendChild(p);
     }
   }
+}
+
+function netError(e) {
+  const t = (e && e.type) || '';
+  if (t === 'peer-unavailable') return 'No room with that code. Check the code, and that your friend is still in the room.';
+  if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') return 'Could not reach the matchmaking server. Check your internet connection and try again.';
+  if (t === 'browser-incompatible') return 'This browser does not support online play (WebRTC).';
+  return (e && e.message) || 'Something went wrong. Try again.';
 }

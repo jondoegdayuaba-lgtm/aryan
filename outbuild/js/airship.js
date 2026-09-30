@@ -38,8 +38,12 @@ export class Airship {
   }
 
   start(rng) {
-    const ang = rng.float(0, Math.PI * 2);
-    const off = rng.float(-170, 170);
+    this.startFrom(rng.float(0, Math.PI * 2), rng.float(-170, 170));
+  }
+
+  // Same flight path from its two numbers (online clients get them from the host).
+  startFrom(ang, off) {
+    this.route0 = [ang, off];
     this.dir.set(Math.cos(ang), 0, Math.sin(ang));
     const perp = new THREE.Vector3(-this.dir.z, 0, this.dir.x);
     this.length = WORLD.size * 1.25;

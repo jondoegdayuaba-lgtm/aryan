@@ -19,6 +19,8 @@ export class Terrain {
     this.flatMask = new Float32Array(SPLAT_RES * SPLAT_RES); // building ground (no grass)
     this.poiHeights = new Map();
     this.generate();
+    // the heights before any building levels the ground, so every rebuild of the island is identical
+    this.base = this.heights.slice();
   }
 
   // ------------------------------------------------------------------ generation

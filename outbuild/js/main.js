@@ -28,6 +28,7 @@ import { PickupSystem, floorLoot, chestLoot, ammoBoxLoot, supplyLoot, WEAPONS, C
 import { OUTFITS, SKIN_TONES, CharacterModel } from './character.js';
 import { UI } from './ui.js';
 import { LOBBY } from './layout.js';
+import { Net, v3, toV } from './net.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -75,6 +76,8 @@ class Game {
     this.state = 'loading';
     this.time = 0;
     this.actors = [];
+    this.actorById = new Map();
+    this.bots = [];
     this.paused = false;
     this.mapOpen = false;
     this.settings = this.loadSettings();
@@ -129,6 +132,7 @@ class Game {
     this.audio = new Audio();
     this.audio.setVolume(this.settings.volume);
     this.audio.setMusic(this.settings.music);
+    this.net = new Net(this);
     this.ui = new UI(this);
     const bar = $('load-fill');
     this.assets = new Assets();
@@ -187,6 +191,25 @@ class Game {
     setTimeout(() => $('loading-screen').remove(), 800);
     this.last = performance.now();
     requestAnimationFrame((t) => this.frame(t));
+    // online: a hidden tab gets no animation frames, but friends still need the match to run
+    this.bgLast = performance.now();
+    setInterval(() => this.backgroundTick(), 50);
+  }
+
+  backgroundTick() {
+    const now = performance.now();
+    let el = Math.min(1, (now - this.bgLast) / 1000);
+    this.bgLast = now;
+    if (!document.hidden || this.state !== 'match' || !this.net.active) return;
+    const cam = this.camera.position;
+    while (el > 1e-3) {
+      const step = Math.min(0.05, el);
+      el -= step;
+      this.updateMatch(step);
+      this.pieces.update(step);
+      this.pickups.update(step, cam);
+    }
+    this.last = now;
   }
 
   tick() { return new Promise((r) => setTimeout(r, 0)); }
@@ -223,6 +246,8 @@ class Game {
   buildLevel() {
     if (this.drops) { for (const d of this.drops) this.scene.remove(d.group); this.drops = []; }
     if (this.props) { this.props.dispose(); this.pieces.clear(); this.pickups.clear(); }
+    // start from the untouched heightmap so every build of the island (on every player's computer) is identical
+    this.terrain.heights.set(this.terrain.base);
     this.props = new PropSystem(this.scene, this.physics, this.assets);
     this.props.onDestroyed = (p) => {
       if (this.effects) this.effects.propBreak(p);
@@ -273,7 +298,11 @@ class Game {
     this.airship.active = false;
     for (const a of this.actors) a.dispose();
     this.actors = [];
+    this.actorById = new Map();
+    this.bots = [];
     this.player = null;
+    this.clearNetProjectiles();
+    this.building.hideGhost();
     // a scenic spot on the slope of Lookout Peak, looking over the island
     const spot = this.lobbySpot || (this.lobbySpot = this.findLobbySpot());
     if (!this.lobbyChar) {
@@ -317,35 +346,43 @@ class Game {
 
   // ------------------------------------------------------------------ match
   startMatch() {
+    const net = this.net;
+    if (net.isClient || this.state !== 'lobby') return;
     this.audio.init();
     this.audio.stopMusic();
     const seed = (Math.random() * 1e9) | 0;
     this.rng = new Rng(seed);
+    const online = net.isHost && net.conns.size > 0;
+    net.mute++;
     if (this.played) this.buildLevel();
     this.played = true;
-    this.lobbyChar.root.visible = false;
+    this.prepareMatch();
     this.spawnLoot(this.rng);
-    this.time = 0;
-    this.over = false;
-    this.placement = 0;
-    this.winner = null;
-    this.marker = null;
     // actors
     const s = this.settings;
-    this.player = new Actor(this, { name: 'You', isPlayer: true, outfit: s.outfit, skin: SKIN_TONES[s.skin ?? 1] });
+    this.player = new Actor(this, { name: online ? net.me().name : 'You', isPlayer: true, outfit: s.outfit, skin: SKIN_TONES[s.skin ?? 1] });
+    this.player.human = true;
     this.actors = [this.player];
+    if (online) {
+      net.hostCreateRemotes((c) => {
+        const a = new Actor(this, { name: c.name, outfit: Math.abs(c.outfit) % OUTFITS.length, skin: SKIN_TONES[Math.abs(c.skin) % SKIN_TONES.length] });
+        a.human = true;
+        this.actors.push(a);
+        return a;
+      });
+    }
+    // bots fill the match up to the chosen size
+    const nBots = Math.max(0, s.bots - (this.actors.length - 1));
     this.bots = [];
-    for (let i = 0; i < s.bots; i++) {
+    for (let i = 0; i < nBots; i++) {
       const a = new Actor(this, { name: botName(this.rng), outfit: this.rng.int(0, OUTFITS.length - 1), skin: this.rng.pick(SKIN_TONES) });
       const b = new BotBrain(this, a, new Rng(seed + i * 31 + 7), s.difficulty);
       a.brain = b;
       this.actors.push(a);
       this.bots.push(b);
     }
-    this.controller = new PlayerController(this, this.player, this.input, this.rig);
-    this.controller.sens = s.sensitivity;
-    this.controller.invertY = s.invertY;
-    this.rig.baseFov = s.fov;
+    this.actorById = new Map(this.actors.map((a) => [a.id, a]));
+    this.makeController();
     this.airship.start(this.rng);
     for (const b of this.bots) b.planDrop(this.airship);
     this.rig.yaw = Math.atan2(this.airship.dir.x, this.airship.dir.z);
@@ -353,6 +390,40 @@ class Game {
     this.storm.reset();
     this.storm.start(this.rng);
     this.stormTick = 1;
+    net.mute--;
+    if (online) {
+      net.installHostProxies();
+      const msg = {
+        t: 'start', tod: this.renderer.timeKey, ship: this.airship.route0,
+        actors: this.actors.map((a) => [a.id, a.name, a.look.outfit, a.look.skin, a.human ? 1 : 0]),
+        containers: this.pickups.chests.map((c) => [c.id, c.kind, c.x, c.y, c.z, c.yaw]),
+        pickups: this.pickups.list.map((p) => [p.id, p.item, p.x, p.y, p.z]),
+      };
+      for (const c of net.conns.values()) if (c.actor) net.send(c.conn, { ...msg, you: c.actor.id });
+    }
+    this.beginMatch();
+  }
+
+  // Shared by the host and online clients.
+  prepareMatch() {
+    this.lobbyChar.root.visible = false;
+    this.time = 0;
+    this.over = false;
+    this.placement = 0;
+    this.winner = null;
+    this.marker = null;
+    this.spectating = null;
+  }
+
+  makeController() {
+    const s = this.settings;
+    this.controller = new PlayerController(this, this.player, this.input, this.rig);
+    this.controller.sens = s.sensitivity;
+    this.controller.invertY = s.invertY;
+    this.rig.baseFov = s.fov;
+  }
+
+  beginMatch() {
     this.state = 'match';
     this.ui.showMatch();
     this.hud.show(true);
@@ -362,11 +433,60 @@ class Game {
     this.hud.announce('Board the airship', 'Press SPACE to jump when you are over a place you like', 4);
   }
 
+  // Online client: the host started a match. Build the same island, loot and players, then follow the host.
+  startClientMatch(m) {
+    const ui = this.ui;
+    if (this.state === 'match') ui.toLobby(true);
+    ui.starting = false;
+    $('matchmaking').hidden = true;
+    $('death').hidden = true;
+    $('victory').hidden = true;
+    this.audio.init();
+    this.audio.stopMusic();
+    this.rng = new Rng((Math.random() * 1e9) | 0);
+    if (this.played) this.buildLevel();
+    this.played = true;
+    if (m.tod && TIMES[m.tod] && this.renderer.timeKey !== m.tod) this.renderer.setTime(m.tod);
+    this.prepareMatch();
+    for (const c of m.containers) this.pickups.addContainer(c[1], c[2], c[3], c[4], c[5], c[0]);
+    for (const p of m.pickups) this.pickups.spawn(p[1], p[2], p[3], p[4], { id: p[0] });
+    this.actors = [];
+    this.player = null;
+    for (const [id, name, outfit, skin, human] of m.actors) {
+      const me = id === m.you;
+      const a = new Actor(this, { id, name, isPlayer: me, outfit, skin });
+      a.human = !!human;
+      if (me) { a.netLocal = true; this.player = a; } else a.puppet = true;
+      this.actors.push(a);
+    }
+    this.actorById = new Map(this.actors.map((a) => [a.id, a]));
+    this.bots = [];
+    this.makeController();
+    this.airship.startFrom(m.ship[0], m.ship[1]);
+    this.rig.yaw = Math.atan2(this.airship.dir.x, this.airship.dir.z);
+    this.rig.pitch = -0.25;
+    this.storm.reset();
+    this.storm.net = true;
+    this.stormTick = 1;
+    this.beginMatch();
+    // the match started from the network, not a click, so the mouse may still be free
+    setTimeout(() => { if (this.state === 'match' && !this.input.locked && !this.mapOpen) this.setPaused(true); }, 400);
+  }
+
+  // Leaving a match early (or the host starting a new one): tell the others.
+  leaveMatch(silent = false) {
+    const net = this.net;
+    if (this.state !== 'match') return;
+    if (net.isHost && !this.over && net.conns.size) net.broadcast({ t: 'abort' });
+    else if (net.isClient && !silent && this.player && this.player.alive) net.send(net.hostConn, { t: 'quit' });
+  }
+
   aliveCount() { let n = 0; for (const a of this.actors) if (a.alive) n++; return n; }
 
   setPaused(p) {
     if (this.over) return;
     this.paused = p;
+    $('pause-title').textContent = this.net.active ? 'Menu' : 'Paused';
     this.ui.showPause(p);
     if (!p) this.input.lock();
     else this.input.unlock();
@@ -421,6 +541,7 @@ class Game {
     if (t.kind === 'container') {
       const c = t.obj;
       c.opened = true;
+      this.net.emit('co', c.id);
       const items = c.kind === 'chest' ? chestLoot(this.rng) : c.kind === 'supply' ? supplyLoot(this.rng) : ammoBoxLoot(this.rng);
       const fwd = new THREE.Vector3(Math.sin(c.yaw), 0, Math.cos(c.yaw));
       items.forEach((it) => {
@@ -435,6 +556,7 @@ class Game {
     const inv = actor.inv;
     if (!inv.hasRoomFor(p.item) && inv.selected < 0) {
       if (actor.isPlayer) this.hud.announce('Inventory full', 'Select a slot to swap it out', 1.5, 'small');
+      this.tell(actor, 'full');
       return;
     }
     const left = inv.add(p.item);
@@ -446,6 +568,7 @@ class Game {
       if (i >= 0) actor.select(i);
     }
     if (actor.isPlayer) this.audio.pickup();
+    this.tell(actor, 'pickup');
   }
 
   autoPickup(actor) {
@@ -457,6 +580,7 @@ class Game {
       this.pickups.remove(p);
       for (const it of left) this.pickups.spawn(it, p.x, p.y, p.z);
       if (actor.isPlayer) this.audio.pickup();
+      this.tell(actor, 'pickup');
     }
   }
 
@@ -473,17 +597,24 @@ class Game {
   }
 
   // ------------------------------------------------------------------ events
+  // A private message for a friend's player (hosting online).
+  tell(actor, ...msg) { if (actor.remote) this.net.emit('msg', actor.id, ...msg); }
+
+  kick(def) {
+    const kick = def.kick * (this.controller.ads ? 0.6 : 1);
+    this.rig.pitch += kick;
+    this.rig.yaw += (Math.random() - 0.5) * kick * 0.5;
+    this.rig.addShake(def.recoil * 0.25);
+  }
+
   onFire(actor, w, def, muzzle) {
     this.audio.gun(def.id, muzzle, actor.isPlayer);
-    if (actor.isPlayer) {
-      const kick = def.kick * (this.controller.ads ? 0.6 : 1);
-      this.rig.pitch += kick;
-      this.rig.yaw += (Math.random() - 0.5) * kick * 0.5;
-      this.rig.addShake(def.recoil * 0.25);
-    }
+    if (actor.isPlayer) this.kick(def);
+    this.net.emit('fire', actor.id, def.id, v3(muzzle));
   }
 
   onHitConfirm(attacker, target, amount, head, point, shield) {
+    if (attacker && attacker.remote) this.net.emit('hit', attacker.id, amount, head, v3(point), shield);
     if (!attacker || !attacker.isPlayer) return;
     this.hud.hitMarker(head);
     this.hud.damageNumber(point, amount, head, shield);
@@ -491,6 +622,10 @@ class Game {
   }
 
   onDamage(victim, amount, source, opts) {
+    if (victim.remote) {
+      this.net.emit('hurt', victim.id, amount, source && source !== victim && source.pos ? v3(source.pos) : null,
+        opts.toShield || 0, !!opts.shieldBroken, !!opts.storm);
+    }
     if (!victim.isPlayer) return;
     this.damageFlash = Math.min(1, (this.damageFlash || 0) + amount / 40);
     if (!opts.storm) this.audio.hurt(opts.toShield > 0, opts.shieldBroken);
@@ -503,9 +638,18 @@ class Game {
     this.effects.eliminate(victim.pos);
     const place = this.aliveCount() + 1;
     victim.placement = place;
+    this.net.emit('death', victim.id, killer ? killer.id : 0,
+      { storm: !!opts.storm, fall: !!opts.fall, left: !!opts.left, weapon: opts.weapon || null, head: !!opts.head }, place);
+    this.announceDeath(victim, killer, opts);
+    if (this.aliveCount() <= 1) this.finish();
+  }
+
+  // Kill feed, banners and the death screen; the same on the host and on online clients.
+  announceDeath(victim, killer, opts) {
     const nm = (a) => `<b class="${a.isPlayer ? 'me' : ''}">${a.name}</b>`;
     let msg;
-    if (opts.storm) msg = `${nm(victim)} was lost in the storm`;
+    if (opts.left) msg = `${nm(victim)} left the match`;
+    else if (opts.storm) msg = `${nm(victim)} was lost in the storm`;
     else if (opts.fall) msg = `${nm(victim)} fell too far`;
     else if (killer && killer !== victim) {
       const wname = opts.weapon === 'pickaxe' ? 'a harvesting tool' : WEAPONS[opts.weapon] ? WEAPONS[opts.weapon].name : 'something';
@@ -524,8 +668,26 @@ class Game {
     if (!victim.isPlayer && this.player && this.player.alive && [50, 25, 10, 5, 3, 2].includes(alive)) {
       this.hud.announce(`${alive} players left`, '', 2.5, 'small');
     }
-    if (alive <= 1) this.finish();
   }
+
+  // Online client: someone was eliminated on the host.
+  netDeath([vid, kid, opts, place]) {
+    const v = this.actorById.get(vid);
+    if (!v || !v.alive) return;
+    const k = kid ? this.actorById.get(kid) || null : null;
+    v.health = 0;
+    v.alive = false;
+    v.mode = 'dead';
+    v.deathTime = this.time;
+    v.vel.set(0, 0, 0);
+    v.buildMode = false;
+    v.setGlider(false);
+    v.placement = place;
+    if (v === this.player) this.building.hideGhost();
+    this.announceDeath(v, k, opts || {});
+  }
+
+  netEnd(wid) { this.finish(this.actorById.get(wid) || null); }
 
   playerDied(killer) {
     this.placement = this.aliveCount() + 1;
@@ -536,11 +698,12 @@ class Game {
     setTimeout(() => { if (this.state === 'match') this.ui.showDeath(killer); }, 1600);
   }
 
-  finish() {
+  finish(winnerIn) {
     if (this.over) return;
-    const winner = this.actors.find((a) => a.alive);
+    const winner = winnerIn !== undefined ? winnerIn : this.actors.find((a) => a.alive);
     this.winner = winner;
     this.over = true;
+    this.net.emit('end', winner ? winner.id : 0);
     if (winner && winner.isPlayer) {
       this.placement = 1;
       this.stats.matches++;
@@ -575,33 +738,132 @@ class Game {
   onEdit(actor, piece) {
     if (actor.isPlayer) this.audio.build(piece.mat, new THREE.Vector3(piece.ix * 4 + 2, piece.iy * 3 + 1.5, piece.iz * 4 + 2), true);
   }
-  onNoMats(actor, mat) { if (actor.isPlayer) this.hud.announce(`Not enough ${MATS[mat].label.toLowerCase()}`, 'Harvest more with your harvesting tool', 1.2, 'small'); }
+  onNoMats(actor, mat) {
+    if (actor.isPlayer) this.hud.announce(`Not enough ${MATS[mat].label.toLowerCase()}`, 'Harvest more with your harvesting tool', 1.2, 'small');
+    this.tell(actor, 'nomats', mat);
+  }
   onBuildMat(mat) { this.audio.ui(); }
   onSwing(actor) { if (actor.isPlayer) this.audio.swing(true); }
   onHarvest(actor, mat, amount, point, weak) {
     if (actor.isPlayer) this.hud.matGain(mat, amount);
+    if (actor.remote) this.net.emit('harv', actor.id, mat, amount);
   }
   onHarvestHit(actor, mat, point, owner, weak, normal) {
     this.audio.harvest(mat, point, actor.isPlayer, weak);
+    this.net.emit('snd', 'hv', mat, v3(point), actor.id, !!weak);
     if (actor.isPlayer && owner && owner.alive !== false && normal) this.weakPoint.place(point, normal, owner);
   }
-  onReload(actor, w) { this.audio.reload(actor.pos, actor.isPlayer); }
-  onEmpty(actor) { if (actor.isPlayer) { this.audio.empty(); this.hud.announce('Out of ammo', '', 1, 'small'); } }
-  onUse(actor, item) { if (actor.isPlayer) this.audio.heal(!!CONSUMABLES[item.id].shield); }
-  onConsumed(actor, item) { if (actor.isPlayer) this.healFlash = 1; }
+  onReload(actor, w) {
+    this.audio.reload(actor.pos, actor.isPlayer);
+    this.net.emit('snd', 'rl', v3(actor.pos), actor.id);
+  }
+  onEmpty(actor) {
+    if (actor.isPlayer) { this.audio.empty(); this.hud.announce('Out of ammo', '', 1, 'small'); }
+    this.tell(actor, 'empty');
+  }
+  onUse(actor, item) {
+    if (actor.isPlayer) this.audio.heal(!!CONSUMABLES[item.id].shield);
+    this.tell(actor, 'use', !!CONSUMABLES[item.id].shield);
+  }
+  onConsumed(actor, item) { if (actor.isPlayer) this.healFlash = 1; this.tell(actor, 'healed'); }
   onCantUse(actor, item) {
     if (actor.isPlayer) this.hud.announce(CONSUMABLES[item.id].shield ? 'Shield is full' : 'Health is full', '', 1, 'small');
+    this.tell(actor, 'cantuse', !!CONSUMABLES[item.id].shield);
   }
-  onExplosion(pos) { this.audio.explosion(pos); }
+  onExplosion(pos) {
+    this.audio.explosion(pos);
+    this.net.emit('snd', 'ex', v3(pos));
+  }
+
+  // ------------------------------------------------------------------ online client: what the host tells us
+  netPieceAdd([model, ix, iy, iz, axis, dir, ownerId, build]) {
+    const slot = { ix, iy, iz };
+    if (axis !== null) slot.axis = axis;
+    if (dir !== null) slot.dir = dir;
+    const owner = this.actorById.get(ownerId) || null;
+    const p = this.pieces.add(model, slot, { build, owner });
+    if (p && owner) this.onBuild(owner, p);
+  }
+
+  netPickupSpawn([id, item, x, y, z, vx, vy, vz, settled]) {
+    if (this.pickups.byId(id)) return;
+    const p = this.pickups.spawn(item, x, y, z, { id, toss: !settled });
+    if (!settled) { p.vx = vx; p.vy = vy; p.vz = vz; }
+  }
+
+  netSound([kind, a, b, c, d], me) {
+    if (kind === 'hv') this.audio.harvest(a, toV(b), c === me, d);
+    else if (kind === 'rl') { if (b !== me) this.audio.reload(toV(a), false); }
+    else if (kind === 'ex') this.audio.explosion(toV(a));
+  }
+
+  netPrivate([kind, arg]) {
+    const hud = this.hud;
+    switch (kind) {
+      case 'pickup': this.audio.pickup(); break;
+      case 'full': hud.announce('Inventory full', 'Select a slot to swap it out', 1.5, 'small'); break;
+      case 'nomats': if (MATS[arg]) hud.announce(`Not enough ${MATS[arg].label.toLowerCase()}`, 'Harvest more with your harvesting tool', 1.2, 'small'); break;
+      case 'empty': this.audio.empty(); hud.announce('Out of ammo', '', 1, 'small'); break;
+      case 'use': this.audio.heal(!!arg); break;
+      case 'healed': this.healFlash = 1; break;
+      case 'cantuse': hud.announce(arg ? 'Shield is full' : 'Health is full', '', 1, 'small'); break;
+      default:
+    }
+  }
+
+  // Rockets and grenades in flight, drawn from the host's snapshots.
+  netProjectiles(list) {
+    const np = this.netProj || (this.netProj = []);
+    while (np.length > list.length) this.scene.remove(np.pop().mesh);
+    list.forEach((q, i) => {
+      let p = np[i];
+      if (!p || p.kind !== q[0]) {
+        if (p) this.scene.remove(p.mesh);
+        const mesh = this.assets.flat(q[0] === 'r' ? 'Projectile_Rocket' : 'Grenade', { shadows: false });
+        if (q[0] === 'g') mesh.scale.setScalar(1.3);
+        this.scene.add(mesh);
+        p = np[i] = { kind: q[0], mesh, pos: new THREE.Vector3(), vel: new THREE.Vector3(), trail: 0 };
+      }
+      p.pos.set(q[1], q[2], q[3]);
+      p.vel.set(q[4], q[5], q[6]);
+    });
+  }
+
+  updateNetProjectiles(dt) {
+    if (!this.netProj) return;
+    const d = new THREE.Vector3();
+    for (const p of this.netProj) {
+      if (p.kind === 'g') p.vel.y -= 20 * dt;
+      p.pos.addScaledVector(p.vel, dt);
+      p.mesh.position.copy(p.pos);
+      if (p.kind === 'r') {
+        d.copy(p.vel).normalize();
+        p.mesh.lookAt(p.pos.clone().sub(d));
+        p.trail -= dt;
+        if (p.trail <= 0) { p.trail = 0.02; this.effects.rocketTrail(p.pos); }
+      } else {
+        p.mesh.rotation.x += dt * 6;
+      }
+    }
+  }
+
+  clearNetProjectiles() {
+    if (this.netProj) for (const p of this.netProj) this.scene.remove(p.mesh);
+    this.netProj = [];
+  }
+
   // A crate that floats down under a balloon with top-tier loot.
-  spawnSupplyDrop() {
+  spawnSupplyDrop(cid = null, x = 0, z = 0) {
     const s = this.storm;
-    let x = 0, z = 0;
-    for (let i = 0; i < 30; i++) {
-      const a = this.rng.float(0, Math.PI * 2), r = Math.sqrt(this.rng.next()) * s.next.r * 0.7;
-      x = s.next.c.x + Math.cos(a) * r;
-      z = s.next.c.y + Math.sin(a) * r;
-      if (this.terrain.heightAt(x, z) > 1.5 && this.world.isFree(x, z, 3)) break;
+    if (cid === null) {
+      for (let i = 0; i < 30; i++) {
+        const a = this.rng.float(0, Math.PI * 2), r = Math.sqrt(this.rng.next()) * s.next.r * 0.7;
+        x = s.next.c.x + Math.cos(a) * r;
+        z = s.next.c.y + Math.sin(a) * r;
+        if (this.terrain.heightAt(x, z) > 1.5 && this.world.isFree(x, z, 3)) break;
+      }
+      cid = this.pickups.nextContainerId();
+      this.net.emit('drop', cid, x, z);
     }
     const group = new THREE.Group();
     const crate = this.assets.flat('SupplyCrate');
@@ -616,7 +878,7 @@ class Game {
     const ground = this.physics.groundAt(x, z, 400, 0.6, 500);
     group.position.set(x, ground + 150, z);
     this.scene.add(group);
-    const drop = { group, crate, balloon, beam, x, z, y: ground + 150, ground, landed: false, t: 0 };
+    const drop = { cid, group, crate, balloon, beam, x, z, y: ground + 150, ground, landed: false, t: 0 };
     this.drops = this.drops || [];
     this.drops.push(drop);
     this.hud.announce('Supply drop incoming', 'Look for the blue beam', 3, 'small');
@@ -635,7 +897,7 @@ class Game {
           d.group.position.set(d.x, d.ground, d.z);
           this.effects.landingDust(d.group.position);
           // becomes a container anyone can open
-          const c = { kind: 'supply', group: d.group, lid: null, x: d.x, y: d.ground, z: d.z, yaw: d.group.rotation.y, opened: false,
+          const c = { id: d.cid, kind: 'supply', group: d.group, lid: null, x: d.x, y: d.ground, z: d.z, yaw: d.group.rotation.y, opened: false,
             open: 0, light: null, sparkle: 0, drop: d };
           this.pickups.chests.push(c);
           d.container = c;
@@ -654,7 +916,7 @@ class Game {
   }
 
   onStorm(phase, storm) {
-    if (phase === 'wait' && storm.phase >= 1 && storm.phase <= 4) setTimeout(() => { if (this.state === 'match' && !this.over) this.spawnSupplyDrop(); }, 6000);
+    if (phase === 'wait' && storm.phase >= 1 && storm.phase <= 4 && !this.net.isClient) setTimeout(() => { if (this.state === 'match' && !this.over) this.spawnSupplyDrop(); }, 6000);
     if (phase === 'wait') {
       this.hud.announce('Storm eye forming', `Shrinks in ${formatTime(storm.timer)} — get inside the white circle`, 4, 'storm');
     } else if (phase === 'shrink') {
@@ -748,7 +1010,9 @@ class Game {
     // menus
     if (inp.hit('Escape') || inp.hit('KeyP')) { if (this.mapOpen) this.toggleMap(false); else this.setPaused(!this.paused); }
     if ((inp.hit('KeyM') || inp.hit('Tab')) && !this.mapOpen) this.toggleMap(true);
-    if (this.paused) { this.rig.update(0, this.player); return; }
+    // online the match keeps going while the menu is open
+    if (this.paused && !this.net.active) { this.rig.update(0, this.player); return; }
+    const client = this.net.isClient;
     this.time += dt;
     const p = this.player;
     // controllers
@@ -757,12 +1021,13 @@ class Game {
     this.airship.update(dt);
     for (const a of this.actors) {
       a.update(dt);
-      if (a.alive && a.mode === 'ground') this.autoPickup(a);
+      if (!client && a.alive && a.mode === 'ground') this.autoPickup(a);
     }
-    this.combat.update(dt);
+    if (client) this.updateNetProjectiles(dt);
+    else this.combat.update(dt);
     this.storm.update(dt);
     this.stormTick -= dt;
-    if (this.stormTick <= 0) {
+    if (this.stormTick <= 0 && !client && !this.over) {
       this.stormTick = 1;
       for (const a of this.actors) {
         if (a.alive && a.mode !== 'bus' && this.storm.isOutside(a.pos.x, a.pos.z)) a.takeDamage(this.storm.dps, null, { storm: true });
@@ -811,6 +1076,35 @@ class Game {
     this.audio.setEngine(p.mode === 'bus' ? 1 : clamp(1 - shipD / 250, 0, 1));
     if (inStormP && Math.random() < dt * 0.1) this.audio.thunder();
     this.hud.update(dt);
+    this.updateNameTags();
+    if (this.net.isHost) this.net.hostTick(dt);
+    else if (client) this.net.clientTick(dt);
+  }
+
+  // Friends' names over their heads (online).
+  updateNameTags() {
+    const host = $('nametags');
+    const tags = this.nameTags || (this.nameTags = new Map());
+    const seen = new Set();
+    if (this.net.active) {
+      const v = new THREE.Vector3();
+      const cam = this.camera.position;
+      for (const a of this.actors) {
+        if (!a.human || a === this.player || !a.alive || a.mode === 'bus' || !a.model.root.visible) continue;
+        const d = a.pos.distanceTo(cam);
+        if (d > 150) continue;
+        v.copy(a.model.root.position).y += a.height + 0.45;
+        v.project(this.camera);
+        if (v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) continue;
+        let el = tags.get(a);
+        if (!el) { el = document.createElement('div'); el.className = 'nametag'; el.textContent = a.name; host.appendChild(el); tags.set(a, el); }
+        el.style.left = `${(v.x * 0.5 + 0.5) * 100}%`;
+        el.style.top = `${(-v.y * 0.5 + 0.5) * 100}%`;
+        el.style.opacity = d > 90 ? String(1 - (d - 90) / 60) : '1';
+        seen.add(a);
+      }
+    }
+    for (const [a, el] of tags) if (!seen.has(a)) { el.remove(); tags.delete(a); }
   }
 }
 
