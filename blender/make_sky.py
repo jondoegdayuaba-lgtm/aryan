@@ -23,6 +23,8 @@ from common import bpy
 import noise as N
 import world_gen as wg
 
+AIR, DUST, OZONE = 1.0, 0.035, 1.7      # Nishita sky: clear, deep blue alpine air
+CLOUDS, CLOUD_RADIANCE = True, 6.0       # a veil of thin cirrus over the sky
 CAM_ALT = 1750.0     # panorama camera altitude (metres, mid run)
 BASE_REL = -1000.0   # valley floor of the far range relative to the camera
 
@@ -52,10 +54,10 @@ def build_world(sun_rot, sun_elev, sun_visible_to_camera, altitude=CAM_ALT):
         s.sun_size = math.radians(0.545)
         s.sun_intensity = 1.0
         s.altitude = altitude
-        s.air_density = 0.8
-        s.dust_density = 0.06
+        s.air_density = AIR
+        s.dust_density = DUST
         s.ground_albedo = 0.8
-        s.ozone_density = 1.0
+        s.ozone_density = OZONE
         bg = nt.nodes.new('ShaderNodeBackground')
         nt.links.new(s.outputs['Color'], bg.inputs['Color'])
         return s, bg
@@ -67,9 +69,78 @@ def build_world(sun_rot, sun_elev, sun_visible_to_camera, altitude=CAM_ALT):
     nt.links.new(lp.outputs['Is Camera Ray'], mix.inputs['Fac'])
     nt.links.new(full.outputs['Background'], mix.inputs[1])
     nt.links.new(cam.outputs['Background'], mix.inputs[2])
-    nt.links.new(mix.outputs['Shader'], out.inputs['Surface'])
+    final = mix.outputs['Shader']
+    if CLOUDS:
+        final = add_cirrus(nt, final)
+    nt.links.new(final, out.inputs['Surface'])
     world.cycles.sample_map_resolution = 2048 if hasattr(world.cycles, 'sample_map_resolution') else None
     return world
+
+
+def add_cirrus(nt, shader_out):
+    """thin high cloud streaks: a stretched noise projected onto a plane above the viewer, mixed over the sky"""
+    tc = nt.nodes.new('ShaderNodeTexCoord')
+    sep = nt.nodes.new('ShaderNodeSeparateXYZ')
+    nt.links.new(tc.outputs['Generated'], sep.inputs['Vector'])
+    zc = nt.nodes.new('ShaderNodeMath')
+    zc.operation = 'MAXIMUM'
+    zc.inputs[1].default_value = 0.0
+    nt.links.new(sep.outputs['Z'], zc.inputs[0])
+    den = nt.nodes.new('ShaderNodeMath')
+    den.operation = 'ADD'
+    den.inputs[1].default_value = 0.16
+    nt.links.new(zc.outputs['Value'], den.inputs[0])
+    u = nt.nodes.new('ShaderNodeMath')
+    u.operation = 'DIVIDE'
+    nt.links.new(sep.outputs['X'], u.inputs[0])
+    nt.links.new(den.outputs['Value'], u.inputs[1])
+    v = nt.nodes.new('ShaderNodeMath')
+    v.operation = 'DIVIDE'
+    nt.links.new(sep.outputs['Y'], v.inputs[0])
+    nt.links.new(den.outputs['Value'], v.inputs[1])
+    comb = nt.nodes.new('ShaderNodeCombineXYZ')
+    nt.links.new(u.outputs['Value'], comb.inputs['X'])
+    nt.links.new(v.outputs['Value'], comb.inputs['Y'])
+    mp = nt.nodes.new('ShaderNodeMapping')
+    mp.inputs['Scale'].default_value = (1.0, 0.32, 1.0)
+    mp.inputs['Location'].default_value = (4.3, 1.7, 0.0)
+    mp.inputs['Rotation'].default_value = (0.0, 0.0, math.radians(24))
+    nt.links.new(comb.outputs['Vector'], mp.inputs['Vector'])
+    nz = nt.nodes.new('ShaderNodeTexNoise')
+    nz.inputs['Scale'].default_value = 1.7
+    nz.inputs['Detail'].default_value = 9.0
+    nz.inputs['Roughness'].default_value = 0.62
+    nz.inputs['Distortion'].default_value = 0.55
+    nt.links.new(mp.outputs['Vector'], nz.inputs['Vector'])
+    ramp = nt.nodes.new('ShaderNodeValToRGB')
+    ramp.color_ramp.elements[0].position = 0.55
+    ramp.color_ramp.elements[0].color = (0, 0, 0, 1)
+    ramp.color_ramp.elements[1].position = 0.80
+    ramp.color_ramp.elements[1].color = (1, 1, 1, 1)
+    nt.links.new(nz.outputs['Fac'], ramp.inputs['Fac'])
+    fade = nt.nodes.new('ShaderNodeMapRange')
+    fade.inputs['From Min'].default_value = 0.03
+    fade.inputs['From Max'].default_value = 0.30
+    fade.inputs['To Min'].default_value = 0.0
+    fade.inputs['To Max'].default_value = 1.0
+    nt.links.new(sep.outputs['Z'], fade.inputs['Value'])
+    cover = nt.nodes.new('ShaderNodeMath')
+    cover.operation = 'MULTIPLY'
+    cover.use_clamp = True
+    nt.links.new(ramp.outputs['Color'], cover.inputs[0])
+    nt.links.new(fade.outputs['Result'], cover.inputs[1])
+    thin = nt.nodes.new('ShaderNodeMath')
+    thin.operation = 'MULTIPLY'
+    thin.inputs[1].default_value = 0.5
+    nt.links.new(cover.outputs['Value'], thin.inputs[0])
+    cloud = nt.nodes.new('ShaderNodeBackground')
+    cloud.inputs['Color'].default_value = (1.0, 0.975, 0.93, 1.0)
+    cloud.inputs['Strength'].default_value = CLOUD_RADIANCE
+    mix2 = nt.nodes.new('ShaderNodeMixShader')
+    nt.links.new(thin.outputs['Value'], mix2.inputs['Fac'])
+    nt.links.new(shader_out, mix2.inputs[1])
+    nt.links.new(cloud.outputs['Background'], mix2.inputs[2])
+    return mix2.outputs['Shader']
 
 
 def pano_camera():
@@ -190,34 +261,59 @@ def probe_irradiance(rot, elev):
     return e_sky, e_sun_n
 
 # ------------------------------------------------------------------ far mountains
+def thermal(h, iterations, talus, dx, rate=0.5):
+    """thermal erosion: material slumps from cells steeper than `talus` (rise per metre) to lower neighbours"""
+    offs = [(-1, 0, 1.0), (1, 0, 1.0), (0, -1, 1.0), (0, 1, 1.0), (-1, -1, 1.4142), (-1, 1, 1.4142), (1, -1, 1.4142), (1, 1, 1.4142)]
+    for _ in range(iterations):
+        p = np.pad(h, 1, mode='edge')
+        c = p[1:-1, 1:-1]
+        out = np.zeros_like(h)
+        recv = np.zeros_like(h)
+        gives = []
+        for dz, dxx, dist in offs:
+            nb = p[1 + dz:p.shape[0] - 1 + dz, 1 + dxx:p.shape[1] - 1 + dxx]
+            g = rate * 0.125 * np.maximum(c - nb - talus * dx * dist, 0.0)
+            gives.append((dz, dxx, g))
+            out += g
+        for dz, dxx, g in gives:
+            gp = np.pad(g, 1, mode='constant')
+            recv += gp[1 - dz:gp.shape[0] - 1 - dz, 1 - dxx:gp.shape[1] - 1 - dxx]
+        h = h - out + recv
+    return h
+
+
 def far_mountains(seed=5):
     rng = np.random.default_rng(seed)
-    n = 1024
-    size = 110000.0
+    n = 1536
+    size = 64000.0
     dxm = size / (n - 1)
     xs = (np.arange(n) - n / 2) * dxm
     X, Y = np.meshgrid(xs, xs)              # Blender frame: +Y ahead (game -Z), +X right
     r = np.hypot(X, Y)
     az = np.degrees(np.arctan2(X, Y))       # 0 ahead, + toward the right
 
-    n1 = N.spectral_noise((n, n), dxm, 3000.0, 30000.0, 2.2, rng)
-    n2 = N.spectral_noise((n, n), dxm, 800.0, 6000.0, 2.0, rng)
-    n3 = N.spectral_noise((n, n), dxm, 250.0, 1500.0, 1.8, rng)
+    n1 = N.spectral_noise((n, n), dxm, 3500.0, 32000.0, 2.3, rng)
+    n2 = N.spectral_noise((n, n), dxm, 1400.0, 9000.0, 2.1, rng)
+    n3 = N.spectral_noise((n, n), dxm, 500.0, 2400.0, 1.9, rng)
     nlo = N.spectral_noise((n, n), dxm, 20000.0, 90000.0, 2.0, rng)
 
-    ring = N.smoothstep(3500.0, 15000.0, r)
+    ring = N.smoothstep(3500.0, 15000.0, r) * (1.0 - 0.6 * N.smoothstep(24000.0, 31000.0, r))
     var = 0.55 + 0.45 * np.tanh(nlo * 0.9 + 0.2)
-    h = BASE_REL + 90.0 * n1 + 45.0 * n2 + ring * (350.0 + var * (2300.0 * N.ridged(n1) + 800.0 * N.ridged(n2) + 140.0 * n3))
-    # hero peaks: azimuth (deg from ahead), distance, height above camera, radius
+    h = BASE_REL + 90.0 * n1 + 45.0 * n2 + ring * (350.0 + var * (2400.0 * N.ridged(n1) + 760.0 * N.ridged(n2, 1.9) + 70.0 * n3))
+    # hero peaks: azimuth (deg from ahead), distance, height above camera, radius. Ridged buttresses radiate from each summit.
     for a_deg, dist, top, rad in ((-24, 8500, 2900, 4800), (38, 11500, 3100, 6600), (-118, 10500, 2900, 6000),
                                   (142, 15000, 3300, 8000), (-62, 16500, 2700, 8200), (92, 19000, 3000, 9000),
-                                  (5, 21000, 3200, 8600)):
+                                  (5, 21000, 3200, 8600), (-160, 26000, 3400, 9000), (60, 27000, 3100, 8500)):
         cx, cy = dist * math.sin(math.radians(a_deg)), dist * math.cos(math.radians(a_deg))
-        d = np.hypot(X - cx, Y - cy) / rad
-        cone = np.clip(1.0 - d, 0.0, 1.0) ** 1.35
-        cone *= 0.7 + 0.3 * N.ridged(n2 + 0.8 * n3, 1.0)
+        dxp, dyp = X - cx, Y - cy
+        d = np.hypot(dxp, dyp) / rad
+        ang = np.arctan2(dyp, dxp)
+        rib = 0.5 + 0.5 * np.sin(ang * rng.integers(4, 8) + 3.0 * n2 + rng.uniform(0, 6.3))
+        cone = np.clip(1.0 - d, 0.0, 1.0) ** (1.05 + 0.5 * (1.0 - rib))
+        cone *= 0.62 + 0.38 * N.ridged(n2 + 0.6 * n3, 1.0)
         h = np.maximum(h, BASE_REL + cone * (top - BASE_REL))
     h = np.maximum(h, BASE_REL)
+    h = thermal(h, 10, 1.05, dxm)                 # slump the small knobs, keep the sharp arêtes
     verts = np.stack([X.ravel(), Y.ravel(), h.ravel()], 1).astype(np.float32)
     tris = C.grid_triangles(n, n)
     ob = C.mesh_from_arrays('FarMountains', verts, tris)
@@ -233,21 +329,42 @@ def far_material(altitude=CAM_ALT):
     pos = m.node('ShaderNodeSeparateXYZ', -700, 0)
     links.new(geo.outputs['Position'], pos.inputs['Vector'])
     noise = m.node('ShaderNodeTexNoise', -900, -200)
-    noise.inputs['Scale'].default_value = 0.0006
-    noise.inputs['Detail'].default_value = 8.0
-    # steepness -> rock
+    noise.inputs['Scale'].default_value = 0.00035
+    noise.inputs['Detail'].default_value = 7.0
+    # steepness + altitude -> rock / snow
     ramp = m.node('ShaderNodeValToRGB', -450, 250)
-    ramp.color_ramp.elements[0].position = 0.66
-    ramp.color_ramp.elements[0].color = (0.16, 0.14, 0.13, 1)
-    ramp.color_ramp.elements[1].position = 0.90
-    ramp.color_ramp.elements[1].color = (0.93, 0.95, 0.98, 1)
+    ramp.color_ramp.elements[0].position = 0.60
+    ramp.color_ramp.elements[0].color = (0.055, 0.05, 0.048, 1)
+    e1 = ramp.color_ramp.elements.new(0.78)
+    e1.color = (0.20, 0.19, 0.185, 1)
+    ramp.color_ramp.elements[2].position = 0.90
+    ramp.color_ramp.elements[2].color = (0.93, 0.95, 0.98, 1)
     add = m.node('ShaderNodeMath', -600, 250, operation='ADD')
     mul = m.node('ShaderNodeMath', -750, -150, operation='MULTIPLY')
-    mul.inputs[1].default_value = 0.09
+    mul.inputs[1].default_value = 0.16
     links.new(noise.outputs['Fac'], mul.inputs[0])
+    alt = m.node('ShaderNodeMapRange', -750, 60)
+    alt.inputs['From Min'].default_value = -300.0
+    alt.inputs['From Max'].default_value = 2600.0
+    alt.inputs['To Min'].default_value = -0.10
+    alt.inputs['To Max'].default_value = 0.16
+    links.new(pos.outputs['Z'], alt.inputs['Value'])
+    add2 = m.node('ShaderNodeMath', -520, 120, operation='ADD')
     links.new(sep.outputs['Z'], add.inputs[0])
     links.new(mul.outputs['Value'], add.inputs[1])
-    links.new(add.outputs['Value'], ramp.inputs['Fac'])
+    links.new(add.outputs['Value'], add2.inputs[0])
+    links.new(alt.outputs['Result'], add2.inputs[1])
+    links.new(add2.outputs['Value'], ramp.inputs['Fac'])
+    # crag relief: bump from fine noise
+    n2 = m.node('ShaderNodeTexNoise', -900, -420)
+    n2.inputs['Scale'].default_value = 0.0016
+    n2.inputs['Detail'].default_value = 9.0
+    n2.inputs['Roughness'].default_value = 0.6
+    bump = m.node('ShaderNodeBump', -450, -420)
+    bump.inputs['Strength'].default_value = 0.55
+    bump.inputs['Distance'].default_value = 60.0
+    links.new(n2.outputs['Fac'], bump.inputs['Height'])
+    links.new(bump.outputs['Normal'], m.bsdf.inputs['Normal'])
     # forest tint in the low valleys
     low = m.node('ShaderNodeMapRange', -450, -50)
     low.inputs['Value'].default_value = 0.0
@@ -293,9 +410,10 @@ def far_material(altitude=CAM_ALT):
     hz.sun_elevation = sun_elev_global
     hz.sun_rotation = sun_rot_global
     hz.altitude = altitude
-    hz.air_density = 0.8
-    hz.dust_density = 0.06
+    hz.air_density = AIR
+    hz.dust_density = DUST
     hz.ground_albedo = 0.8
+    hz.ozone_density = OZONE
     links.new(comb.outputs['Vector'], hz.inputs['Vector'])
     emit = m.node('ShaderNodeEmission', 700, -520)
     links.new(hz.outputs['Color'], emit.inputs['Color'])

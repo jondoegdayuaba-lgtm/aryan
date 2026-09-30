@@ -139,6 +139,8 @@ export function injectWorldLight(shader, { terrain = false } = {}) {
 
 /** Make a MeshStandard/Physical material honour the baked terrain light map. */
 export function applyWorldLight(material, extra) {
+  if (material.userData.worldLight) return material;              // shared materials are visited once per mesh
+  material.userData.worldLight = true;
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
     if (prev) prev.call(material, shader, renderer);

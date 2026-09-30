@@ -101,6 +101,18 @@ export class WorldData {
     return this.sample(x, z, null);
   }
 
+  /** Height of the rendered terrain triangles (piecewise linear, same diagonal as the terrain grid): use it to lay decals flat on the mesh. */
+  heightTri(x, z) {
+    const fx = (x - this.x0) * this.invDx;
+    const fz = (z - this.z0) * this.invDx;
+    const ix = clamp(Math.floor(fx), 0, this.nx - 2);
+    const iz = clamp(Math.floor(fz), 0, this.nz - 2);
+    const tx = fx - ix, tz = fz - iz;
+    const H = this.heights, nx = this.nx;
+    const ha = H[iz * nx + ix], hc = H[iz * nx + ix + 1], hb = H[(iz + 1) * nx + ix], hd = H[(iz + 1) * nx + ix + 1];
+    return tx + tz <= 1 ? ha + tx * (hc - ha) + tz * (hb - ha) : hd + (1 - tx) * (hb - hd) + (1 - tz) * (hc - hd);
+  }
+
   /** Unit surface normal into out {x,y,z}. Returns height. */
   normal(x, z, out, tmp = _tmp) {
     const h = this.sample(x, z, tmp);
@@ -141,7 +153,7 @@ export class WorldData {
   }
 
   static rockRadius(scale) {
-    return 0.62 * scale;
+    return 0.72 * scale;
   }
 
   /**

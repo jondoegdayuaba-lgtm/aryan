@@ -6,6 +6,7 @@ import { WorldData } from './world-data.js';
 import { Loader } from './assets.js';
 import { TerrainRenderer } from './terrain-render.js';
 import { Vegetation } from './vegetation.js';
+import { Rocks } from './rocks.js';
 import { setupSky } from './sky.js';
 import { installFog, setWorldLightTexture } from './shader-patches.js';
 import { SkierRig } from './skier-rig.js';
@@ -61,10 +62,10 @@ export class Game {
     }
     const atm = this.atm = (await loader.json('world/atmosphere.json')) || {};
     const [rigInfo, treeInfo] = await Promise.all([loader.json('models/skier_rig.json'), loader.json('models/tree_info.json')]);
-    const [color, mask, light, sky, skyIbl, atlas, treeGltf, skierGltf, propsGltf, rockN, rockC, snowN] = await Promise.all([
+    const [color, mask, light, sky, skyIbl, atlas, treeGltf, skierGltf, propsGltf, rockN, rockC, snowN, rockGltf] = await Promise.all([
       loader.texture('tex/terrain_color.jpg'),
       loader.texture('tex/terrain_mask.png', { srgb: false }),
-      loader.texture('tex/terrain_light.png', { srgb: false }),
+      loader.texture('tex/terrain_light.jpg', { srgb: false }),
       loader.hdr('tex/sky.hdr'),
       loader.hdr('tex/sky_ibl.hdr'),
       loader.texture('tex/tree_branches.png', { anisotropy: 8 }),
@@ -74,6 +75,7 @@ export class Game {
       loader.texture('tex/rock_n.png', { srgb: false, repeat: true }),
       loader.texture('tex/rock_c.png', { srgb: false, repeat: true }),
       loader.texture('tex/snow_n.png', { srgb: false, repeat: true }),
+      loader.gltf('models/rocks.glb'),
     ]);
     if (!color || !mask) throw new Error('The terrain textures are missing. Run blender/build.py to generate the assets.');
     if (!treeGltf || !skierGltf) throw new Error('The 3D models are missing. Run blender/build.py to generate the assets.');
@@ -88,7 +90,7 @@ export class Game {
     sunCol.multiplyScalar(1 / lum);
     this.sunLum = sunLum;
     this.snowRadiance = (0.9 / Math.PI) * sunLum * 0.7;        // radiance of sunlit snow at a slight angle
-    this.exposure = (params.has('exp') ? +params.get('exp') : 1.05) / this.snowRadiance;
+    this.exposure = (params.has('exp') ? +params.get('exp') : 0.92) / this.snowRadiance;
     installFog({ sunDir, sunColor: [sunCol.r * 9, sunCol.g * 9, sunCol.b * 9] });
 
     const scene = this.scene = new THREE.Scene();
@@ -97,7 +99,7 @@ export class Game {
     scene.fog.color.setRGB(fog[0] * 0.92, fog[1] * 0.93, fog[2] * 0.98);
 
     this.skyHandle = setupSky(renderer, scene, { sky, skyIbl }, sunDir, {
-      backgroundIntensity: params.has('bgi') ? +params.get('bgi') : 2.4,
+      backgroundIntensity: params.has('bgi') ? +params.get('bgi') : 5.0,
       envIntensity: params.has('envi') ? +params.get('envi') : 1.25,
     });
     setWorldLightTexture(light, world);
@@ -119,6 +121,8 @@ export class Game {
     scene.add(this.terrain.group);
     this.veg = new Vegetation(world, treeGltf, atlas, treeInfo);
     scene.add(this.veg.group);
+    this.rocks = rockGltf && rockN && rockC ? new Rocks(world, rockGltf, rockN, rockC) : null;
+    if (this.rocks) scene.add(this.rocks.group);
     this.props = propsGltf ? new Props(world, propsGltf, { glow: this.snowRadiance * 0.32, radiance: this.snowRadiance, anisotropy: Math.min(8, renderer.capabilities.getMaxAnisotropy()) }) : null;
     if (this.props) scene.add(this.props.group);
 
@@ -156,7 +160,15 @@ export class Game {
   pickQuality() {
     const coarse = matchMedia('(pointer: coarse)').matches;
     const cores = navigator.hardwareConcurrency || 4;
-    if (coarse || cores <= 4) return 'medium';
+    // integrated / mobile / software renderers start one step down; the adaptive resolution handles the rest
+    let weak = false;
+    try {
+      const gl = this.renderer.getContext();
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '';
+      weak = /intel|mali|adreno|powervr|videocore|llvmpipe|swiftshader|software|microsoft basic/i.test(name);
+    } catch (e) { weak = false; }
+    if (coarse || cores <= 4 || weak) return 'medium';
     return 'high';
   }
 
@@ -191,6 +203,14 @@ export class Game {
     this.session = new RunSession(this.world, run);
     this.autopilot = new Autopilot(this.world, this.session.course, 0.9);
     this.session.begin();
+    // the title-screen demo starts somewhere on the piste, already moving, so the start gantry stays out of the shot
+    const len = run.sEnd - run.sStart;
+    const s0 = run.sStart + 40 + Math.random() * len * 0.55;
+    const p = this.world.path.at(s0, {});
+    const off = (Math.random() - 0.5) * Math.min(p.width * 0.4, 12);
+    const sk0 = this.session.skier;
+    sk0.reset(p.x + p.rx * off, p.z + p.rz * off, Math.atan2(p.tx, -p.tz), 15);
+    sk0.hintS = s0;
     if (this.props) this.props.setRun(run);
     this.demoTimer = 0;
     this.attract = true;
@@ -437,6 +457,7 @@ export class Game {
     }
     this.terrain.update(this.camera);
     this.veg.update(this.camera, dt);
+    if (this.rocks) this.rocks.update(this.camera, dt);
     const speed01 = clamp((sk.speed - 12) / 30, 0, 1);
     this.post.render(dt, this.time, speed01, this.flash);
   }

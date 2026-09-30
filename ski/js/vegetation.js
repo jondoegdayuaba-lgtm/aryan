@@ -35,20 +35,43 @@ function wrapChunk(wrap) {
   return out;
 }
 
+// gentle wind: the crown sways more the higher a vertex sits, each tree with its own phase
+const SWAY_VERT = /* glsl */`
+	{
+		float swayH = clamp( transformed.y / 12.0, 0.0, 1.5 );
+		float swayK = swayH * swayH;
+		#ifdef USE_INSTANCING
+			float ph = instanceMatrix[3].x * 0.21 + instanceMatrix[3].z * 0.17;
+			float sc = length( instanceMatrix[0].xyz );
+		#else
+			float ph = 0.0;
+			float sc = 1.0;
+		#endif
+		float gust = 0.6 + 0.4 * sin( uWindTime * 0.37 + ph * 0.3 );
+		transformed.x += sin( uWindTime * 1.35 + ph ) * 0.075 * swayK * gust;
+		transformed.z += cos( uWindTime * 1.12 + ph * 1.3 ) * 0.05 * swayK * gust;
+	}
+`;
+
 export function createFoliageMaterial(atlas, opts = {}) {
   const mat = new THREE.MeshStandardMaterial({
     map: atlas, vertexColors: true, roughness: 0.88, metalness: 0,
     alphaTest: opts.alphaTest ?? 0.45, side: THREE.DoubleSide, alphaToCoverage: opts.alphaToCoverage ?? true,
   });
   const wrap = wrapChunk(0.5);
+  const uWindTime = opts.windTime || { value: 0 };
   mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uWindTime = uWindTime;
     injectWorldLight(shader);
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'uniform float uWindTime;\nvoid main() {')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${SWAY_VERT}`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <map_fragment>', MAP_FRAG)
       .replace('#include <normal_fragment_begin>', NORMAL_NOFLIP)
       .replace('#include <lights_physical_pars_fragment>', wrap);
   };
-  mat.customProgramCacheKey = () => 'foliage-v1';
+  mat.customProgramCacheKey = () => 'foliage-v2';
   return mat;
 }
 
@@ -100,7 +123,8 @@ export class Vegetation {
     this.group.name = 'vegetation';
     this.lodDist = opts.lodDist || [46, 150, 430, 2100];
     this.shadowLods = opts.shadowLods ?? 2;      // LODs below this cast shadows
-    const foliage = this.foliageMat = createFoliageMaterial(atlas);
+    this.windTime = { value: 0 };
+    const foliage = this.foliageMat = createFoliageMaterial(atlas, { windTime: this.windTime });
     const cone = this.coneMat = createConeMaterial();
 
     // ---- geometries by species & lod
@@ -164,6 +188,7 @@ export class Vegetation {
 
   /** Re-bucket trees into LODs when the camera has moved. */
   update(camera, dt, force = false) {
+    this.windTime.value += dt;
     this._age += dt;
     const cp = camera.position;
     const moved = Math.hypot(cp.x - this._last.x, cp.z - this._last.z);

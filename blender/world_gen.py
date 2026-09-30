@@ -444,7 +444,7 @@ def make_courses(path):
     runs.append(dict(
         id="cruiser", name="Sunrise Cruiser", level="Blue", colour="#2f7dff", sStart=0.0, sEnd=940.0,
         blurb="Wide open alpine bowl above the tree line. Learn to carve.",
-        mode="cruise", gates=cru, medals=[105.0, 84.0, 70.0]))
+        mode="cruise", gates=cru, medals=[82.0, 66.0, 56.0]))
     # 2 -- Giant slalom in the middle forest
     gs = []
     s_ = 1545.0
@@ -459,13 +459,13 @@ def make_courses(path):
     runs.append(dict(
         id="gs", name="Giant Slalom", level="Red", colour="#e0352b", sStart=1480.0, sEnd=2470.0,
         blurb="Thread every gate. Each missed gate costs three seconds.",
-        mode="slalom", gates=gs, medals=[62.0, 52.0, 46.0]))
+        mode="slalom", gates=gs, medals=[125.0, 100.0, 84.0]))
     # 3 -- the full downhill with speed checkpoints
     dh = [gate_pose(s_, 0.0, 16.0) for s_ in range(250, 2800, 250)]
     runs.append(dict(
         id="downhill", name="The Long Descent", level="Black", colour="#1c1c1f", sStart=0.0, sEnd=FINISH_S,
         blurb="Full 2.8 km downhill: a steep wall, four jumps and the fastest snow on the mountain.",
-        mode="downhill", gates=dh, medals=[150.0, 126.0, 112.0]))
+        mode="downhill", gates=dh, medals=[185.0, 148.0, 125.0]))
     return runs
 
 

@@ -81,6 +81,54 @@ function buildNormalTexture(world) {
   return t;
 }
 
+
+/**
+ * Lateral coordinate field of the groomed piste: RGBA half float, r = signed distance from the centre line (m),
+ * gb = the lateral direction (x, z). Splatted from the path at load time; the shader uses it to draw corduroy.
+ */
+function buildPisteField(world) {
+  const W = 512, H = 2048;
+  const data = new Uint16Array(W * H * 4);
+  const best = new Float32Array(W * H).fill(1e9);
+  const hint = new Float32Array(W * H);
+  const sx = W / (world.x1 - world.x0), sz = H / (world.z1 - world.z0);
+  const half = THREE.DataUtils.toHalfFloat;
+  const path = world.path;
+  const p = {};
+  // pass 1: mark the texels near the piste and remember which stretch of path they belong to
+  for (let s = path.s0; s <= path.sEnd; s += 0.7) {
+    path.at(s, p);
+    const reach = p.width * 0.5 + 12;
+    for (let l = -reach; l <= reach; l += 0.55) {
+      const i = Math.floor((p.x + p.rx * l - world.x0) * sx), j = Math.floor((p.z + p.rz * l - world.z0) * sz);
+      if (i < 0 || j < 0 || i >= W || j >= H) continue;
+      const k = j * W + i;
+      const a = Math.abs(l);
+      if (a < best[k]) { best[k] = a; hint[k] = s; }
+    }
+  }
+  // pass 2: exact lateral offset and direction at every marked texel centre, so bilinear filtering is exact
+  const pr = {}, q = {};
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      const k = j * W + i;
+      if (best[k] > 1e8) continue;
+      const cx = world.x0 + (i + 0.5) / sx, cz = world.z0 + (j + 0.5) / sz;
+      path.project(cx, cz, hint[k], pr);
+      path.at(pr.s, q);
+      data[k * 4] = half(pr.t);
+      data[k * 4 + 1] = half(q.rx);
+      data[k * 4 + 2] = half(q.rz);
+      data[k * 4 + 3] = half(1);
+    }
+  }
+  const t = new THREE.DataTexture(data, W, H, THREE.RGBAFormat, THREE.HalfFloatType);
+  t.magFilter = t.minFilter = THREE.LinearFilter;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
+  return t;
+}
+
 const VERT_PARS = /* glsl */`
 uniform sampler2D uHeightTex;
 uniform vec4 uGrid;        // x0, z0, dx, 0
@@ -107,6 +155,7 @@ uniform sampler2D uMaskTex;
 uniform sampler2D uSnowN;
 uniform sampler2D uRockN;
 uniform sampler2D uRockC;
+uniform sampler2D uPisteTex;
 uniform vec4 uGrid;
 uniform vec2 uGridDim;
 uniform vec3 uSunDir;
@@ -114,6 +163,7 @@ uniform vec3 uSunRadiance;
 uniform float uSparkle;
 uniform float uDetail;
 uniform float uTime;
+uniform float uDebug;
 varying vec3 vTPos;
 
 float hash12( vec2 p ) {
@@ -150,7 +200,19 @@ const SURFACE = /* glsl */`
 	dn *= mix( 0.6, 1.0, drift ) * mix( 1.0, 0.45, groom );
 	vec3 tT = normalize( vec3( 1.0, 0.0, 0.0 ) - nG * nG.x );
 	vec3 tB = - cross( nG, tT );
-	vec3 nSnow = normalize( nG + tT * dn.x + tB * dn.y );
+	// corduroy left by the grooming machine: fine ridges along the piste, fading with distance and aliasing
+	vec3 nCord = vec3( 0.0 );
+	float fadeC = groom * uDetail * ( 1.0 - smoothstep( 12.0, 40.0, tDist ) );
+	if ( fadeC > 0.01 ) {
+		vec4 pf = texture2D( uPisteTex, muv );
+		float ph = pf.r / 0.24 + sn1.x * 0.12;
+		fadeC *= pf.a * ( 1.0 - smoothstep( 0.16, 0.42, fwidth( ph ) ) );
+		vec3 L = vec3( pf.g, 0.0, pf.b );
+		L -= nG * dot( L, nG );
+		nCord = L * ( cos( 6.2831853 * ph ) * 0.11 * fadeC );
+		dn *= 1.0 - 0.5 * fadeC;
+	}
+	vec3 nSnow = normalize( nG + tT * dn.x + tB * dn.y + nCord );
 
 	vec3 nW = nSnow;
 	vec3 rockTint = vec3( 1.0 );
@@ -222,6 +284,7 @@ const SPARKLE = /* glsl */`
 			tSpark = uSunRadiance * acc * sparkFade * uSparkle * gWLVis * ( 1.0 - groom * 0.35 ) * saturate( dot( nW, uSunDir ) * 4.0 );
 		}
 		outgoingLight += tSpark;
+		if ( uDebug > 0.5 ) outgoingLight = vec3( uDebug < 1.5 ? tLM.r : uDebug < 2.5 ? tLM.g : uDebug < 3.5 ? tLM.b : tMask.r ) * 24.0;
 	}
 `;
 
@@ -261,6 +324,7 @@ export class TerrainRenderer {
       uSnowN: { value: snowN },
       uRockN: { value: rock.normal },
       uRockC: { value: rock.color },
+      uPisteTex: { value: this.pisteTex = buildPisteField(world) },
       uGrid: { value: new THREE.Vector4(world.x0, world.z0, world.dx, 0) },
       uGridDim: { value: new THREE.Vector2(world.nx, world.nz) },
       uSunDir: { value: new THREE.Vector3(...world.sunDir) },
@@ -268,6 +332,7 @@ export class TerrainRenderer {
       uSparkle: { value: opts.sparkle ?? 1.0 },
       uDetail: { value: 1.0 },
       uTime: { value: 0 },
+      uDebug: { value: 0 },
     };
 
     const material = this.material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0 });

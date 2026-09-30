@@ -141,14 +141,14 @@ def tex_banner(name, text, bg, fg, checker=True, w=1024, h=256):
 
 
 def tex_net(name, color, size=128, cells=4, line=3):
-    """square-cell netting, one tile = 1 m x 1 m (alpha cut-out)"""
+    """square-cell netting, one tile = 1 m x 1 m (alpha cut-out). The colour is kept in the transparent
+    texels too, so mip-mapping fades the net out instead of darkening it."""
     a = np.zeros((size, size, 4))
+    a[..., :3] = color
     step = size // cells
     for k in range(cells):
         x = k * step
-        a[:, x:x + line, :3] = color
         a[:, x:x + line, 3] = 1
-        a[x:x + line, :, :3] = color
         a[x:x + line, :, 3] = 1
     return save_png(name, a)
 
@@ -201,9 +201,9 @@ def build_materials():
     M['snow'] = material('snow', (0.93, 0.95, 0.98), 0.85)
     M['glass'] = material('glass', (0.05, 0.08, 0.12), 0.08, metal=0.0, emission=(1.0, 0.72, 0.42, 3.0))
     M['glass_dark'] = material('glass_dark', (0.03, 0.05, 0.08), 0.06)
-    M['banner_start'] = material('banner_start', (1, 1, 1), 0.65, image=tex['start'])
-    M['banner_finish'] = material('banner_finish', (1, 1, 1), 0.65, image=tex['finish'])
-    M['banner_check'] = material('banner_check', (1, 1, 1), 0.65, image=tex['check'])
+    M['banner_start'] = material('banner_start', (1, 1, 1), 0.92, image=tex['start'])
+    M['banner_finish'] = material('banner_finish', (1, 1, 1), 0.92, image=tex['finish'])
+    M['banner_check'] = material('banner_check', (1, 1, 1), 0.92, image=tex['check'])
     M['net_orange'] = material('net_orange', (1, 1, 1), 0.8, alpha_image=tex['net_orange'])
     M['net_blue'] = material('net_blue', (1, 1, 1), 0.8, alpha_image=tex['net_blue'])
     M['chair_red'] = material('chair_red', (0.7, 0.05, 0.05), 0.45)

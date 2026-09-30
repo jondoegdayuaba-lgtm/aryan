@@ -56,6 +56,7 @@ for (const file of walk(assetRoot).sort()) {
 const prelude = `
 window.__assetsReady = (async () => {
   const urls = {};
+  if (typeof DecompressionStream === 'undefined') throw new Error('this browser is too old to unpack the game (use Chrome or Edge 80+, Firefox 113+ or Safari 16.4+)');
   const b64 = (s) => { const bin = atob(s); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
   const inflate = async (bytes) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
   const els = [...document.querySelectorAll('script[data-asset]')];
@@ -77,7 +78,8 @@ const swap = (from, to) => {
 };
 swap('<link rel="stylesheet" href="css/ski.css">', `<style>\n${css}</style>`);
 swap(/\s*<script type="importmap">.*<\/script>/.exec(html)[0], '');
-swap('<script type="module" src="js/main.js"></script>', `<script>${prelude}</script>\n${packs.join('\n')}\n<script>\n${js}</script>`);
+// the unpacker must come after the asset blocks so it can see them
+swap('<script type="module" src="js/main.js"></script>', `${packs.join('\n')}\n<script>${prelude}</script>\n<script>\n${js}</script>`);
 
 mkdirSync(resolve(root, 'desktop'), { recursive: true });
 writeFileSync(resolve(root, 'desktop/alpine-descent.html'), html);

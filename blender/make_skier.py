@@ -1,7 +1,7 @@
 """
 The skier: a downhill racer modelled procedurally in Blender and exported as a skinned GLB.
 
-  * body: Skin-modifier volume (continuous limbs) + subdivision, race-suit panels as material regions
+  * body: Skin-modifier volume (continuous limbs) + subdivision, race-suit design painted as smooth vertex colours
   * helmet with ear pads, mirrored goggles with strap, neck gaiter, gloves, race boots, skis
     with bindings and camber / tip rocker, carbon poles with baskets, race bib
   * 17-bone armature (Root, Hips, Spine, Chest, Neck, Head, arms, legs, feet) with smooth
@@ -192,12 +192,34 @@ def pbr(name, base, rough=0.6, metal=0.0, **kw):
     return C.Mat(name, base=(*base, 1.0), rough=rough, metal=metal, **kw)
 
 
+def bib_texture(number='12'):
+    """race bib artwork: white cloth, red header, big black number"""
+    from PIL import Image, ImageDraw, ImageFont
+    w, h = 512, 416
+    im = Image.new('RGB', (w, h), (238, 238, 240))
+    d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, w, 86], fill=(196, 28, 30))
+    def font(px):
+        try:
+            return ImageFont.load_default(size=px)
+        except TypeError:
+            return ImageFont.load_default()
+    f1 = font(58)
+    d.text((w / 2, 44), 'ALPINE', fill=(255, 255, 255), font=f1, anchor='mm')
+    f2 = font(250)
+    d.text((w / 2, 250), number, fill=(14, 14, 18), font=f2, anchor='mm')
+    d.rectangle([0, h - 30, w, h], fill=(14, 14, 18))
+    path = os.path.join(C.BUILD, 'bib.png')
+    im.save(path)
+    return path
+
+
 def make_materials():
     M = {}
-    M['suit_red'] = pbr('suit_red', (0.62, 0.035, 0.03), 0.62, sheen_weight=0.35)
-    M['suit_white'] = pbr('suit_white', (0.86, 0.87, 0.9), 0.6, sheen_weight=0.3)
-    M['suit_black'] = pbr('suit_black', (0.015, 0.016, 0.02), 0.62, sheen_weight=0.25)
-    M['gaiter'] = pbr('gaiter', (0.02, 0.022, 0.028), 0.85)
+    M['suit'] = pbr('suit', (1.0, 1.0, 1.0), 0.52, sheen_weight=0.35, sheen_roughness=0.5)
+    vc = M['suit'].node('ShaderNodeVertexColor', -400, 200, layer_name='Col')
+    M['suit'].link_bsdf(vc, 'Color', 'Base Color')
+    M['gaiter'] = pbr('gaiter', (0.028, 0.030, 0.036), 0.88)
     M['helmet'] = pbr('helmet', (0.75, 0.03, 0.03), 0.22, coat_weight=1.0, coat_roughness=0.05)
     M['helmet_trim'] = pbr('helmet_trim', (0.02, 0.02, 0.025), 0.5)
     M['goggle_frame'] = pbr('goggle_frame', (0.015, 0.015, 0.018), 0.45)
@@ -216,8 +238,13 @@ def make_materials():
     M['pole'] = pbr('pole', (0.015, 0.015, 0.018), 0.35, metal=0.2)
     M['pole_grip'] = pbr('pole_grip', (0.03, 0.03, 0.035), 0.75)
     M['basket'] = pbr('basket', (0.55, 0.03, 0.03), 0.5)
-    M['bib'] = pbr('bib', (0.92, 0.92, 0.94), 0.8)
-    M['bib_num'] = pbr('bib_num', (0.02, 0.02, 0.025), 0.8)
+    M['bib'] = pbr('bib', (1.0, 1.0, 1.0), 0.8)
+    tex = bib_texture()
+    img = bpy.data.images.load(tex)
+    img.colorspace_settings.name = 'sRGB'
+    node = M['bib'].node('ShaderNodeTexImage', -400, 200)
+    node.image = img
+    M['bib'].link_bsdf(node, 'Color', 'Base Color')
     return M
 
 
@@ -272,8 +299,8 @@ def build_body():
         me.skin_vertices[0].data[i].radius = (rx, ry)
     me.skin_vertices[0].data[names['pelvis']].use_root = True
     sub = ob.modifiers.new('sub', 'SUBSURF')
-    sub.levels = 2
-    sub.render_levels = 2
+    sub.levels = 3                      # dense enough to paint crisp suit panels per vertex
+    sub.render_levels = 3
     C.apply_modifiers(ob)
     return ob
 
@@ -284,11 +311,11 @@ def build_head(M):
     head = J['head']
     fwd = np.array([0.0, math.sin(math.radians(6)), math.cos(math.radians(6))])
     # skull under the helmet / gaiter (dark)
-    v, t = ellipsoid(head + np.array([0, 0.005, 0.005]), (0.088, 0.108, 0.100), nu=24, nv=14)
-    parts['skull'] = (v, t, 'gaiter')
+    v, t = ellipsoid(head + np.array([0, 0.005, 0.005]), (0.094, 0.114, 0.106), nu=24, nv=14)
+    parts['skull'] = (v, t, 'helmet')
     # helmet: dome open at the bottom, slightly longer at the back, small peak
     hc = head + np.array([0, 0.022, -0.004])
-    v, t = ellipsoid(hc, (0.116, 0.118, 0.132), nu=32, nv=18)
+    v, t = ellipsoid(hc, (0.128, 0.128, 0.142), nu=32, nv=18)
     keep = v[:, 1] > head[1] - 0.045
     idx = np.cumsum(keep) - 1
     tk = np.array([tr for tr in t if keep[tr].all()])
@@ -297,20 +324,20 @@ def build_head(M):
     # ear pads
     ears = []
     for sx in (1, -1):
-        ears.append(ellipsoid(head + np.array([sx * 0.104, -0.020, -0.006]), (0.016, 0.046, 0.05), nu=14, nv=8))
+        ears.append(ellipsoid(head + np.array([sx * 0.114, -0.020, -0.006]), (0.017, 0.050, 0.055), nu=14, nv=8))
     parts['ears'] = (*merge(ears), 'helmet_trim')
     # chin / mouth guard band of the helmet (thin skirt below the goggles)
     v, t = ellipsoid(head + np.array([0, -0.028, 0.030]), (0.094, 0.048, 0.086), nu=24, nv=10)
     keep = (v[:, 2] > head[2] + 0.028) & (v[:, 1] < head[1] - 0.010)
     idx = np.cumsum(keep) - 1
     tk = np.array([tr for tr in t if keep[tr].all()])
-    parts['chin'] = (v[keep], idx[tk], 'gaiter')
+    parts['chin'] = (v[keep], idx[tk], 'helmet')
     # goggles: curved frame + lens wrapped around the face
-    R = 0.108
-    gcen = head + np.array([0, 0.018, 0.0])
+    R = 0.118
+    gcen = head + np.array([0, 0.020, 0.0])
     nx, ny = 26, 7
     fr, ls = [], []
-    for name, w_, h_, off, mat in (('frame', 0.098, 0.040, 0.010, 'goggle_frame'), ('lens', 0.090, 0.034, 0.014, 'goggle_lens')):
+    for name, w_, h_, off, mat in (('frame', 0.112, 0.052, 0.010, 'goggle_frame'), ('lens', 0.103, 0.045, 0.014, 'goggle_lens')):
         verts, tris = [], []
         for j in range(ny + 1):
             for i in range(nx + 1):
@@ -336,7 +363,7 @@ def build_head(M):
     for i in range(n):
         th = 2 * math.pi * i / n
         for dy in (-0.022, 0.022):
-            r = 0.121 + 0.001
+            r = 0.132 + 0.001
             verts.append(gcen + np.array([math.sin(th) * r * 0.99, dy + 0.004, math.cos(th) * r * 1.13 - 0.008]))
     for i in range(n):
         a = 2 * i
@@ -607,42 +634,62 @@ def rigid_weights(n, bone, names):
 
 
 # ---------------------------------------------------------------------------- main
-def assign_body_regions(ob, M):
-    """suit colour panels by position / normal (material_index per face)"""
+def paint_suit(ob, M):
+    """race-suit design as smooth per-vertex colours (linear RGB), from position and normal.
+    Red suit, white side panels, black yoke over the shoulders and upper back, black lower legs, white cuffs,
+    black neck gaiter."""
     me = ob.data
-    slots = ['suit_red', 'suit_white', 'suit_black', 'gaiter']
-    for s in slots:
-        me.materials.append(M[s].mat)
-    n = len(me.polygons)
-    cen = np.empty(n * 3, dtype=np.float32)
-    me.polygons.foreach_get('center', cen)
-    cen = cen.reshape(-1, 3)
-    gcen = np.stack([cen[:, 0], cen[:, 2], -cen[:, 1]], 1)               # Blender -> game
+    me.materials.append(M['suit'].mat)
+    n = len(me.vertices)
+    co = np.empty(n * 3, dtype=np.float32)
+    me.vertices.foreach_get('co', co)
     nor = np.empty(n * 3, dtype=np.float32)
-    me.polygons.foreach_get('normal', nor)
-    nor = nor.reshape(-1, 3)
-    gnor = np.stack([nor[:, 0], nor[:, 2], -nor[:, 1]], 1)
-    idx = np.zeros(n, dtype=np.int32)
-    # gaiter: neck and everything above the shoulders
-    idx[gcen[:, 1] > J['neckbase'][1] - 0.010] = 3
-    # black: shoulder yoke, hands end of arms, boots' top cuffs (gloves cover most)
-    yoke = (gcen[:, 1] > J['chest2'][1] - 0.05) & (np.abs(gcen[:, 0]) < 0.30) & (idx != 3)
-    idx[yoke & (gnor[:, 1] > 0.2)] = 2
-    # white: side stripes down the legs and torso, chest band, wrist and ankle cuffs
-    side = (np.abs(gnor[:, 0]) > 0.62) & (np.abs(gcen[:, 0]) > 0.075) & (idx == 0)
-    idx[side & (gcen[:, 1] < J['chest2'][1] - 0.02) & (gcen[:, 2] < 0.6)] = 1
-    band = (np.abs(gcen[:, 1] - J['chest1'][1]) < 0.045) & (np.abs(gcen[:, 0]) < 0.2) & (idx == 0)
-    idx[band] = 1
-    for s in 'LR':
-        for jn, w_ in ((f'wrist.{s}', 0.05), (f'elbow.{s}', 0.0)):
-            if w_ == 0.0:
-                continue
-            d = np.linalg.norm(gcen - J[jn], axis=1)
-            idx[(d < w_) & (idx == 0)] = 1
-    # black lower legs (boots' upper sleeve area) and hips
-    idx[(gcen[:, 1] < 0.24) & (idx == 0)] = 2
-    me.polygons.foreach_set('material_index', idx)
-    me.update()
+    me.vertices.foreach_get('normal', nor)
+    co, nor = co.reshape(-1, 3), nor.reshape(-1, 3)
+    g = np.stack([co[:, 0], co[:, 2], -co[:, 1]], 1).astype(np.float64)           # Blender -> game (y up, z forward)
+    gn = np.stack([nor[:, 0], nor[:, 2], -nor[:, 1]], 1).astype(np.float64)
+    x, y, z = g[:, 0], g[:, 1], g[:, 2]
+
+    def ss(a, b, v):
+        t = np.clip((v - a) / (b - a), 0.0, 1.0)
+        return t * t * (3 - 2 * t)
+
+    RED = np.array([0.60, 0.030, 0.028])
+    WHITE = np.array([0.80, 0.82, 0.86])
+    BLACK = np.array([0.011, 0.012, 0.015])
+    col = np.tile(RED, (n, 1))
+
+    def mix(target, w):
+        nonlocal col
+        col = col * (1 - w[:, None]) + np.asarray(target)[None, :] * w[:, None]
+
+    ch2, ch1, nb = J['chest2'][1], J['chest1'][1], J['neckbase'][1]
+    # white side panels down torso and legs (outer faces), continuing onto the outside of the arms
+    side = ss(0.80, 0.95, np.abs(gn[:, 0])) * ss(0.050, 0.090, np.abs(x))
+    mix(WHITE, side * (1 - ss(ch2 - 0.030, ch2 + 0.010, y)) * ss(0.20, 0.26, y))
+    arm = ss(0.35, 0.65, gn[:, 0] * np.sign(x)) * ss(0.19, 0.24, np.abs(x))
+    mix(WHITE, arm * 0.85)
+    # black yoke: shoulders and upper back, with a V-shaped lower edge
+    yoke = ss(0.0, 0.020, (y + 0.32 * np.abs(x)) - (ch2 - 0.065))
+    front = ss(0.10, 0.45, gn[:, 2])
+    mix(BLACK, yoke * (1 - 0.85 * front * ss(ch2 + 0.02, ch2 - 0.03, y)))
+    # black lower legs (the boot cuffs hide most of it) and white ankle rings
+    mix(BLACK, ss(0.34, 0.24, y))
+    # cuffs
+    for s_ in 'LR':
+        for jn in (f'wrist.{s_}',):
+            d = np.linalg.norm(g - J[jn], axis=1)
+            mix(WHITE, ss(0.075, 0.045, d))
+    # neck gaiter
+    mix(BLACK, ss(nb - 0.015, nb + 0.010, y))
+    # a whisper of fabric variation so the suit does not look like plastic
+    rng = np.random.default_rng(3)
+    col *= (1.0 + 0.035 * np.sin(g @ np.array([31.0, 27.0, 23.0]) + rng.uniform(0, 6))[:, None])
+    attr = me.color_attributes.new(name='Col', type='FLOAT_COLOR', domain='POINT')
+    rgba = np.concatenate([np.clip(col, 0, 1), np.ones((n, 1))], axis=1)
+    attr.data.foreach_set('color', rgba.astype(np.float32).ravel())
+    me.color_attributes.active_color = attr
+    me.color_attributes.render_color_index = list(me.color_attributes).index(attr)
 
 
 def uv_unwrap(ob):
@@ -664,8 +711,7 @@ def main():
     # ---- body
     body = build_body()
     body.name = 'Suit'
-    assign_body_regions(body, M)
-    uv_unwrap(body)
+    paint_suit(body, M)
     pts = np.array([v.co[:] for v in body.data.vertices])
     gp = np.stack([pts[:, 0], pts[:, 2], -pts[:, 1]], 1)
     _, W = bone_weights(gp)
@@ -728,6 +774,14 @@ def main():
         objs.append(ob)
     for name, (v, t, mat) in build_bib().items():
         ob = make_obj(name, v, t)
+        me = ob.data
+        # planar UVs (the plate is a curved grid: u across, v up)
+        nxq, nyq = 10, 8
+        uvv = np.array([[1.0 - i / nxq, j / nyq] for j in range(nyq + 1) for i in range(nxq + 1)], dtype=np.float32)
+        loops = np.empty(len(me.loops), dtype=np.int32)
+        me.loops.foreach_get('vertex_index', loops)
+        layer = me.uv_layers.new(name='UVMap')
+        layer.data.foreach_set('uv', uvv[loops].ravel())
         ob.data.materials.append(M[mat].mat)
         pts_ = np.array([vv.co[:] for vv in ob.data.vertices])
         gp_ = np.stack([pts_[:, 0], pts_[:, 2], -pts_[:, 1]], 1)
@@ -739,7 +793,7 @@ def main():
     tri = sum(len(o.data.polygons) for o in objs)
     print(f'skier: {len(objs)} meshes, ~{tri} polygons, {len(names)} bones')
     out = os.path.join(C.ASSETS, 'models', 'skier.glb')
-    C.export_glb(out, [arm] + objs, materials=True, skins=True, jpeg=True)
+    C.export_glb(out, [arm] + objs, materials=True, skins=True, jpeg=True, vertex_colors=True)
     rest = {b[0]: dict(head=[float(x) for x in b[2]], tail=[float(x) for x in b[3]], parent=b[1]) for b in BONES}
     with open(os.path.join(C.ASSETS, 'models', 'skier_rig.json'), 'w') as f:
         json.dump(dict(bones=rest, skiLength=SKI_LEN, mountZ=SKI_MOUNT_Z, footX=FOOT_X,

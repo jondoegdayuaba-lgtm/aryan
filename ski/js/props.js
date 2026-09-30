@@ -176,9 +176,9 @@ export class Props {
         if (done.has(m)) continue;
         done.add(m);
         if (/^net_/.test(m.name)) {
-          m.transparent = false;
-          m.alphaTest = 0.35;
-          m.alphaToCoverage = true;
+          m.transparent = true;                 // thin mesh lines: blended so mip-mapping fades them instead of cutting them out
+          m.depthWrite = false;
+          m.alphaTest = 0.02;
           m.side = THREE.DoubleSide;
           m.roughness = 0.9;
         }
@@ -445,9 +445,9 @@ export class Props {
     }
     const bp = this.need(bannerProp)[0];
     const span = 2 * half;
-    const bh = 2.2;
+    const bh = 1.5;
     const b = new Banner(bp.material, span, bh, name.length * 1.3 + span);
-    const yTop = Math.min(ends[0][1], ends[1][1]) + height - 0.35;
+    const yTop = Math.min(ends[0][1], ends[1][1]) + height - 0.25;
     // the strip runs along +x of its frame; face the run direction
     b.mesh.position.set(p.x - rx * half, yTop, p.z - rz * half);
     b.mesh.rotation.y = Math.atan2(-rz, rx);
@@ -470,15 +470,15 @@ export class Props {
   /** a strip painted on the snow across the piste, following the terrain */
   _groundLine(p, half, depth, kind) {
     const w = this.world;
-    const nu = Math.max(8, Math.round(half * 2 / 1.5));
-    const nv = Math.max(1, Math.round(depth / 1.0));
+    const nu = Math.max(8, Math.round(half * 2 / 0.75));
+    const nv = Math.max(1, Math.round(depth / 0.5));
     const pos = [], uv = [], idx = [];
     for (let j = 0; j <= nv; j++) {
       for (let i = 0; i <= nu; i++) {
         const t = (i / nu * 2 - 1) * half;
         const a = (j / nv - 0.5) * depth;
         const x = p.x + p.rx * t + p.tx * a, z = p.z + p.rz * t + p.tz * a;
-        pos.push(x, w.height(x, z) + 0.07, z);
+        pos.push(x, w.heightTri(x, z) + 0.045, z);
         uv.push(t / 2, a / 2 + 0.5);
       }
     }

@@ -11,7 +11,7 @@ ray-marched on the heightfield in numpy (soft sun disc), G = R x the Cycles shad
 
 The terrain is rebuilt from ski/assets/world/heightmap.u16 (the exact heights the game uses),
 trees are cone proxies (the same shapes as the LOD 3 meshes), rocks are lumpy ellipsoids and the
-buildings are boxes from world.json.  Output: ski/assets/tex/terrain_light.png (2048 x 4096).
+buildings are boxes from world.json.  Output: ski/assets/tex/terrain_light.jpg (2048 x 4096).
 
 usage: python bake_terrain.py [--res 2048] [--samples 64] [--ao-samples 96] [--coarse 1] [--no-trees]
 """
@@ -251,12 +251,21 @@ def main():
     with C.Timer('ambient occlusion (Cycles)'):
         out[..., 2] = bake(terrain, 'AO', img, ao_samples)
 
-    from PIL import Image
     rgb = np.clip(out, 0, 1)
-    path = os.path.join(C.ASSETS, 'tex', 'terrain_light.png')
-    Image.fromarray((rgb * 255 + 0.5).astype(np.uint8), 'RGB').save(path, optimize=True)
+    path = os.path.join(C.ASSETS, 'tex', 'terrain_light.jpg')
+    save_lightmap(rgb, path)
     print('wrote', path, os.path.getsize(path) // 1024, 'KB')
     print('mean R,G,B:', rgb.reshape(-1, 3).mean(axis=0))
+
+
+def save_lightmap(rgb, path):
+    """Blur the Cycles sampling noise out of G and B a little, then store a 4:4:4 JPEG (~3 MB instead of ~11 MB PNG)."""
+    from PIL import Image
+    from scipy import ndimage as ndi
+    rgb = np.array(rgb, dtype=np.float32)
+    rgb[..., 1] = ndi.gaussian_filter(rgb[..., 1], 0.8)
+    rgb[..., 2] = ndi.gaussian_filter(rgb[..., 2], 1.0)
+    Image.fromarray((np.clip(rgb, 0, 1) * 255 + 0.5).astype(np.uint8), 'RGB').save(path, quality=92, subsampling=0, optimize=True)
 
 
 def zaxis_to_euler(z):

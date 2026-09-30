@@ -1,6 +1,7 @@
 // Alpine Descent - boot: create the game, wire the buttons, start the loop.
 import * as THREE from 'three';
 import { Game } from './game.js';
+import { WorldLight } from './shader-patches.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -70,6 +71,8 @@ async function boot() {
     game.advance(0.2);
   }
 
+  if (params.has('nolm')) WorldLight.useTex.value = 0;
+  if (params.has('dbg')) game.terrain.uniforms.uDebug.value = +params.get('dbg');
   if (params.has('cs')) {
     // pinned camera in piste coordinates: cs=s,t,height above snow  cl=s,t,height  cf=fov
     const pt = (v) => { const [s, t, h] = v.split(',').map(Number); const p = game.world.path.at(s, {}); const x = p.x + p.rx * t, z = p.z + p.rz * t; return new THREE.Vector3(x, game.world.height(x, z) + h, z); };

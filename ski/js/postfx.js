@@ -52,7 +52,7 @@ const GRADE = {
     tDiffuse: { value: null },
     uTime: { value: 0 },
     uVignette: { value: 0.32 },
-    uGrain: { value: 0.028 },
+    uGrain: { value: 0.012 },
     uSat: { value: 1.06 },
     uContrast: { value: 1.05 },
     uFlash: { value: 0 },
@@ -118,7 +118,7 @@ export class PostFX {
     this.expose = new ShaderPass(EXPOSE);
     this.expose.uniforms.uExposure.value = this.exposure;
     c.addPass(this.expose);
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(w / 2, h / 2), 0.34, 0.6, 1.15);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(w / 2, h / 2), 0.26, 0.55, 1.5);
     this.bloom.enabled = this.q.bloom;
     c.addPass(this.bloom);
     this.grade = new ShaderPass(GRADE);
@@ -168,7 +168,7 @@ export class PostFX {
   render(dt, time, speed01, flash = 0, flashColor = null) {
     const u = this.expose.uniforms;
     u.uSpeed.value = this.q.speedFx ? speed01 : 0;
-    u.uAberration.value = this.q.speedFx ? 0.0012 + 0.003 * speed01 : 0;
+    u.uAberration.value = this.q.speedFx ? 0.0004 + 0.0022 * speed01 : 0;
     u.uExposure.value = this.exposure;
     const g = this.grade.uniforms;
     g.uTime.value = time % 100;

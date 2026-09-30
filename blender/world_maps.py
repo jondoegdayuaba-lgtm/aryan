@@ -37,20 +37,38 @@ def srgb(*c):
 
 def build_maps():
     data = np.load(os.path.join(wg.BUILD, "world.npz"))
-    H, slope, rock_h = data["H"], data["slope"], data["rock"]
+    H, slope = data["H"], data["slope"]
     w_piste, trees = data["w_piste"], data["trees"]
     rng = np.random.default_rng(wg.SEED + 7)
     X, Z = texel_grid()
     shape = X.shape
 
-    rock = np.clip(resample(rock_h, X, Z), 0, 1)
     groom = np.clip(resample(w_piste, X, Z), 0, 1)
     sl = resample(slope, X, Z)
     y = resample(H, X, Z)
 
-    # ---- needle litter under the forest: splat tree crowns then blur
+    # ---- exposed rock: steep faces, streaked along the fall line (couloirs and ledges) instead of round blobs
     dxm = (wg.X1 - wg.X0) / TW
     dzm = (wg.Z1 - wg.Z0) / TH
+    gzr, gxr = np.gradient(ndi.gaussian_filter(y, 1.2), dzm, dxm)
+    mag = np.hypot(gxr, gzr) + 1e-6
+    fall_x, fall_z = -gxr / mag, -gzr / mag
+    base = wg.spectral_noise(shape, dxm, 5.0, 45.0, 1.6, rng)
+    rows, cols = np.mgrid[0:TH, 0:TW].astype(np.float32)
+    streak = np.zeros(shape, dtype=np.float32)
+    taps = 9
+    for k in range(-taps, taps + 1):
+        streak += ndi.map_coordinates(base, [rows + fall_z * k * 2.2 / dzm, cols + fall_x * k * 2.2 / dxm], order=1, mode='nearest')
+    streak /= 2 * taps + 1
+    streak /= streak.std() + 1e-6
+    sl_s = ndi.gaussian_filter(sl, 1.2)
+    alt_r = wg.smoothstep(1900.0, 2450.0, y)
+    rock = wg.smoothstep(0.70 - 0.30 * alt_r, 1.06 - 0.30 * alt_r, sl_s + 0.11 * streak)
+    rock *= wg.smoothstep(0.40, 0.62, ndi.gaussian_filter(sl, 5.0))          # no isolated specks on gentle ground
+    rock = ndi.gaussian_filter(rock, 0.7) * (1 - groom)
+    rock = np.clip(rock, 0, 1)
+
+    # ---- needle litter under the forest: splat tree crowns then blur
     cov = np.zeros(shape, dtype=np.float32)
     ix = np.clip(((trees[:, 0] - wg.X0) / dxm).astype(int), 0, TW - 1)
     iz = np.clip(((trees[:, 1] - wg.Z0) / dzm).astype(int), 0, TH - 1)
