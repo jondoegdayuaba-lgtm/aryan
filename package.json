@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build:desktop": "node tools/build-desktop.mjs",
+    "build:cluckworks": "node tools/build-cluckworks.mjs",
     "sim:cluckworks": "node tools/sim-cluckworks.mjs"
   },
   "devDependencies": {
