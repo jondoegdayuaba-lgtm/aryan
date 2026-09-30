@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Alpine Descent</title>
+  <meta name="description" content="A realistic 3D downhill skiing game. The mountain, trees, sky and skier were built and lit in Blender.">
+  <meta name="theme-color" content="#0d1b2a">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d1b2a'/%3E%3Cpath d='M8 44l20-26 8 10 6-8 14 24z' fill='%23eef4ff'/%3E%3Cpath d='M28 18l8 10 6-8 3 4-9 12-8-10z' fill='%2389b4e8'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/ski.css">
+  <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js", "three/addons/": "../vendor/three/addons/" } }</script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+  <div id="loading" class="loading">
+    <div class="loading-title">Alpine Descent</div>
+    <div class="loading-bar"><div id="loading-fill"></div></div>
+    <div id="loading-label" class="loading-label">Loading the mountain…</div>
+  </div>
+  <div id="error" class="error" hidden></div>
+  <noscript><p class="loading">This game needs JavaScript and WebGL 2.</p></noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

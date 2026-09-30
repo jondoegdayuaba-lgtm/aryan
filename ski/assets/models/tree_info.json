@@ -1,0 +1,59 @@
+{
+ "species": {
+  "0": {
+   "name": "spruce",
+   "height": 16.0,
+   "crownBase": 1.6,
+   "crownRadius": 2.7,
+   "crownCenter": 9.520000000000001,
+   "trunkRadius": 0.27,
+   "variant": 0
+  },
+  "1": {
+   "name": "fir",
+   "height": 13.5,
+   "crownBase": 1.2,
+   "crownRadius": 3.4,
+   "crownCenter": 7.965000000000001,
+   "trunkRadius": 0.32,
+   "variant": 1
+  },
+  "2": {
+   "name": "pine",
+   "height": 18.0,
+   "crownBase": 8.0,
+   "crownRadius": 2.5,
+   "crownCenter": 13.5,
+   "trunkRadius": 0.25,
+   "variant": 0
+  },
+  "3": {
+   "name": "small",
+   "height": 5.5,
+   "crownBase": 0.3,
+   "crownRadius": 1.7,
+   "crownCenter": 3.16,
+   "trunkRadius": 0.1,
+   "variant": 1
+  }
+ },
+ "atlasCells": 5,
+ "triangles": {
+  "0_0": 4266,
+  "0_1": 860,
+  "0_2": 212,
+  "0_3": 66,
+  "1_0": 4018,
+  "1_1": 836,
+  "1_2": 204,
+  "1_3": 66,
+  "2_0": 1184,
+  "2_1": 324,
+  "2_2": 148,
+  "2_3": 66,
+  "3_0": 1416,
+  "3_1": 268,
+  "3_2": 84,
+  "3_3": 66
+ }
+}
