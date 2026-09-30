@@ -5,6 +5,9 @@ import { setTextures, buildLibrary, libMaterial, flatMaterial } from './material
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const BASE = 'assets/';
+// The one-file desktop build embeds every asset as a data: URL in this map.
+const EMBEDDED = (typeof window !== 'undefined' && window.__OUTBUILD_ASSETS) || null;
+const url = (path) => (EMBEDDED && EMBEDDED[path]) || path;
 const MODELS = ['character', 'pieces', 'props', 'items', 'weapons', 'vehicles'];
 const TEXTURES = ['wood', 'stone', 'metal', 'siding', 'brick', 'shingles', 'floorboards', 'corrugated', 'concrete',
   'plaster', 'grass', 'dirt', 'rock', 'sand', 'bark', 'fabric', 'water'];
@@ -28,7 +31,7 @@ export class Assets {
       for (const suffix of ['', '_n']) {
         if (t === 'water' && suffix === '') { tick(); continue; }
         const name = t + suffix;
-        jobs.push(tl.loadAsync(`${BASE}textures/${name}.jpg`).then((tex) => {
+        jobs.push(tl.loadAsync(url(`${BASE}textures/${name}.jpg`)).then((tex) => {
           tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
           tex.colorSpace = suffix ? THREE.NoColorSpace : THREE.SRGBColorSpace;
           tex.anisotropy = 8;
@@ -37,7 +40,7 @@ export class Assets {
       }
     }
     for (const m of MODELS) {
-      jobs.push(loader.loadAsync(`${BASE}models/${m}.glb`).then((g) => { this.gltf[m] = g; })
+      jobs.push(loader.loadAsync(url(`${BASE}models/${m}.glb`)).then((g) => { this.gltf[m] = g; })
         .catch((e) => { console.warn('missing model', m, e?.message); this.missing.add(m); }).finally(tick));
     }
     await Promise.all(jobs);

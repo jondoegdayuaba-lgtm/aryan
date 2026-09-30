@@ -1,3 +1,10 @@
+# Games
+
+This repository has two browser games:
+
+- **[Outbuild](outbuild/)**: an original island battle royale with building, 30 players (you and 29 bots). Its models are made in Blender. Play `outbuild/index.html` through a local server, or double-click `desktop/outbuild.html`. See [outbuild/README.md](outbuild/README.md).
+- **Missile Run**: guide a missile through a test range. It is described below.
+
 # Missile Run
 
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.
