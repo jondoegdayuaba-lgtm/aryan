@@ -1,0 +1,999 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Star Harvest</title>
+<style>
+  :root {
+    --bg: #070913;
+    --panel: #10142a;
+    --panel-2: #171c3a;
+    --line: #262d57;
+    --text: #e8ebff;
+    --muted: #8c93c4;
+    --accent: #ffcf4a;
+    --accent-2: #6fe3ff;
+    --good: #6dffa8;
+    --bad: #ff6d8a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; overflow: hidden;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  #app { display: flex; height: 100%; }
+  #stage { position: relative; flex: 1 1 auto; min-width: 0; }
+  #sky { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: pointer; }
+  #hud { position: absolute; top: 16px; left: 0; right: 0; text-align: center; pointer-events: none; }
+  #dust { font-size: clamp(28px, 5vw, 48px); font-weight: 800; letter-spacing: .5px;
+    text-shadow: 0 2px 12px rgba(255, 207, 74, .35); color: var(--accent); }
+  #dust small { font-size: .45em; color: var(--muted); font-weight: 600; margin-left: 6px; }
+  #rate { color: var(--accent-2); font-weight: 600; margin-top: 2px; }
+  #boostTag { display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 999px;
+    background: rgba(111, 227, 255, .15); color: var(--accent-2); font-size: 13px; font-weight: 700; }
+  #boostTag[hidden] { display: none; }
+  #stageName { position: absolute; bottom: 18px; left: 0; right: 0; text-align: center;
+    color: var(--muted); font-size: 14px; pointer-events: none; }
+  #stageName b { color: var(--text); }
+  #topBtns { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; }
+  .iconBtn { background: rgba(16, 20, 42, .8); border: 1px solid var(--line); color: var(--text);
+    border-radius: 10px; width: 40px; height: 40px; font-size: 18px; cursor: pointer; }
+  .iconBtn:hover { border-color: var(--accent-2); }
+
+  #side { width: 400px; flex: 0 0 400px; background: var(--panel); border-left: 1px solid var(--line);
+    display: flex; flex-direction: column; min-height: 0; }
+  #tabs { display: flex; border-bottom: 1px solid var(--line); }
+  #tabs button { flex: 1; background: none; border: 0; color: var(--muted); padding: 14px 0;
+    font: inherit; font-weight: 700; cursor: pointer; border-bottom: 3px solid transparent; position: relative; }
+  #tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+  #tabs .dot { position: absolute; top: 9px; margin-left: 4px; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--good); display: none; }
+  #tabs .dot.show { display: inline-block; }
+  #buyBar { display: flex; gap: 6px; padding: 10px 12px 0; }
+  #buyBar button { flex: 1; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted);
+    border-radius: 8px; padding: 6px 0; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+  #buyBar button.on { color: var(--bg); background: var(--accent-2); border-color: var(--accent-2); }
+  .pane { flex: 1; overflow-y: auto; padding: 12px; display: none; }
+  .pane.on { display: block; }
+
+  .gen { display: flex; align-items: center; gap: 12px; padding: 10px; margin-bottom: 8px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; cursor: pointer;
+    transition: transform .06s, border-color .15s, opacity .15s; }
+  .gen:hover { border-color: var(--accent-2); }
+  .gen:active { transform: scale(.98); }
+  .gen.no { opacity: .5; cursor: default; }
+  .gen.no:hover { border-color: var(--line); }
+  .gen.hidden { display: none; }
+  .gen.locked .gname, .gen.locked .gdesc { filter: blur(3px); }
+  .gen canvas { flex: 0 0 48px; width: 48px; height: 48px; }
+  .gen .ginfo { flex: 1; min-width: 0; }
+  .gname { font-weight: 700; }
+  .gdesc { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .gcost { color: var(--accent); font-weight: 700; font-size: 14px; margin-top: 4px; }
+  .gcount { font-size: 26px; font-weight: 800; color: var(--line); min-width: 44px; text-align: right; }
+  .gen:not(.no) .gcount { color: #3a4380; }
+
+  #upgrades { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .up { padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px;
+    cursor: pointer; }
+  .up:hover { border-color: var(--accent); }
+  .up.no { opacity: .5; cursor: default; }
+  .up.no:hover { border-color: var(--line); }
+  .up .utop { display: flex; justify-content: space-between; gap: 8px; }
+  .up .uname { font-weight: 700; }
+  .up .ucost { color: var(--accent); font-weight: 700; white-space: nowrap; }
+  .up .udesc { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .empty { color: var(--muted); text-align: center; padding: 30px 10px; font-size: 14px; }
+  h3 { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  h3:first-child { margin-top: 4px; }
+
+  .stat { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--line);
+    font-size: 14px; }
+  .stat span:last-child { font-weight: 700; }
+  .ach { display: flex; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line);
+    font-size: 13px; }
+  .ach .medal { width: 26px; height: 26px; border-radius: 50%; flex: 0 0 26px; display: grid;
+    place-items: center; background: #1f2548; color: #3a4380; font-size: 14px; }
+  .ach.got .medal { background: var(--accent); color: var(--bg); }
+  .ach .adesc { color: var(--muted); font-size: 12px; }
+  .ach:not(.got) b { color: var(--muted); }
+
+  #novaBox { background: linear-gradient(135deg, #2a1640, #10142a); border: 1px solid #5b2d7a;
+    border-radius: 12px; padding: 12px; margin-top: 12px; }
+  #novaBox p { margin: 4px 0 10px; color: var(--muted); font-size: 13px; line-height: 1.4; }
+  .bigBtn { width: 100%; padding: 11px; border: 0; border-radius: 10px; font: inherit; font-weight: 800;
+    cursor: pointer; background: #c86bff; color: #16051f; }
+  .bigBtn:disabled { opacity: .4; cursor: default; }
+  .ghostBtn { width: 100%; margin-top: 10px; padding: 9px; border-radius: 10px; font: inherit; font-weight: 700;
+    cursor: pointer; background: none; color: var(--bad); border: 1px solid #5a2a38; }
+
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(120px);
+    background: var(--panel-2); border: 1px solid var(--accent); color: var(--text); padding: 10px 16px;
+    border-radius: 12px; font-size: 14px; transition: transform .3s; z-index: 10; max-width: 90vw; text-align: center; }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  #modal { position: fixed; inset: 0; background: rgba(4, 5, 12, .75); display: none; place-items: center; z-index: 20; }
+  #modal.show { display: grid; }
+  #modal .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px;
+    width: min(360px, 90vw); text-align: center; }
+  #modal h2 { margin: 0 0 8px; color: var(--accent); }
+  #modal p { color: var(--muted); margin: 0 0 16px; line-height: 1.5; }
+  #modal .bigBtn { background: var(--accent); }
+
+  @media (max-width: 760px) {
+    #app { flex-direction: column; }
+    #stage { flex: 0 0 46%; }
+    #side { width: auto; flex: 1 1 auto; border-left: 0; border-top: 1px solid var(--line); }
+    #hud { top: 10px; }
+    #stageName { bottom: 8px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="sky"></canvas>
+    <div id="hud">
+      <div id="dust">0<small>stardust</small></div>
+      <div id="rate">0 per second</div>
+      <div id="boostTag" hidden></div>
+    </div>
+    <div id="topBtns">
+      <button class="iconBtn" id="muteBtn" title="Sound (M)">🔊</button>
+    </div>
+    <div id="stageName"></div>
+  </div>
+  <div id="side">
+    <div id="tabs">
+      <button data-tab="build" class="on">Build</button>
+      <button data-tab="upgrades">Upgrades<span class="dot" id="upDot"></span></button>
+      <button data-tab="stats">Stats</button>
+    </div>
+    <div id="buyBar">
+      <button data-amt="1" class="on">×1</button>
+      <button data-amt="10">×10</button>
+      <button data-amt="100">×100</button>
+      <button data-amt="max">Max</button>
+    </div>
+    <div class="pane on" id="pane-build"><div id="gens"></div></div>
+    <div class="pane" id="pane-upgrades"><div id="upgrades"></div></div>
+    <div class="pane" id="pane-stats"><div id="stats"></div></div>
+  </div>
+</div>
+<div id="toast"></div>
+<div id="modal"><div class="card"><h2 id="modalTitle"></h2><p id="modalText"></p>
+  <button class="bigBtn" id="modalBtn">OK</button></div></div>
+
+<script>
+"use strict";
+
+// ---------- Content ----------
+const GENERATORS = [
+  { id: "drone",   name: "Dust Drone",        desc: "A tiny robot that sweeps the surface.",   cost: 15,        rate: 0.1,    hue: 190 },
+  { id: "rig",     name: "Crust Rig",         desc: "Drills down for buried stardust.",         cost: 100,       rate: 1,      hue: 30  },
+  { id: "moon",    name: "Moon Quarry",       desc: "Mines a moon you've dragged into orbit.",   cost: 1100,      rate: 8,      hue: 0   },
+  { id: "ring",    name: "Ring Sifter",       desc: "Filters dust out of the planet's rings.",   cost: 12000,     rate: 47,     hue: 45  },
+  { id: "sail",    name: "Solar Sail Farm",   desc: "Catches dust riding on starlight.",         cost: 130000,    rate: 260,    hue: 55  },
+  { id: "well",    name: "Gravity Well",      desc: "Pulls in drifting clouds of dust.",         cost: 1.4e6,     rate: 1400,   hue: 270 },
+  { id: "swarm",   name: "Orbital Swarm",     desc: "Millions of collectors circling as one.",  cost: 2e7,       rate: 7800,   hue: 150 },
+  { id: "forge",   name: "Star Forge",        desc: "Makes new stardust from nothing.",          cost: 3.3e8,     rate: 44000,  hue: 15  },
+  { id: "rift",    name: "Nebula Rift",       desc: "Taps a nebula through a fold in space.",   cost: 5.1e9,     rate: 260000, hue: 310 },
+  { id: "engine",  name: "Galaxy Engine",     desc: "Spins a whole galaxy for its dust.",        cost: 7.5e10,    rate: 1.6e6,  hue: 220 },
+];
+const COST_GROWTH = 1.15;
+
+const PLANET_STAGES = [
+  { at: 0,     name: "Barren Rock",    base: [120, 110, 100], band: [90, 80, 72],   glow: [255, 200, 150], rings: false },
+  { at: 1e3,   name: "Ice World",      base: [170, 215, 235], band: [120, 170, 205], glow: [150, 220, 255], rings: false },
+  { at: 5e4,   name: "Ocean World",    base: [40, 110, 200],  band: [70, 170, 120],  glow: [100, 180, 255], rings: false },
+  { at: 2e6,   name: "Ringed Giant",   base: [220, 170, 110], band: [180, 120, 70],  glow: [255, 210, 140], rings: true  },
+  { at: 1e8,   name: "Storm Giant",    base: [110, 80, 190],  band: [200, 120, 220], glow: [200, 150, 255], rings: true  },
+  { at: 5e9,   name: "Molten World",   base: [200, 60, 30],   band: [255, 170, 40],  glow: [255, 120, 60],  rings: true  },
+  { at: 2e11,  name: "Newborn Star",   base: [255, 220, 120], band: [255, 250, 210], glow: [255, 220, 120], rings: false },
+];
+
+function buildUpgrades() {
+  const list = [];
+  // Click upgrades
+  const clickTiers = [
+    [100, 2, "Reinforced Gloves", "Clicks give twice as much."],
+    [500, 2, "Tap Amplifier", "Clicks give twice as much."],
+    [1e4, 2, "Kinetic Hammer", "Clicks give twice as much."],
+    [1e5, 2, "Plasma Fingertips", "Clicks give twice as much."],
+    [1e7, 2, "Tectonic Punch", "Clicks give twice as much."],
+    [1e9, 2, "Continental Slam", "Clicks give twice as much."],
+  ];
+  clickTiers.forEach(([cost, m, name, desc], i) =>
+    list.push({ id: "click" + i, name, desc, cost, kind: "click", mult: m, req: () => true }));
+  // Clicks earn a share of per-second income
+  [[5e4, 0.01], [5e6, 0.02], [5e8, 0.03], [5e10, 0.04]].forEach(([cost, share], i) =>
+    list.push({ id: "echo" + i, name: ["Resonant Taps", "Echoing Taps", "Harmonic Taps", "Cosmic Taps"][i],
+      desc: `Each click also gives ${share * 100}% of your per-second income.`, cost, kind: "echo", share,
+      req: () => S.totalClicks >= [100, 500, 1500, 4000][i] }));
+  // Per-generator doublers
+  const genNames = {
+    drone: ["Longer Batteries", "Swarm Firmware", "Self-Repair", "Drone Hive Mind"],
+    rig: ["Diamond Bits", "Deep Bore", "Mantle Taps", "Core Siphon"],
+    moon: ["Low-G Haulers", "Moon Rails", "Twin Moons", "Moon Crushers"],
+    ring: ["Finer Mesh", "Ring Magnets", "Resonance Sort", "Ring Weaving"],
+    sail: ["Thinner Film", "Mirror Arrays", "Photon Nets", "Sunward Tilt"],
+    well: ["Deeper Wells", "Tidal Locks", "Event Funnels", "Singularity Lens"],
+    swarm: ["Flock Logic", "Swarm Mind", "Swarm Relay", "Quantum Swarm"],
+    forge: ["Hotter Cores", "Fusion Anvils", "Stellar Bellows", "Big Bang Kiln"],
+    rift: ["Wider Rift", "Rift Anchors", "Nebula Pumps", "Rift Cascade"],
+    engine: ["Spiral Gears", "Dark Matter Oil", "Halo Flywheel", "Galactic Drive"],
+  };
+  const thresholds = [10, 25, 50, 100];
+  GENERATORS.forEach((g, gi) => {
+    thresholds.forEach((t, ti) => {
+      list.push({ id: g.id + ti, name: genNames[g.id][ti], desc: `${g.name}s produce twice as much.`,
+        cost: g.cost * [10, 50, 500, 5e4][ti] * (ti + 1), kind: "gen", gen: gi, mult: 2,
+        req: () => S.gens[gi] >= t, reqText: `Needs ${t} ${g.name}s` });
+    });
+  });
+  // Global multipliers
+  [[1e6, 1.1, "Stellar Cartography"], [1e8, 1.15, "Cosmic Accounting"], [1e10, 1.2, "Universal Constants"],
+   [1e12, 1.25, "Multiverse Ledger"]].forEach(([cost, m, name], i) =>
+    list.push({ id: "glob" + i, name, desc: `All production ×${m}.`, cost, kind: "global", mult: m,
+      req: () => S.runEarned >= cost / 10 }));
+  // Comet upgrades
+  list.push({ id: "comet0", name: "Comet Radar", desc: "Comets show up twice as often.", cost: 7777,
+    kind: "comet", req: () => S.cometsCaught >= 1 });
+  list.push({ id: "comet1", name: "Comet Tethers", desc: "Comet boosts last twice as long.", cost: 7.7e6,
+    kind: "cometLen", req: () => S.cometsCaught >= 5 });
+  // Crit
+  list.push({ id: "crit0", name: "Lucky Strikes", desc: "Critical clicks happen twice as often (10%).",
+    cost: 2.5e4, kind: "crit", req: () => S.crits >= 10 });
+  return list;
+}
+const UPGRADES = buildUpgrades();
+const UP_BY_ID = Object.fromEntries(UPGRADES.map(u => [u.id, u]));
+
+const ACHIEVEMENTS = [
+  { id: "c1",    name: "First Contact",   desc: "Click the planet.",              test: () => S.totalClicks >= 1 },
+  { id: "c100",  name: "Busy Fingers",    desc: "Click 100 times.",               test: () => S.totalClicks >= 100 },
+  { id: "c1k",   name: "Clickstorm",      desc: "Click 1,000 times.",             test: () => S.totalClicks >= 1000 },
+  { id: "c10k",  name: "Tireless",        desc: "Click 10,000 times.",            test: () => S.totalClicks >= 10000 },
+  { id: "d1k",   name: "Pocket Change",   desc: "Earn 1,000 stardust.",           test: () => S.allEarned >= 1e3 },
+  { id: "d1m",   name: "Millionaire",     desc: "Earn 1 million stardust.",       test: () => S.allEarned >= 1e6 },
+  { id: "d1b",   name: "Billionaire",     desc: "Earn 1 billion stardust.",       test: () => S.allEarned >= 1e9 },
+  { id: "d1t",   name: "Trillionaire",    desc: "Earn 1 trillion stardust.",      test: () => S.allEarned >= 1e12 },
+  { id: "r10",   name: "Trickle",         desc: "Reach 10 per second.",           test: () => perSecond() >= 10 },
+  { id: "r1k",   name: "Stream",          desc: "Reach 1,000 per second.",        test: () => perSecond() >= 1e3 },
+  { id: "r1m",   name: "Torrent",         desc: "Reach 1 million per second.",    test: () => perSecond() >= 1e6 },
+  { id: "g50",   name: "Fleet",           desc: "Own 50 buildings.",              test: () => totalGens() >= 50 },
+  { id: "g250",  name: "Armada",          desc: "Own 250 buildings.",             test: () => totalGens() >= 250 },
+  { id: "all",   name: "Full Set",        desc: "Own one of every building.",     test: () => S.gens.every(n => n > 0) },
+  { id: "comet", name: "Comet Catcher",   desc: "Catch a comet.",                 test: () => S.cometsCaught >= 1 },
+  { id: "com10", name: "Comet Hunter",    desc: "Catch 10 comets.",               test: () => S.cometsCaught >= 10 },
+  { id: "crit",  name: "Critical!",       desc: "Land a critical click.",         test: () => S.crits >= 1 },
+  { id: "star",  name: "Let There Be Light", desc: "Grow your planet into a star.", test: () => stageIndex() === PLANET_STAGES.length - 1 },
+  { id: "nova",  name: "Supernova",       desc: "Go supernova for the first time.", test: () => S.novas >= 1 },
+];
+
+// ---------- State ----------
+const SAVE_KEY = "star-harvest-save-v1";
+function freshRun(keep) {
+  return {
+    dust: 0, runEarned: 0, gens: GENERATORS.map(() => 0), ups: {},
+    allEarned: keep ? keep.allEarned : 0,
+    totalClicks: keep ? keep.totalClicks : 0,
+    clickEarned: keep ? keep.clickEarned : 0,
+    crits: keep ? keep.crits : 0,
+    cometsCaught: keep ? keep.cometsCaught : 0,
+    cores: keep ? keep.cores : 0,
+    novas: keep ? keep.novas : 0,
+    achs: keep ? keep.achs : {},
+    started: keep ? keep.started : Date.now(),
+    muted: keep ? keep.muted : false,
+    boostUntil: 0, boostMult: 1, lastTick: Date.now(),
+  };
+}
+let S = freshRun();
+
+function load() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    const base = freshRun();
+    S = Object.assign(base, data);
+    S.gens = GENERATORS.map((_, i) => (data.gens && data.gens[i]) || 0);
+    return data;
+  } catch (e) { return null; }
+}
+function save() {
+  S.lastTick = Date.now();
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {}
+}
+
+// ---------- Math ----------
+function coreBonus() { return 1 + S.cores * 0.05; }
+function genMult(i) {
+  let m = 1;
+  for (const u of UPGRADES) if (S.ups[u.id] && u.kind === "gen" && u.gen === i) m *= u.mult;
+  return m;
+}
+function globalMult() {
+  let m = coreBonus();
+  for (const u of UPGRADES) if (S.ups[u.id] && u.kind === "global") m *= u.mult;
+  // Every achievement adds 1%
+  m *= 1 + Object.keys(S.achs).length * 0.01;
+  return m;
+}
+function boostMult() { return Date.now() < S.boostUntil ? S.boostMult : 1; }
+function genRate(i) { return GENERATORS[i].rate * genMult(i); }
+function basePerSecond() {
+  let t = 0;
+  for (let i = 0; i < GENERATORS.length; i++) t += S.gens[i] * genRate(i);
+  return t * globalMult();
+}
+function perSecond() { return basePerSecond() * boostMult(); }
+function clickValue() {
+  let v = 1;
+  for (const u of UPGRADES) if (S.ups[u.id] && u.kind === "click") v *= u.mult;
+  let share = 0;
+  for (const u of UPGRADES) if (S.ups[u.id] && u.kind === "echo") share += u.share;
+  return (v * coreBonus() + basePerSecond() * share) * boostMult();
+}
+function critChance() { return S.ups.crit0 ? 0.10 : 0.05; }
+function genCost(i, owned) { return Math.ceil(GENERATORS[i].cost * Math.pow(COST_GROWTH, owned)); }
+function bulkCost(i, n) {
+  const r = COST_GROWTH, own = S.gens[i];
+  return Math.ceil(GENERATORS[i].cost * Math.pow(r, own) * (Math.pow(r, n) - 1) / (r - 1));
+}
+function maxAffordable(i) {
+  const r = COST_GROWTH, c = GENERATORS[i].cost * Math.pow(r, S.gens[i]);
+  if (S.dust < c) return 0;
+  return Math.floor(Math.log(S.dust * (r - 1) / c + 1) / Math.log(r));
+}
+function totalGens() { return S.gens.reduce((a, b) => a + b, 0); }
+function coresFor(earned) { return Math.floor(Math.sqrt(earned / 1e9)); }
+function stageIndex() {
+  let s = 0;
+  for (let i = 0; i < PLANET_STAGES.length; i++) if (S.runEarned >= PLANET_STAGES[i].at) s = i;
+  return s;
+}
+
+const SUFFIX = ["", "", " million", " billion", " trillion", " quadrillion", " quintillion", " sextillion",
+  " septillion", " octillion", " nonillion", " decillion"];
+function fmt(n, dec) {
+  if (!isFinite(n)) return "∞";
+  if (n < 1000) return dec && n < 100 && n % 1 ? n.toFixed(1) : Math.floor(n).toString();
+  if (n < 1e6) return Math.floor(n).toLocaleString("en-US");
+  const e = Math.floor(Math.log10(n) / 3);
+  if (e >= SUFFIX.length) return n.toExponential(2);
+  return (n / Math.pow(1000, e)).toFixed(3).replace(/\.?0+$/, "") + SUFFIX[e];
+}
+function fmtTime(sec) {
+  sec = Math.floor(sec);
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  return h ? `${h}h ${m}m` : m ? `${m}m ${s}s` : `${s}s`;
+}
+
+// ---------- Audio ----------
+let actx = null;
+function beep(freq, dur, type, vol, slide) {
+  if (S.muted) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.type = type || "sine";
+    o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + dur);
+    g.gain.setValueAtTime(vol || 0.08, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(t); o.stop(t + dur);
+  } catch (e) {}
+}
+const sfx = {
+  click: () => beep(420 + Math.random() * 80, 0.08, "triangle", 0.06, 260),
+  crit: () => { beep(700, 0.15, "square", 0.05, 1400); beep(1050, 0.2, "sine", 0.05); },
+  buy: () => beep(520, 0.1, "sine", 0.07, 880),
+  up: () => { beep(660, 0.1, "sine", 0.07); setTimeout(() => beep(990, 0.14, "sine", 0.07), 80); },
+  comet: () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.18, "triangle", 0.07), i * 70)),
+  ach: () => [784, 988].forEach((f, i) => setTimeout(() => beep(f, 0.2, "sine", 0.06), i * 110)),
+  nova: () => beep(60, 2.2, "sawtooth", 0.12, 900),
+};
+
+// ---------- Canvas: starfield, planet, orbiters, particles ----------
+const sky = document.getElementById("sky");
+const ctx = sky.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+let stars = [];
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const r = sky.getBoundingClientRect();
+  W = r.width; H = r.height;
+  sky.width = W * DPR; sky.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  stars = [];
+  const n = Math.floor(W * H / 2500);
+  for (let i = 0; i < n; i++)
+    stars.push({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 1.3 + 0.2,
+      tw: Math.random() * Math.PI * 2, sp: 0.5 + Math.random() * 2 });
+}
+window.addEventListener("resize", resize);
+
+function planetGeom() {
+  const R = Math.max(60, Math.min(W, H) * 0.24);
+  return { cx: W / 2, cy: H * 0.54, R };
+}
+
+// Per-planet surface features, regenerated when the stage changes
+let features = [], featureStage = -1;
+function makeFeatures(stage) {
+  features = [];
+  let seed = 1234 + stage * 97;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 26; i++)
+    features.push({ lon: rnd() * Math.PI * 2, lat: (rnd() - 0.5) * 2.4, size: 0.08 + rnd() * 0.22, shade: rnd() });
+  featureStage = stage;
+}
+
+let squash = 0;          // planet squish from clicks
+let spin = 0;            // planet surface rotation
+const particles = [];    // dust bits flying off the planet
+const floaters = [];     // floating numbers
+let comet = null;
+let nextComet = Date.now() + 40000 + Math.random() * 40000;
+let flash = 0;
+
+const rgb = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a == null ? 1 : a})`;
+const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+
+function drawPlanet(t) {
+  const si = stageIndex();
+  if (si !== featureStage) makeFeatures(si);
+  const st = PLANET_STAGES[si];
+  const { cx, cy, R } = planetGeom();
+  const s = 1 - squash * 0.06;
+  const isStar = si === PLANET_STAGES.length - 1;
+
+  // Glow
+  const glowR = R * (isStar ? 2.4 : 1.7);
+  const g = ctx.createRadialGradient(cx, cy, R * 0.8, cx, cy, glowR);
+  g.addColorStop(0, rgb(st.glow, isStar ? 0.55 : 0.25));
+  g.addColorStop(1, rgb(st.glow, 0));
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(cx, cy, glowR, 0, Math.PI * 2); ctx.fill();
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(1 + squash * 0.04, s);
+
+  // Back half of rings
+  if (st.rings) drawRings(R, st, true);
+
+  // Body
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.clip();
+  const body = ctx.createRadialGradient(-R * 0.35, -R * 0.35, R * 0.1, 0, 0, R);
+  body.addColorStop(0, rgb(mix(st.base, [255, 255, 255], 0.25)));
+  body.addColorStop(1, rgb(mix(st.base, [0, 0, 0], 0.2)));
+  ctx.fillStyle = body;
+  ctx.fillRect(-R, -R, R * 2, R * 2);
+
+  // Bands for giants and stars
+  if (si >= 3) {
+    for (let i = 0; i < 9; i++) {
+      const y = -R + (i + 0.5) * (2 * R / 9) + Math.sin(t * 0.0006 + i) * R * 0.02;
+      ctx.fillStyle = rgb(i % 2 ? st.band : mix(st.band, st.base, 0.5), isStar ? 0.25 : 0.45);
+      ctx.beginPath();
+      ctx.ellipse(0, y, R * 1.1, R * (0.05 + (i % 3) * 0.025), 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // Surface blotches (continents, craters, storms) that rotate with the planet
+  for (const f of features) {
+    const lon = f.lon + spin;
+    const z = Math.cos(lon);
+    if (z <= 0) continue;
+    const x = Math.sin(lon) * Math.cos(f.lat * 0.6) * R;
+    const y = Math.sin(f.lat * 0.6) * R;
+    const r = f.size * R;
+    ctx.fillStyle = si === 0 ? rgb(mix(st.band, [40, 35, 30], f.shade * 0.5), 0.8)
+      : si >= 3 ? rgb(mix(st.band, [255, 255, 255], f.shade * 0.3), 0.35)
+      : rgb(mix(st.band, st.base, f.shade * 0.4), 0.9);
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * Math.max(0.15, z), r * 0.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (si === 0) { // crater rim
+      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+  if (si === 1 || si === 2) { // polar caps
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.beginPath(); ctx.ellipse(0, -R * 0.97, R * 0.5, R * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, R * 0.97, R * 0.45, R * 0.14, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  if (si === 5) { // lava cracks glow
+    ctx.strokeStyle = `rgba(255,200,60,${0.5 + Math.sin(t * 0.004) * 0.25})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 7; i++) {
+      ctx.beginPath();
+      let a = i * 0.9 + spin * 0.5;
+      ctx.moveTo(Math.cos(a) * R * 0.2, Math.sin(a) * R * 0.2);
+      for (let k = 1; k < 5; k++) {
+        a += 0.3 * Math.sin(i * 3 + k);
+        ctx.lineTo(Math.cos(a) * R * 0.22 * k, Math.sin(a) * R * 0.22 * k);
+      }
+      ctx.stroke();
+    }
+  }
+  // Shading for the night side
+  if (!isStar) {
+    const sh = ctx.createRadialGradient(-R * 0.4, -R * 0.4, R * 0.3, 0, 0, R * 1.05);
+    sh.addColorStop(0, "rgba(0,0,0,0)");
+    sh.addColorStop(1, "rgba(0,0,20,0.6)");
+    ctx.fillStyle = sh;
+    ctx.fillRect(-R, -R, R * 2, R * 2);
+  }
+  ctx.restore();
+
+  // Atmosphere rim
+  ctx.strokeStyle = rgb(st.glow, isStar ? 0.8 : 0.4);
+  ctx.lineWidth = isStar ? 4 : 2;
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
+
+  if (st.rings) drawRings(R, st, false);
+  ctx.restore();
+}
+
+function drawRings(R, st, back) {
+  ctx.save();
+  ctx.rotate(-0.35);
+  ctx.beginPath();
+  if (back) ctx.rect(-R * 3, -R * 3, R * 6, R * 3);
+  else ctx.rect(-R * 3, 0, R * 6, R * 3);
+  ctx.clip();
+  for (let i = 0; i < 4; i++) {
+    ctx.strokeStyle = rgb(mix(st.band, [255, 255, 255], i * 0.15), 0.5 - i * 0.08);
+    ctx.lineWidth = R * 0.07;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, R * (1.45 + i * 0.13), R * (0.3 + i * 0.03), 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Small things circling the planet: one per building type owned, more as counts grow
+function drawOrbiters(t, front) {
+  const { cx, cy, R } = planetGeom();
+  GENERATORS.forEach((gen, gi) => {
+    const n = S.gens[gi];
+    if (!n) return;
+    const shown = Math.min(1 + Math.floor(Math.log2(n + 1)), 8);
+    const orbit = R * (1.25 + gi * 0.11);
+    const speed = 0.00045 / (1 + gi * 0.25);
+    for (let k = 0; k < shown; k++) {
+      const a = t * speed + (k / shown) * Math.PI * 2 + gi * 1.7;
+      const z = Math.sin(a);
+      if ((z > 0) !== front) continue;
+      const x = cx + Math.cos(a) * orbit;
+      const y = cy + z * orbit * 0.28 - Math.cos(a) * orbit * 0.08;
+      const size = (3 + gi * 0.6) * (0.75 + z * 0.25);
+      ctx.fillStyle = `hsl(${gen.hue} 85% ${front ? 68 : 45}%)`;
+      ctx.beginPath();
+      if (gi % 3 === 0) ctx.arc(x, y, size, 0, Math.PI * 2);
+      else if (gi % 3 === 1) ctx.rect(x - size, y - size * 0.6, size * 2, size * 1.2);
+      else { ctx.moveTo(x, y - size); ctx.lineTo(x + size, y + size); ctx.lineTo(x - size, y + size); ctx.closePath(); }
+      ctx.fill();
+    }
+  });
+}
+
+function drawComet(t) {
+  if (!comet) return;
+  const c = comet;
+  const tail = ctx.createLinearGradient(c.x, c.y, c.x - c.vx * 40, c.y - c.vy * 40);
+  tail.addColorStop(0, "rgba(180,240,255,0.9)");
+  tail.addColorStop(1, "rgba(180,240,255,0)");
+  ctx.strokeStyle = tail;
+  ctx.lineWidth = 8;
+  ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(c.x - c.vx * 40, c.y - c.vy * 40); ctx.stroke();
+  const pulse = 1 + Math.sin(t * 0.01) * 0.15;
+  const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, 22 * pulse);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.4, "rgba(140,230,255,0.8)");
+  g.addColorStop(1, "rgba(140,230,255,0)");
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(c.x, c.y, 22 * pulse, 0, Math.PI * 2); ctx.fill();
+}
+
+let lastFrame = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastFrame) / 1000);
+  lastFrame = now;
+
+  // Economy
+  const ps = perSecond();
+  earn(ps * dt, false);
+
+  // Motion
+  squash *= Math.pow(0.001, dt);
+  spin += dt * (0.12 + Math.min(1.5, Math.log10(ps + 1) * 0.08));
+  flash *= Math.pow(0.02, dt);
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "#070913"; ctx.fillRect(0, 0, W, H);
+
+  // Nebula backdrop
+  const neb = ctx.createRadialGradient(W * 0.2, H * 0.2, 0, W * 0.2, H * 0.2, Math.max(W, H) * 0.7);
+  neb.addColorStop(0, "rgba(80,40,140,0.18)"); neb.addColorStop(1, "rgba(80,40,140,0)");
+  ctx.fillStyle = neb; ctx.fillRect(0, 0, W, H);
+  const neb2 = ctx.createRadialGradient(W * 0.85, H * 0.9, 0, W * 0.85, H * 0.9, Math.max(W, H) * 0.6);
+  neb2.addColorStop(0, "rgba(20,90,140,0.16)"); neb2.addColorStop(1, "rgba(20,90,140,0)");
+  ctx.fillStyle = neb2; ctx.fillRect(0, 0, W, H);
+
+  for (const s of stars) {
+    const a = 0.45 + Math.sin(now * 0.001 * s.sp + s.tw) * 0.35;
+    ctx.fillStyle = `rgba(255,255,255,${a})`;
+    ctx.fillRect(s.x, s.y, s.r, s.r);
+  }
+
+  drawOrbiters(now, false);
+  drawPlanet(now);
+  drawOrbiters(now, true);
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    p.vy += 220 * dt;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    ctx.fillStyle = `hsla(${p.hue},90%,70%,${Math.min(1, p.life * 2)})`;
+    ctx.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s);
+  }
+
+  // Comet
+  const nowMs = Date.now();
+  if (!comet && nowMs > nextComet) spawnComet();
+  if (comet) {
+    comet.x += comet.vx * dt * 60; comet.y += comet.vy * dt * 60;
+    comet.y += Math.sin(now * 0.002) * 0.4;
+    if (comet.x < -60 || comet.x > W + 60) { comet = null; scheduleComet(); }
+  }
+  drawComet(now);
+
+  // Floating numbers
+  ctx.textAlign = "center";
+  for (let i = floaters.length - 1; i >= 0; i--) {
+    const f = floaters[i];
+    f.life -= dt;
+    if (f.life <= 0) { floaters.splice(i, 1); continue; }
+    f.y -= 60 * dt;
+    ctx.globalAlpha = Math.min(1, f.life * 1.5);
+    ctx.font = `800 ${f.size}px system-ui, sans-serif`;
+    ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,0.6)";
+    ctx.strokeText(f.text, f.x, f.y);
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+
+  if (flash > 0.01) { ctx.fillStyle = `rgba(255,255,255,${flash})`; ctx.fillRect(0, 0, W, H); }
+
+  requestAnimationFrame(frame);
+}
+
+// ---------- Actions ----------
+function earn(n, fromClick) {
+  S.dust += n; S.runEarned += n; S.allEarned += n;
+  if (fromClick) S.clickEarned += n;
+}
+
+function onPointer(e) {
+  e.preventDefault();
+  const r = sky.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  if (comet && Math.hypot(x - comet.x, y - comet.y) < 40) { catchComet(); return; }
+  const { cx, cy, R } = planetGeom();
+  if (Math.hypot(x - cx, y - cy) > R * 1.08) return;
+  const crit = Math.random() < critChance();
+  let v = clickValue();
+  if (crit) { v *= 10; S.crits++; }
+  earn(v, true);
+  S.totalClicks++;
+  squash = Math.min(1, squash + 0.6);
+  const st = PLANET_STAGES[stageIndex()];
+  const hue = crit ? 45 : Math.round(Math.atan2(st.glow[1] - 128, st.glow[0] - 128) * 57 + 180);
+  for (let i = 0; i < (crit ? 18 : 7); i++) {
+    const a = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 180;
+    particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 120, life: 0.6 + Math.random() * 0.5,
+      s: 2 + Math.random() * 3, hue });
+  }
+  floaters.push({ x: x + (Math.random() - 0.5) * 20, y: y - 10, text: (crit ? "CRIT +" : "+") + fmt(v, true),
+    life: 1.1, size: crit ? 26 : 20, color: crit ? "#ffcf4a" : "#ffffff" });
+  if (floaters.length > 40) floaters.shift();
+  if (particles.length > 400) particles.splice(0, particles.length - 400);
+  crit ? sfx.crit() : sfx.click();
+}
+sky.addEventListener("pointerdown", onPointer);
+
+function scheduleComet() {
+  const base = S.ups.comet0 ? 30000 : 60000;
+  nextComet = Date.now() + base + Math.random() * base;
+}
+function spawnComet() {
+  const left = Math.random() < 0.5;
+  comet = { x: left ? -40 : W + 40, y: H * (0.15 + Math.random() * 0.25),
+    vx: (left ? 1 : -1) * (1.6 + Math.random() * 0.8), vy: 0.15 + Math.random() * 0.2 };
+}
+function catchComet() {
+  const cx = comet.x, cy = comet.y;
+  comet = null; scheduleComet();
+  S.cometsCaught++;
+  sfx.comet();
+  flash = 0.4;
+  const len = S.ups.comet1 ? 2 : 1;
+  const roll = Math.random();
+  let text;
+  if (roll < 0.45) {
+    const bonus = Math.max(basePerSecond() * 900, clickValue() * 50, 25);
+    earn(bonus, false);
+    text = `+${fmt(bonus)} stardust`;
+  } else if (roll < 0.85) {
+    S.boostMult = 7; S.boostUntil = Date.now() + 30000 * len;
+    text = "Production ×7 for " + 30 * len + "s!";
+  } else {
+    S.boostMult = 77; S.boostUntil = Date.now() + 10000 * len;
+    text = "Frenzy! Everything ×77 for " + 10 * len + "s!";
+  }
+  floaters.push({ x: cx, y: cy, text, life: 2, size: 22, color: "#6fe3ff" });
+  toast("☄️ Comet caught: " + text);
+}
+
+let buyAmt = "1";
+function buyGen(i) {
+  let n = buyAmt === "max" ? maxAffordable(i) : +buyAmt;
+  if (n <= 0) return;
+  const cost = bulkCost(i, n);
+  if (S.dust < cost) return;
+  S.dust -= cost;
+  S.gens[i] += n;
+  sfx.buy();
+  renderAll();
+}
+function buyUp(id) {
+  const u = UP_BY_ID[id];
+  if (S.ups[id] || S.dust < u.cost || !u.req()) return;
+  S.dust -= u.cost;
+  S.ups[id] = 1;
+  sfx.up();
+  if (u.kind === "comet" && comet === null) scheduleComet();
+  renderAll();
+}
+function goNova() {
+  const gain = coresFor(S.runEarned);
+  if (gain < 1) return;
+  if (!confirm(`Go supernova? You'll lose your stardust, buildings and upgrades, and gain ${gain} Star Core${gain > 1 ? "s" : ""} (+${gain * 5}% production each run from now on).`)) return;
+  const keep = { ...S, cores: S.cores + gain, novas: S.novas + 1 };
+  S = freshRun(keep);
+  sfx.nova();
+  flash = 1;
+  particles.length = 0;
+  renderAll(true);
+  save();
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast.h);
+  toast.h = setTimeout(() => t.classList.remove("show"), 2800);
+}
+function modal(title, text) {
+  $("modalTitle").textContent = title;
+  $("modalText").textContent = text;
+  $("modal").classList.add("show");
+}
+$("modalBtn").onclick = () => $("modal").classList.remove("show");
+
+document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", p.id === "pane-" + b.dataset.tab));
+  $("buyBar").style.display = b.dataset.tab === "build" ? "" : "none";
+  renderAll(true);
+});
+document.querySelectorAll("#buyBar button").forEach(b => b.onclick = () => {
+  buyAmt = b.dataset.amt;
+  document.querySelectorAll("#buyBar button").forEach(x => x.classList.toggle("on", x === b));
+  renderGens();
+});
+function setMuteIcon() { $("muteBtn").textContent = S.muted ? "🔇" : "🔊"; }
+$("muteBtn").onclick = () => { S.muted = !S.muted; setMuteIcon(); };
+window.addEventListener("keydown", e => { if (e.key === "m" || e.key === "M") { S.muted = !S.muted; setMuteIcon(); } });
+
+// Little icons for each building, drawn once
+function drawGenIcon(c, gi) {
+  const x = c.getContext("2d"), d = 48;
+  c.width = d * 2; c.height = d * 2; x.scale(2, 2);
+  const hue = GENERATORS[gi].hue;
+  x.fillStyle = "#0b0f22"; x.beginPath(); x.arc(24, 24, 23, 0, Math.PI * 2); x.fill();
+  x.fillStyle = `hsl(${hue} 80% 60%)`;
+  x.strokeStyle = `hsl(${hue} 80% 75%)`; x.lineWidth = 2;
+  switch (gi) {
+    case 0: x.beginPath(); x.arc(24, 26, 8, 0, Math.PI * 2); x.fill();
+      x.beginPath(); x.moveTo(12, 18); x.lineTo(36, 18); x.stroke(); break;
+    case 1: x.fillRect(20, 10, 8, 20); x.beginPath(); x.moveTo(16, 30); x.lineTo(32, 30); x.lineTo(24, 40); x.fill(); break;
+    case 2: x.beginPath(); x.arc(24, 24, 12, 0, Math.PI * 2); x.fill();
+      x.fillStyle = "rgba(0,0,0,.3)"; [[20, 20, 3], [28, 27, 4], [21, 30, 2]].forEach(([a, b, r]) => { x.beginPath(); x.arc(a, b, r, 0, 7); x.fill(); }); break;
+    case 3: x.beginPath(); x.arc(24, 24, 8, 0, Math.PI * 2); x.fill();
+      x.beginPath(); x.ellipse(24, 24, 18, 5, -0.4, 0, Math.PI * 2); x.stroke(); break;
+    case 4: x.beginPath(); x.moveTo(10, 12); x.lineTo(38, 18); x.lineTo(34, 38); x.lineTo(12, 32); x.closePath(); x.fill(); break;
+    case 5: for (let r = 16; r > 2; r -= 4) { x.beginPath(); x.arc(24, 24, r, 0, Math.PI * 2); x.stroke(); } break;
+    case 6: for (let i = 0; i < 9; i++) { const a = i * 0.7; x.beginPath(); x.arc(24 + Math.cos(a) * 13, 24 + Math.sin(a) * 13, 2.5, 0, 7); x.fill(); } break;
+    case 7: x.beginPath(); for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, r = i % 2 ? 7 : 16; x.lineTo(24 + Math.cos(a) * r, 24 + Math.sin(a) * r); } x.closePath(); x.fill(); break;
+    case 8: x.beginPath(); x.ellipse(24, 24, 16, 9, 0.6, 0, Math.PI * 2); x.fill();
+      x.fillStyle = "#0b0f22"; x.beginPath(); x.ellipse(24, 24, 3, 7, 0.6, 0, Math.PI * 2); x.fill(); break;
+    case 9: x.beginPath(); for (let a = 0; a < 12; a += 0.1) { const r = a * 1.5; x.lineTo(24 + Math.cos(a) * r, 24 + Math.sin(a) * r); } x.stroke();
+      x.beginPath(); for (let a = 0; a < 12; a += 0.1) { const r = a * 1.5; x.lineTo(24 - Math.cos(a) * r, 24 - Math.sin(a) * r); } x.stroke(); break;
+  }
+}
+
+const genEls = [];
+function buildGenList() {
+  const box = $("gens");
+  GENERATORS.forEach((g, i) => {
+    const el = document.createElement("div");
+    el.className = "gen";
+    el.innerHTML = `<canvas></canvas><div class="ginfo"><div class="gname"></div><div class="gdesc"></div>
+      <div class="gcost"></div></div><div class="gcount"></div>`;
+    drawGenIcon(el.querySelector("canvas"), i);
+    el.onclick = () => buyGen(i);
+    box.appendChild(el);
+    genEls.push({ el, name: el.querySelector(".gname"), desc: el.querySelector(".gdesc"),
+      cost: el.querySelector(".gcost"), count: el.querySelector(".gcount") });
+  });
+}
+function renderGens() {
+  let revealed = 0;
+  GENERATORS.forEach((g, i) => {
+    const e = genEls[i];
+    const seen = S.gens[i] > 0 || S.runEarned >= g.cost * 0.5 || i === 0 || (i > 0 && S.gens[i - 1] > 0);
+    const visible = seen || i <= revealed + 1;
+    if (seen) revealed = i;
+    e.el.classList.toggle("hidden", !visible);
+    e.el.classList.toggle("locked", !seen);
+    let n = buyAmt === "max" ? Math.max(1, maxAffordable(i)) : +buyAmt;
+    const cost = bulkCost(i, n);
+    e.name.textContent = seen ? g.name : "???";
+    e.desc.textContent = seen ? `${g.desc} Each makes ${fmt(genRate(i) * globalMult(), true)}/s.` : "Keep harvesting to reveal.";
+    e.cost.textContent = `${fmt(cost)} stardust${n > 1 ? `  (×${n})` : ""}`;
+    e.count.textContent = S.gens[i] || "";
+    e.el.classList.toggle("no", S.dust < cost);
+  });
+}
+
+let upSig = "";
+function availableUps() {
+  return UPGRADES.filter(u => !S.ups[u.id] && u.req()).sort((a, b) => a.cost - b.cost);
+}
+function renderUps(force) {
+  const list = availableUps();
+  const affordable = list.some(u => S.dust >= u.cost);
+  $("upDot").classList.toggle("show", affordable);
+  if (!$("pane-upgrades").classList.contains("on") && !force) return;
+  const sig = list.map(u => u.id).join(",");
+  const box = $("upgrades");
+  if (sig !== upSig || force) {
+    upSig = sig;
+    box.innerHTML = "";
+    if (!list.length) {
+      box.innerHTML = `<div class="empty">No upgrades right now.<br>Buy more buildings and keep clicking to unlock them.</div>`;
+    }
+    for (const u of list) {
+      const el = document.createElement("div");
+      el.className = "up";
+      el.dataset.id = u.id;
+      el.innerHTML = `<div class="utop"><span class="uname"></span><span class="ucost"></span></div><div class="udesc"></div>`;
+      el.querySelector(".uname").textContent = u.name;
+      el.querySelector(".ucost").textContent = fmt(u.cost);
+      el.querySelector(".udesc").textContent = u.desc;
+      el.onclick = () => buyUp(u.id);
+      box.appendChild(el);
+    }
+  }
+  box.querySelectorAll(".up").forEach(el => el.classList.toggle("no", S.dust < UP_BY_ID[el.dataset.id].cost));
+}
+
+function renderStats(force) {
+  if (!$("pane-stats").classList.contains("on") && !force) return;
+  const gain = coresFor(S.runEarned);
+  const nextAt = Math.pow(coresFor(S.runEarned) + 1, 2) * 1e9;
+  const rows = [
+    ["Stardust per second", fmt(perSecond(), true)],
+    ["Stardust per click", fmt(clickValue(), true)],
+    ["Critical chance", Math.round(critChance() * 100) + "%"],
+    ["Earned this run", fmt(S.runEarned)],
+    ["Earned all time", fmt(S.allEarned)],
+    ["Earned from clicks", fmt(S.clickEarned)],
+    ["Planet clicks", fmt(S.totalClicks)],
+    ["Critical clicks", fmt(S.crits)],
+    ["Comets caught", fmt(S.cometsCaught)],
+    ["Buildings owned", fmt(totalGens())],
+    ["Upgrades bought", Object.keys(S.ups).length + " / " + UPGRADES.length],
+    ["Star Cores", `${S.cores} (+${S.cores * 5}%)`],
+    ["Supernovas", S.novas],
+    ["Playing for", fmtTime((Date.now() - S.started) / 1000)],
+  ];
+  let html = `<h3>Stats</h3>` + rows.map(([a, b]) => `<div class="stat"><span>${a}</span><span>${b}</span></div>`).join("");
+  html += `<div id="novaBox"><b>🌟 Supernova</b><p>Blow up your world to start over with Star Cores.
+    Each core adds 5% to all production forever. You'd get <b>${gain}</b> core${gain === 1 ? "" : "s"} now.
+    ${gain < 1 ? `Earn ${fmt(1e9)} stardust this run to get your first.` : `Next core at ${fmt(nextAt)} earned this run.`}</p>
+    <button class="bigBtn" id="novaBtn" ${gain < 1 ? "disabled" : ""}>Go supernova (+${gain})</button></div>`;
+  const got = Object.keys(S.achs).length;
+  html += `<h3>Achievements · ${got}/${ACHIEVEMENTS.length} (+${got}% production)</h3>`;
+  html += ACHIEVEMENTS.map(a => `<div class="ach ${S.achs[a.id] ? "got" : ""}"><div class="medal">★</div>
+    <div><b>${a.name}</b><div class="adesc">${a.desc}</div></div></div>`).join("");
+  html += `<button class="ghostBtn" id="wipeBtn">Delete save and restart</button>`;
+  $("stats").innerHTML = html;
+  $("novaBtn").onclick = goNova;
+  $("wipeBtn").onclick = () => {
+    if (!confirm("Delete everything, including Star Cores and achievements?")) return;
+    try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+    S = freshRun(); renderAll(true); setMuteIcon();
+  };
+}
+
+function renderHud() {
+  $("dust").firstChild.textContent = fmt(S.dust);
+  $("rate").textContent = fmt(perSecond(), true) + " per second";
+  const left = (S.boostUntil - Date.now()) / 1000;
+  const tag = $("boostTag");
+  if (left > 0) { tag.hidden = false; tag.textContent = `☄️ ×${S.boostMult} boost · ${Math.ceil(left)}s`; }
+  else tag.hidden = true;
+  const si = stageIndex(), st = PLANET_STAGES[si], nx = PLANET_STAGES[si + 1];
+  $("stageName").innerHTML = `<b>${st.name}</b>` +
+    (nx ? ` · grows at ${fmt(nx.at)} earned` : " · fully grown") + (S.cores ? ` · ⭐ ${S.cores} cores` : "");
+  document.title = fmt(S.dust) + " stardust · Star Harvest";
+}
+
+function checkAchievements() {
+  for (const a of ACHIEVEMENTS) {
+    if (!S.achs[a.id] && a.test()) {
+      S.achs[a.id] = 1;
+      sfx.ach();
+      toast(`★ Achievement: ${a.name}`);
+    }
+  }
+}
+
+function renderAll(force) {
+  renderHud(); renderGens(); renderUps(force); renderStats(force);
+}
+
+// ---------- Boot ----------
+const loaded = load();
+setMuteIcon();
+resize();
+buildGenList();
+if (loaded) {
+  // Offline earnings: half speed, up to 8 hours
+  const away = Math.min(8 * 3600, (Date.now() - (loaded.lastTick || Date.now())) / 1000);
+  S.boostUntil = 0;
+  const gain = basePerSecond() * away * 0.5;
+  if (away > 60 && gain > 0) {
+    earn(gain, false);
+    modal("Welcome back!", `While you were away for ${fmtTime(away)}, your buildings harvested ${fmt(gain)} stardust.`);
+  }
+}
+renderAll(true);
+setInterval(() => { renderHud(); renderGens(); renderUps(); checkAchievements(); }, 100);
+setInterval(() => renderStats(), 1000);
+setInterval(save, 5000);
+window.addEventListener("beforeunload", save);
+document.addEventListener("visibilitychange", () => { if (document.hidden) save(); });
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

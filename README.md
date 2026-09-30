@@ -82,3 +82,20 @@ Four extra missile skins unlock as your best score climbs.
 | `js/collision.js` | Simple collision shapes |
 
 three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+---
+
+# Star Harvest
+
+A second game in this repo: an idle clicker in `star-harvest/index.html`. Click the planet to harvest stardust, then spend it on buildings that harvest for you. It's a single file with no dependencies, so you can double-click it to play, or upload it anywhere.
+
+- **Buildings:** there are 10 (Dust Drone up to Galaxy Engine). Each one costs 15% more than the last. Buy ×1, ×10, ×100 or Max at a time.
+- **Upgrades:** double what a building makes, double your clicks, let clicks earn a share of your per-second income, and more.
+- **Critical clicks** (5%) are worth ×10.
+- **Comets** fly past now and then. Click one for a lump of stardust or a ×7 or ×77 production boost.
+- **Your planet grows** as you earn: Barren Rock → Ice World → Ocean World → Ringed Giant → Storm Giant → Molten World → Newborn Star.
+- **Supernova** (Stats tab) resets your run for Star Cores. Each core adds +5% to all production for good.
+- **Achievements** add +1% production each.
+- **Saving:** progress saves automatically to your browser. Your buildings keep harvesting at half speed while you're away, for up to 8 hours.
+
+Press M to mute.
