@@ -82,3 +82,21 @@ Four extra missile skins unlock as your best score climbs.
 | `js/collision.js` | Simple collision shapes |
 
 three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+---
+
+# Cluckworks
+
+An idle egg-farm game in `cluckworks/`. You start with two hens and $15. Tap hens to make them lay, pick up the eggs, sell them at the market, then buy machines (collector bot, delivery van, auto feeder) until the farm runs itself. Save $1M to retire. A full run takes about 20 minutes.
+
+Open `cluckworks/index.html` directly in a browser (double-click works, no server needed), or host the folder anywhere static. Progress saves in the browser.
+
+Modes: **Normal**, **Speedrun** (timer on, best times kept), **Endless**, and two challenges, **Pricey Hens** (hens cost double) and **Hungry Hens** (each egg eats 3 feed).
+
+Keys: **G** gather eggs, **S** sell basket, **F** buy feed, **H** buy hens, **M** mute.
+
+| File | What it does |
+| --- | --- |
+| `cluckworks/logic.js` | Game rules, prices and upgrade levels (no DOM) |
+| `cluckworks/ui.js` | Canvas farm, HUD, shop, saving and sound |
+| `tools/sim-cluckworks.mjs` | Headless bot that plays a run to check pacing: `npm run sim:cluckworks -- normal 2` |

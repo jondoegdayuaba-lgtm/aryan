@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Cluckworks</title>
+  <meta name="description" content="An idle egg-farm game: buy hens, feed them, sell their eggs, automate the farm and save enough to retire.">
+  <meta name="theme-color" content="#8fcf5b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%238fcf5b'/%3E%3Cellipse cx='32' cy='36' rx='16' ry='20' fill='%23fff6e0' stroke='%233a2a1a' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Cluck<span>works</span></div>
+    <div class="money">
+      <span id="money" class="num">$0</span>
+      <small id="income">$0/s</small>
+    </div>
+    <div id="goal" class="goal">
+      <div class="bar"><div id="goal-fill"></div></div>
+      <small id="goal-text"></small>
+    </div>
+    <div id="timer" class="timer num" hidden></div>
+    <div class="top-btns">
+      <button id="btn-mute" class="icon-btn" type="button" aria-label="Mute">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path id="mute-waves" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <button id="btn-menu" class="icon-btn" type="button" aria-label="Menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="2.4" rx="1.2"/><rect x="4" y="11" width="16" height="2.4" rx="1.2"/><rect x="4" y="16" width="16" height="2.4" rx="1.2"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <div id="scene-wrap">
+      <canvas id="scene" aria-label="Your farm. Tap eggs to pick them up, tap hens to make them lay, tap the market to sell."></canvas>
+      <div id="hint" class="hint"></div>
+      <button id="btn-retire" class="retire" type="button" hidden>Retire!</button>
+    </div>
+
+    <aside class="panel">
+      <section class="meters">
+        <div class="meter"><span>Feed</span><div class="bar"><div id="m-feed"></div></div><b id="t-feed"></b></div>
+        <div class="meter"><span>Floor</span><div class="bar"><div id="m-floor"></div></div><b id="t-floor"></b></div>
+        <div class="meter"><span>Basket</span><div class="bar"><div id="m-basket"></div></div><b id="t-basket"></b></div>
+      </section>
+
+      <section class="actions">
+        <button id="btn-gather" class="act" type="button"><b>Gather eggs</b><small id="c-gather"></small><kbd>G</kbd></button>
+        <button id="btn-sell" class="act act-sell" type="button"><b>Sell basket</b><small id="c-sell"></small><kbd>S</kbd></button>
+        <button id="btn-feed" class="act" type="button"><b>Buy feed</b><small id="c-feed"></small><kbd>F</kbd></button>
+        <div class="hen-buy">
+          <button id="btn-hen" class="act act-hen" type="button"><b id="l-hen">Buy hen</b><small id="c-hen"></small><kbd>H</kbd></button>
+          <div class="qty" role="group" aria-label="How many hens to buy">
+            <button type="button" data-qty="1" class="on">×1</button>
+            <button type="button" data-qty="10">×10</button>
+            <button type="button" data-qty="max">Max</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="shop">
+        <h2>Upgrades</h2>
+        <div id="shop"></div>
+        <p id="shop-more" class="more"></p>
+      </section>
+    </aside>
+  </main>
+
+  <section id="title" class="overlay" aria-labelledby="title-h">
+    <div class="card">
+      <div class="logo-egg" aria-hidden="true"></div>
+      <h1 id="title-h">Cluck<span>works</span></h1>
+      <p class="tagline">Two hens, fifteen dollars, one dream: retire rich on eggs.</p>
+      <button id="btn-continue" class="big" type="button" hidden>Continue</button>
+      <div id="modes" class="modes"></div>
+      <p class="how">Tap hens to make them lay, tap eggs to pick them up, tap the market to sell.
+        Buy machines so the farm runs itself. Treat your hens well.</p>
+    </div>
+  </section>
+
+  <section id="win" class="overlay" hidden aria-labelledby="win-h">
+    <div class="card">
+      <h1 id="win-h">Retired!</h1>
+      <p id="win-text" class="tagline"></p>
+      <dl id="win-stats" class="stats"></dl>
+      <div class="row">
+        <button id="btn-keep" class="big ghost" type="button">Keep farming</button>
+        <button id="btn-again" class="big" type="button">New game</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="logic.js"></script>
+  <script src="ui.js"></script>
+</body>
+</html>
