@@ -80,6 +80,7 @@ export class PlayerController {
         this.buildKind = kinds[(kinds.indexOf(this.buildKind) + inp.mouse.wheel + 4) % 4];
       }
       if (inp.hit('KeyE')) it.interact = true;
+      if (inp.hit('KeyF') && this.editPiece) g.building.edit(a, this.editPiece);
       if (inp.hit('KeyG')) g.dropCurrent(a);
       if (inp.hit('KeyB') && a.mode === 'ground') a.dancing = !a.dancing;
     }
@@ -103,6 +104,9 @@ export class PlayerController {
     this.aimOrigin.copy(rig.camera.position);
     it.aimOrigin = this.aimOrigin;
     it.aimDir = this.aimDir;
+
+    // ---- editable piece under the crosshair
+    this.editPiece = a.mode === 'ground' && a.alive ? g.building.editTarget(a, this.aimOrigin, this.aimDir) : null;
 
     // ---- build preview
     if (this.buildMode && a.mode === 'ground' && a.alive) {

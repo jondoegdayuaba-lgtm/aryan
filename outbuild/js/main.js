@@ -524,6 +524,9 @@ class Game {
     if (actor.isPlayer) this.effects.buildPuff(b);
     this.audio.build(piece.mat, new THREE.Vector3((b.minX + b.maxX) / 2, b.minY + 1, (b.minZ + b.maxZ) / 2), actor.isPlayer);
   }
+  onEdit(actor, piece) {
+    if (actor.isPlayer) this.audio.build(piece.mat, new THREE.Vector3(piece.ix * 4 + 2, piece.iy * 3 + 1.5, piece.iz * 4 + 2), true);
+  }
   onNoMats(actor, mat) { if (actor.isPlayer) this.hud.announce(`Not enough ${MATS[mat].label.toLowerCase()}`, 'Harvest more with your harvesting tool', 1.2, 'small'); }
   onBuildMat(mat) { this.audio.ui(); }
   onSwing(actor) { if (actor.isPlayer) this.audio.swing(true); }

@@ -39,6 +39,7 @@ A mouse and keyboard are needed. Click the game to lock the pointer.
 | **R** | Reload; in build mode, change material |
 | **Q** | Toggle build mode |
 | **Z / X / C / V** | Wall / floor / ramp / roof (also enters build mode) |
+| **F** | Edit your own build: walls cycle window → door → solid; ramps turn |
 | **M** or **Tab** | Map |
 | **B** | Dance |
 | **Esc** | Pause |

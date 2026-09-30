@@ -63,6 +63,36 @@ export class Building {
 
   canAfford(actor, mat) { return actor.inv.mats[mat] >= BUILD_COST; }
 
+  // The actor's own wall or ramp under the crosshair, within reach.
+  editTarget(actor, origin, dir) {
+    const g = this.game;
+    const ok = (p) => p && p.alive && p.owner === actor && !p.house && (p.kind === 'wall' || p.kind === 'ramp');
+    const h = g.physics.raycast(origin, dir, 12, { shots: false, terrain: false });
+    if (h.kind === 'collider' && h.collider.kind === 'piece' && ok(h.collider.owner) &&
+      h.point.distanceTo(actor.eye(new THREE.Vector3())) <= 6) return h.collider.owner;
+    // looking through a window or door: use the grid slot the crosshair points at instead
+    const ws = this.target(actor, 'wall', origin, dir);
+    const w = ws && g.pieces.get('wall', ws);
+    if (ok(w)) return w;
+    const rs = this.target(actor, 'ramp', origin, dir);
+    const r = rs && g.pieces.get('ramp', rs);
+    return ok(r) ? r : null;
+  }
+
+  // Walls cycle solid -> window -> door; ramps turn a quarter.
+  edit(actor, p) {
+    const g = this.game;
+    let n = null;
+    if (p.kind === 'wall') {
+      const next = { null: '_window', bwindow: '_door', bdoor: '' }[p.opening];
+      n = g.pieces.replace(p, `Wall_${p.mat}${next}`);
+    } else if (p.kind === 'ramp') {
+      n = g.pieces.replace(p, p.model, { dir: ((p.dir || 0) + 1) % 4 });
+    }
+    if (n && g.onEdit) g.onEdit(actor, n);
+    return n;
+  }
+
   tryPlace(actor, slot, kind, mat) {
     const g = this.game;
     const now = g.time;

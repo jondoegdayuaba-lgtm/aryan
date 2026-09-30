@@ -18,6 +18,10 @@ export const MODELS = {
   Ramp_metal: { kind: 'ramp', mat: 'metal' },
   Cone_wood: { kind: 'cone', mat: 'wood' }, Cone_stone: { kind: 'cone', mat: 'stone' },
   Cone_metal: { kind: 'cone', mat: 'metal' },
+  // edited walls (player builds)
+  Wall_wood_window: { kind: 'wall', mat: 'wood', opening: 'bwindow' }, Wall_wood_door: { kind: 'wall', mat: 'wood', opening: 'bdoor' },
+  Wall_stone_window: { kind: 'wall', mat: 'stone', opening: 'bwindow' }, Wall_stone_door: { kind: 'wall', mat: 'stone', opening: 'bdoor' },
+  Wall_metal_window: { kind: 'wall', mat: 'metal', opening: 'bwindow' }, Wall_metal_door: { kind: 'wall', mat: 'metal', opening: 'bdoor' },
   HouseWall: { kind: 'wall', mat: 'wood', hp: 180 },
   HouseWallWindow: { kind: 'wall', mat: 'wood', opening: 'window', hp: 160 },
   HouseWallDoor: { kind: 'wall', mat: 'wood', opening: 'door', hp: 160 },
@@ -41,6 +45,8 @@ const OPENINGS = {
   window: [-0.65, 0.65, 1.0, 2.2],
   door: [-0.6, 0.6, 0.0, 2.3],
   garage: [-1.5, 1.5, 0.0, 2.6],
+  bwindow: [-0.7, 0.7, 1.0, 2.2],
+  bdoor: [-0.65, 0.65, 0.0, 2.35],
 };
 
 // ----------------------------------------------------------------------------- instanced batches
@@ -466,6 +472,30 @@ export class PieceSystem {
       this.collapseQueue = this.collapseQueue.filter((c) => c.t > 0);
       for (const c of due) if (c.p.alive) this.destroy(c.p, 'collapse', false);
     }
+  }
+
+  // Swap a piece for another model in the same slot (build edits), keeping its health and build progress.
+  replace(p, model, changes = {}) {
+    if (!p.alive) return null;
+    const frac = p.hp / p.maxHp;
+    const { owner, progress, buildRate, house } = p;
+    p.alive = false;
+    this.pieces.delete(p.key);
+    this.active.delete(p);
+    if (p.batch) p.batch.remove(p);
+    for (const c of p.colliders) this.physics.remove(c);
+    const slot = { ix: p.ix, iy: p.iy, iz: p.iz, axis: p.axis, dir: p.dir, ...changes };
+    const onPlaced = this.onPlaced;
+    this.onPlaced = null;
+    const n = this.add(model, slot, { owner, house });
+    this.onPlaced = onPlaced;
+    if (!n) return null;
+    n.hp = n.maxHp * frac;
+    n.progress = progress;
+    n.buildRate = buildRate;
+    if (progress < 1) { this.active.add(n); n.batch.setState(n.index, progress, 0); }
+    n.grounded = p.grounded || n.grounded;
+    return n;
   }
 
   clear() {

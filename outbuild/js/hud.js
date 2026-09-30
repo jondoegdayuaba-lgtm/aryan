@@ -260,6 +260,13 @@ export class Hud {
     const a = g.player;
     const el = $('prompt');
     const t = g.interactTarget(a);
+    if ((!t || a.buildMode) && g.controller.editPiece && a.mode === 'ground') {
+      el.hidden = false;
+      const p = g.controller.editPiece;
+      const what = p.kind === 'ramp' ? 'Turn ramp' : { null: 'Add window', bwindow: 'Make door', bdoor: 'Close wall' }[p.opening];
+      el.innerHTML = `<kbd>F</kbd> ${what}`;
+      return;
+    }
     if (!t || a.mode !== 'ground' || a.buildMode) { el.hidden = true; return; }
     el.hidden = false;
     if (t.kind === 'container') {

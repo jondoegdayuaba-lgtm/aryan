@@ -128,36 +128,56 @@ def cone_faces(b, mat, thickness, apex=CONE_H, inset=0.0):
 
 # ----------------------------------------------------------------------------- player builds
 
-def build_wall(kind):
+BUILD_HOLES = {'window': (-0.7, 0.7, 1.0, 2.2), 'door': (-0.65, 0.65, 0.0, 2.35)}
+
+
+def build_wall(kind, opening=None):
+    """Player-built wall; `opening` ('window' | 'door') is what an edit turns it into."""
     b = C.MeshBuilder()
+    hole = BUILD_HOLES.get(opening)
+    holes = [hole] if hole else []
     if kind == 'wood':
         panel, frame = M('BuildWood'), M('BuildWoodFrame')
-        b.box((S - 0.3, 0.14, H - 0.3), loc=(0, 0, H / 2), mat=panel)
+        wall_with_openings(b, 0.14, panel, holes, trim=frame if hole else None, trim_w=0.14, trim_d=0.05,
+                           x0=-HALF + 0.3, x1=HALF - 0.3, z0=0.3, z1=H - 0.3)
         for x in (-HALF + 0.15, HALF - 0.15):
             b.box((0.3, 0.24, H), loc=(x, 0, H / 2), mat=frame, bevel=0.03)
         for z in (0.15, H - 0.15):
+            if hole and z < 1 and hole[2] < 0.01:
+                # a door cuts the bottom beam
+                for (a0, a1) in ((-HALF + 0.3, hole[0]), (hole[1], HALF - 0.3)):
+                    b.box((a1 - a0, 0.22, 0.3), loc=((a0 + a1) / 2, 0, z), mat=frame, bevel=0.03)
+                continue
             b.box((S - 0.3, 0.22, 0.3), loc=(0, 0, z), mat=frame, bevel=0.03)
-        # diagonal brace on both faces
-        ln = math.hypot(S - 0.6, H - 0.6)
-        ang = math.atan2(H - 0.6, S - 0.6)
-        for y in (0.085, -0.085):
-            b.box((ln, 0.04, 0.2), loc=(0, y, H / 2), rot=(0, -ang, 0), mat=frame)
+        if not hole:
+            ln = math.hypot(S - 0.6, H - 0.6)
+            ang = math.atan2(H - 0.6, S - 0.6)
+            for y in (0.085, -0.085):
+                b.box((ln, 0.04, 0.2), loc=(0, y, H / 2), rot=(0, -ang, 0), mat=frame)
     elif kind == 'stone':
         body, trim = M('BuildStone'), M('BuildStoneTrim')
-        b.box((S, 0.3, H), loc=(0, 0, H / 2), mat=body, bevel=0.03)
+        if hole:
+            wall_with_openings(b, 0.3, body, holes, trim=trim, trim_w=0.16, trim_d=0.05)
+        else:
+            b.box((S, 0.3, H), loc=(0, 0, H / 2), mat=body, bevel=0.03)
         b.box((S + 0.02, 0.36, 0.22), loc=(0, 0, H - 0.11), mat=trim, bevel=0.04)
-        b.box((S + 0.02, 0.38, 0.25), loc=(0, 0, 0.125), mat=trim, bevel=0.04)
+        if not (hole and hole[2] < 0.01):
+            b.box((S + 0.02, 0.38, 0.25), loc=(0, 0, 0.125), mat=trim, bevel=0.04)
         for x in (-HALF + 0.2, HALF - 0.2):
             b.box((0.4, 0.36, H - 0.4), loc=(x, 0, H / 2), mat=trim, bevel=0.04)
     else:
         panel, frame = M('BuildMetal'), M('BuildMetalFrame')
-        b.box((S - 0.2, 0.1, H - 0.2), loc=(0, 0, H / 2), mat=panel)
+        wall_with_openings(b, 0.1, panel, holes, trim=frame if hole else None, trim_w=0.12, trim_d=0.05,
+                           x0=-HALF + 0.2, x1=HALF - 0.2, z0=0.2, z1=H - 0.2)
         for x in (-HALF + 0.1, HALF - 0.1):
             # I-beam posts
             b.box((0.2, 0.26, H), loc=(x, 0, H / 2), mat=frame, bevel=0.015)
         for z in (0.1, H / 2, H - 0.1):
+            if hole and hole[2] <= z <= hole[3]:
+                continue
             b.box((S - 0.2, 0.2, 0.16 if z != H / 2 else 0.1), loc=(0, 0, z), mat=frame, bevel=0.015)
-    return finish(b.to_object('Wall_' + kind))
+    name = 'Wall_' + kind + ('_' + opening if opening else '')
+    return finish(b.to_object(name))
 
 
 def build_floor(kind):
@@ -351,6 +371,8 @@ def build(preview=None):
     objs = []
     for k in ('wood', 'stone', 'metal'):
         objs += [build_wall(k), build_floor(k), build_ramp(k), build_cone(k)]
+    for k in ('wood', 'stone', 'metal'):
+        objs += [build_wall(k, 'window'), build_wall(k, 'door')]
     for style in ('siding', 'brick'):
         for op in ('', 'window', 'door'):
             objs.append(house_wall(style, op))
