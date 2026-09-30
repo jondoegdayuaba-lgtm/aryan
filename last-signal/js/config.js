@@ -71,6 +71,6 @@ export const SURVIVAL = {
 // Graphics tiers: the game starts on one of these and steps down if the frame rate drops.
 export const QUALITY = {
   low:    { scale: 0.7,  shadows: 0,    shadowMap: 1024, reflections: 0,   bloom: false, grass: 0.35, trees: 0.6, view: 1500, msaa: 0, godRays: false },
-  medium: { scale: 0.85, shadows: 2,    shadowMap: 1024, reflections: 256, bloom: true,  grass: 0.7,  trees: 0.85, view: 2400, msaa: 2, godRays: false },
-  high:   { scale: 1,    shadows: 2,    shadowMap: 2048, reflections: 512, bloom: true,  grass: 1,    trees: 1,    view: 3200, msaa: 4, godRays: true },
+  medium: { scale: 0.8,  shadows: 2,    shadowMap: 1024, reflections: 0,   bloom: true,  grass: 0.6,  trees: 0.75, view: 1800, msaa: 0, godRays: false },
+  high:   { scale: 0.9,  shadows: 2,    shadowMap: 2048, reflections: 256, bloom: true,  grass: 0.85, trees: 0.9,  view: 2600, msaa: 2, godRays: true },
 };

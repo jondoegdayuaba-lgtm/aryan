@@ -69,7 +69,7 @@ function applyQuality(name) {
   game.qualityName = name;
   game.quality = q;
   const { renderer, post, sun, water, terrain } = game;
-  const dprCap = game.coarse ? 1.5 : 2;
+  const dprCap = game.coarse ? 1.25 : 1.4;
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, dprCap));
   post.setQuality({ scale: q.scale, msaa: q.msaa, bloom: q.bloom, godRays: q.godRays });
   const shadowsOn = q.shadows > 0;
@@ -185,17 +185,17 @@ function adapt(dt) {
   perf.cooldown -= 1.5;
   if (perf.cooldown > 0) return;
   const q = game.quality;
-  if (fps < 38) {
+  if (fps < 46) {
     perf.slowFor++; perf.fastFor = 0;
-    if (perf.slowFor >= 2) {
+    if (perf.slowFor >= 1) {
       perf.slowFor = 0; perf.cooldown = 4;
-      if (game.post.scale > 0.6) game.post.setScale(Math.max(0.55, game.post.scale - 0.12));
+      if (game.post.scale > 0.55) game.post.setScale(Math.max(0.5, game.post.scale - 0.15));
       else if (game.qualityName === 'high') { applyQuality('medium'); }
       else if (game.qualityName === 'medium') { applyQuality('low'); }
     }
-  } else if (fps > 57 && game.post.scale < q.scale) {
+  } else if (fps > 58 && game.post.scale < q.scale) {
     perf.fastFor++; perf.slowFor = 0;
-    if (perf.fastFor >= 4) { perf.fastFor = 0; perf.cooldown = 6; game.post.setScale(Math.min(q.scale, game.post.scale + 0.08)); }
+    if (perf.fastFor >= 6) { perf.fastFor = 0; perf.cooldown = 6; game.post.setScale(Math.min(q.scale, game.post.scale + 0.08)); }
   } else { perf.slowFor = 0; perf.fastFor = 0; }
 }
 
@@ -258,7 +258,7 @@ async function boot() {
   game.scene.add(game.grass.group);
   game.camera.layers.enable(1);
 
-  const start = params.get('q') || store.get('quality', coarse ? 'medium' : 'high');
+  const start = params.get('q') || store.get('quality', 'medium');
   applyQuality(QUALITY[start] ? start : 'high');
   game.flora.lodScale = game.quality.trees;
 
