@@ -1,3 +1,28 @@
+# Block Wars
+
+`block-wars.html` is a separate game in this repo: a first-person voxel bed-defence game in one self-contained HTML file. Double-click it to play in your browser. It needs an internet connection the first time, because it loads three.js (r128) from cdnjs. Everything else (blocky textures, models, sounds) is generated in code.
+
+You play Red against three AI teams (Blue, Green, Yellow). In Doubles mode each team has two players and a bot is your teammate. Each team has a floating island with a bed, a generator, an Item Shop and a Team Upgrades NPC. While your bed stands, you respawn 5 seconds after dying. Once it's broken, your next death is a final kill. The last team standing wins.
+
+| Control | Action |
+| --- | --- |
+| WASD, mouse | Move and look (you sprint automatically when moving forward) |
+| Space / Shift | Jump / sneak (sneaking stops you walking off edges) |
+| Left click | Hit, or hold to break placed blocks and beds |
+| Right click | Place blocks, draw the bow, throw or use items |
+| 1–9, mouse wheel | Pick a hotbar slot |
+| E | Open the Item Shop or Team Upgrades when standing next to the NPC |
+| Esc / P | Pause (sensitivity, field of view, shadows, FPS counter) |
+
+- **Map:** four team islands, four diamond islands on the diagonals, and a middle island with two emerald generators. Map blocks can't be broken, only blocks that players place and the beds.
+- **Resources:** team generators drop iron and gold. Diamond generators spawn every 30 s (23 s, then 15 s after upgrades) and emerald generators every 60 s (45 s, then 30 s). Walk over a pile to collect it. When you kill someone, you get their resources.
+- **Item Shop:** wool, hardened clay, planks, end stone and obsidian. Stone, iron and diamond swords, and a knockback stick. Chainmail, iron and diamond armor, which you keep when you die. Pickaxe and axe tiers, which drop one tier when you die. Bow and arrows. Golden apple, fireball, TNT, warp pearl and bridge egg.
+- **Team Upgrades (diamonds):** Sharpened Swords, Reinforced Armor I–IV, Iron Forge I–IV, Heal Pool and Alarm Trap.
+- **Timeline:** Diamond II at 5:00, Emerald II at 10:00, Diamond III at 15:00, Emerald III at 20:00. All beds break at 25:00, and the game ends in a draw at 30:00.
+- **Bots:** they collect resources, shop, wall in their bed, bridge across the void, fight (strafing and jump crits), shoot bows, throw fireballs, defend when their trap goes off, and break beds. Difficulty (Easy, Normal or Hard) changes their reaction time, aim, bridging speed and how soon they rush.
+
+---
+
 # Missile Run
 
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.
