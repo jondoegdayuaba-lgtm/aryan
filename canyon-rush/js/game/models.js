@@ -3,7 +3,7 @@
 // window.__CANYON_MODELS__), otherwise they're fetched from models/.
 import { GLTFLoader } from '../../../vendor/three/addons/loaders/GLTFLoader.js';
 
-export const MODEL_FILES = ['rider.glb'];
+export const MODEL_FILES = ['rider.glb', 'bike-volt.glb', 'bike-sting.glb', 'bike-storm.glb'];
 
 const cache = new Map();
 

@@ -1,6 +1,6 @@
 # Canyon Rush and Missile Run
 
-Two 3D browser games made with plain HTML, CSS and JavaScript and [three.js](https://threejs.org) (bundled in `vendor/three`). Neither needs a build step to run, and neither has any image or sound files: the worlds and textures are generated in code, and every sound is synthesised with the Web Audio API. Most models are built in code too; Canyon Rush's rider is modelled in [Blender](https://www.blender.org) by a script (see below).
+Two 3D browser games made with plain HTML, CSS and JavaScript and [three.js](https://threejs.org) (bundled in `vendor/three`). Neither needs a build step to run, and neither has any image or sound files: the worlds and textures are generated in code, and every sound is synthesised with the Web Audio API. Most models are built in code too; Canyon Rush's bikes and rider are modelled in [Blender](https://www.blender.org) by scripts (see below).
 
 ## Canyon Rush
 
@@ -63,10 +63,11 @@ Style points come from wheelies, air time, tricks, backflips, 360s, clean landin
 | --- | --- |
 | `canyon-rush/js/main.js` | Game states, loop, menus, garage, rally and wheelie challenge |
 | `canyon-rush/js/game/bike.js` | E-bike physics: suspension, motor, tyres, wheelies, air control, crashes; the three bikes' specs |
-| `canyon-rush/js/game/bikemodel.js` | The bikes' 3D models and colours |
+| `canyon-rush/js/game/bikemodel.js` | Puts the bike together from its Blender parts, moves the steering, suspension and wheels, and colours it |
 | `canyon-rush/js/game/rider.js` | The rider, posed with IK on the Blender model's skeleton |
 | `canyon-rush/js/game/models.js` | Loads the Blender models |
 | `canyon-rush/models/` | The Blender models, as glTF (`.glb`) files |
+| `tools/blender/bikes.py` | Builds the three bikes in Blender and exports `bike-volt.glb`, `bike-sting.glb` and `bike-storm.glb` |
 | `tools/blender/rider.py` | Builds the rider in Blender and exports `rider.glb` |
 | `canyon-rush/js/game/stunts.js` | Style points |
 | `canyon-rush/js/game/tricks.js` | The freestyle tricks: names, buttons, points and timing |
@@ -89,16 +90,17 @@ npm install
 npm run build:desktop
 ```
 
-The rider is made by a Blender script: a body grown over a skeleton with Blender's Skin modifier and smoothed, then weighted to an armature so it bends at the joints, in motocross kit with a helmet, goggles, neck brace and buckled boots. To change it, edit `tools/blender/rider.py` and run it with Blender's Python module (Python 3.11), or inside Blender, then rebuild the one-file game:
+The bikes and the rider are made by Blender scripts. `bikes.py` builds each bike from the same dimensions the physics uses (wheelbase, wheel size, steering head, swingarm pivot), split into the parts that move on their own: the body, the fork, the sliding lower fork legs, the swingarm and the two wheels. `rider.py` grows a body over a skeleton with Blender's Skin modifier, smooths it and weights it to an armature so it bends at the joints, in motocross kit with a helmet, goggles, neck brace and buckled boots. To change them, edit the scripts and run them with Blender's Python module (Python 3.11), or inside Blender, then rebuild the one-file game:
 
 ```sh
 pip install bpy==4.2.0
+python tools/blender/bikes.py                       # writes canyon-rush/models/bike-*.glb
 python tools/blender/rider.py                       # writes canyon-rush/models/rider.glb
 python tools/blender/rider.py --preview /tmp/rider  # also renders /tmp/rider_front.png etc.
-blender -b -P tools/blender/rider.py                # the same, from an installed Blender
+blender -b -P tools/blender/bikes.py                # the same, from an installed Blender
 ```
 
-Open `canyon-rush/models/rider.glb` in Blender (File → Import → glTF) to look at it or edit it by hand. The material names (jersey, jersey2, pants, boots, gloves, helmet, helmet2, lens, dark) are how the game recolours the rider for each bike.
+Open the `.glb` files in `canyon-rush/models/` in Blender (File → Import → glTF) to look at them or edit them by hand. Material names are how the game colours things for each bike: the bikes use panel, plastic, accent, plate, seat, frame, fork and so on, and the rider uses jersey, jersey2, pants, boots, gloves, helmet, helmet2, lens and dark. The side panels and number plates carry UVs for the livery and numbers the game paints.
 
 ## Missile Run
 

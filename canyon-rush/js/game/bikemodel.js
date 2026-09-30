@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { canvasTexture } from '../render/textures.js';
 import { useTerrainLight } from '../render/shaderpatch.js';
-import { mergeGeometries } from '../render/geomutil.js';
+import { getModel } from './models.js';
 import { Rider } from './rider.js';
 import { TRICKS } from './tricks.js';
 
@@ -85,39 +85,6 @@ function helixGeometry(radius, turns, tube) {
     pts.push(new THREE.Vector3(Math.cos(a) * radius, t - 0.5, Math.sin(a) * radius));
   }
   return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), n, tube, 6, false);
-}
-
-// Tube along a polyline of [z, y] points at a given x.
-function tubePath(points, x, r, segs = 24) {
-  const curve = new THREE.CatmullRomCurve3(points.map(([z, y]) => new THREE.Vector3(x, y, z)), false, 'catmullrom', 0.2);
-  return new THREE.TubeGeometry(curve, segs, r, 8, false);
-}
-
-// A flat side profile (shape in z/y) extruded across x, centred on x0, with side-on UVs.
-function slab(shape, width, x0 = 0, bevel = 0.008) {
-  const g = new THREE.ExtrudeGeometry(shape, { depth: Math.max(0.001, width - 2 * bevel), bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 10 });
-  g.rotateY(-Math.PI / 2);
-  g.translate(x0 + (width - 2 * bevel) / 2, 0, 0);
-  g.computeVertexNormals();
-  return g;
-}
-
-function shapeFrom(points) {
-  const s = new THREE.Shape();
-  points.forEach(([z, y], i) => (i ? s.lineTo(z, y) : s.moveTo(z, y)));
-  s.closePath();
-  return s;
-}
-
-// Planar side UVs over the given z/y box (for the livery canvas).
-function sideUVs(g, z0, z1, y0, y1) {
-  const p = g.attributes.position, uv = g.attributes.uv;
-  for (let i = 0; i < p.count; i++) {
-    const u = (p.getZ(i) - z0) / (z1 - z0), v = (p.getY(i) - y0) / (y1 - y0);
-    uv.setXY(i, p.getX(i) < 0 ? u : 1 - u, v);
-  }
-  uv.needsUpdate = true;
-  return g;
 }
 
 function panelTexture(look) {
@@ -260,227 +227,58 @@ export class BikeModel {
 
     const model = (this.model = new THREE.Group());
     this.leanPivot.add(model);
-    model.position.y = 0;
+    const M = this.mat;
+
+    // The parts are modelled in Blender (tools/blender/bikes.py), each in its
+    // own frame; the groups here move them the way the physics says.
+    const src = getModel(`bike-${spec.id}.glb`).scene;
+    const fill = (group, part) => {
+      src.getObjectByName(part).traverse((o) => {
+        if (!o.isMesh) return;
+        const g = o.geometry;
+        if (g.attributes.uv && !g.userData.uvFlipped) {
+          // glTF counts texture rows from the top; the livery canvases count from the bottom.
+          const uv = g.attributes.uv;
+          for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
+          g.userData.uvFlipped = true;
+        }
+        group.add(new THREE.Mesh(g, M[o.material.name] || M.black));
+      });
+    };
     const body = (this.body = new THREE.Group());
     model.add(body);
-    const add = (parent, geo, mat) => {
-      const m = new THREE.Mesh(geo, mat);
-      parent.add(m);
-      return m;
-    };
-    const M = this.mat;
-    const W = mx ? 1.1 : 1;
+    fill(body, 'body');
 
-    // ---- Frame: twin spars from the head tube round the battery to the swingarm pivot.
-    const head = new THREE.CylinderGeometry(0.038, 0.04, D.headTop.distanceTo(D.headBot) + 0.04, 14);
-    head.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(Yv, D.axisDir));
-    head.translate(...D.headTop.clone().add(D.headBot).multiplyScalar(0.5).toArray());
-    add(body, head, M.frame);
-    const hz = D.headBot.z, hy = D.headBot.y, tz = D.headTop.z, ty = D.headTop.y;
-    const pz = D.pivot.z, py = D.pivot.y;
-    for (const sx of [-1, 1]) {
-      const x = sx * 0.1 * W;
-      // Upper spar: head tube back and down to the pivot.
-      add(body, tubePath([[tz + 0.02, ty - 0.03], [tz + 0.25, seatY - 0.06], [pz - 0.02, seatY - 0.16], [pz + 0.02, py + 0.12], [pz + 0.02, py]], x, 0.024 * W), M.frame);
-      // Down tube and cradle under the battery.
-      add(body, tubePath([[hz, hy + 0.02], [hz + 0.08, 0.5], [hz + 0.14, 0.32 + (mx ? 0.03 : 0)], [pz - 0.12, 0.3 + (mx ? 0.04 : 0)], [pz, py - 0.04]], x * 0.92, 0.02 * W), M.frame);
-      // Rear subframe up to the seat.
-      add(body, tubePath([[pz + 0.03, py + 0.1], [zr - 0.12, seatY - 0.1], [zr + 0.1, seatY - 0.06]], x * 0.85, 0.013), M.frame);
-      add(body, tubePath([[pz - 0.02, seatY - 0.16], [zr - 0.06, seatY - 0.08]], x * 0.85, 0.013), M.frame);
-    }
-    // Battery pack between the spars.
-    const bz0 = hz + 0.1, bz1 = pz - 0.06, by0 = mx ? 0.36 : 0.33, by1 = seatY - (mx ? 0.12 : 0.1);
-    const batt = new THREE.BoxGeometry(0.19 * W, by1 - by0, bz1 - bz0, 1, 1, 1);
-    batt.translate(0, (by0 + by1) / 2, (bz0 + bz1) / 2);
-    add(body, batt, M.battery);
-    // Motor, low behind the battery, and its controller.
-    const motor = new THREE.CylinderGeometry(0.105 * W, 0.105 * W, 0.15, 24);
-    motor.rotateZ(Math.PI / 2);
-    motor.translate(0.02, py - 0.06, pz - 0.06);
-    add(body, motor, M.alu);
-    const fins = [];
-    for (let i = 0; i < 8; i++) {
-      const f = new THREE.BoxGeometry(0.16, 0.012, 0.21 * W);
-      f.rotateX((i / 8) * Math.PI);
-      f.translate(0.02, py - 0.06, pz - 0.06);
-      fins.push(f);
-    }
-    add(body, mergeGeometries(fins), M.black);
-    const ctrl = new THREE.BoxGeometry(0.12, 0.08, 0.2);
-    ctrl.translate(0, by0 - 0.03, (bz0 + bz1) / 2 - 0.05);
-    add(body, ctrl, M.black);
-
-    // ---- Plastics: side panels over the battery (with the logo), tail, seat.
-    const panelShape = mx
-      ? shapeFrom([[tz + 0.06, ty - 0.06], [tz + 0.34, seatY + 0.02], [pz + 0.02, seatY - 0.02], [pz - 0.02, by0 + 0.2], [hz + 0.08, by0 + 0.16], [hz - 0.02, hy - 0.08]])
-      : shapeFrom([[tz + 0.08, ty - 0.08], [tz + 0.3, seatY - 0.02], [pz - 0.02, seatY - 0.05], [pz - 0.06, by0 + 0.1], [hz + 0.1, by0 + 0.08], [hz + 0.02, hy - 0.06]]);
-    for (const sx of [-1, 1]) {
-      const g = slab(panelShape, 0.018, sx * 0.108 * W, 0.006);
-      sideUVs(g, hz - 0.05, pz + 0.05, by0, seatY + 0.05);
-      add(body, g, M.panel);
-    }
-    // Tail section / rear fender, short and swept up.
-    const tailEnd = zr + (mx ? 0.3 : 0.22);
-    const tail = shapeFrom([[pz + 0.02, seatY - 0.12], [zr - 0.02, seatY - 0.1], [tailEnd - 0.02, seatY + 0.02], [tailEnd, seatY + 0.06], [zr + 0.02, seatY - 0.01], [pz + 0.02, seatY - 0.05]]);
-    add(body, slab(tail, 0.16 * W, 0, 0.01), M.plastic);
-    // Tail light.
-    const tl = new THREE.BoxGeometry(0.09, 0.028, 0.03);
-    tl.rotateX(-0.5);
-    tl.translate(0, seatY + 0.03, tailEnd - 0.03);
-    add(body, tl, M.tail);
-    if (mx) {
-      // Side number plates under the seat.
-      for (const sx of [-1, 1]) {
-        const plate = shapeFrom([[pz + 0.06, seatY - 0.09], [zr + 0.22, seatY - 0.06], [zr - 0.02, seatY - 0.3], [pz + 0.1, seatY - 0.3]]);
-        const g = slab(plate, 0.012, sx * 0.14, 0.004);
-        sideUVs(g, pz + 0.06, zr + 0.22, seatY - 0.3, seatY - 0.06);
-        add(body, g, M.plate);
-      }
-    }
-    // Seat: long and flat, rounded edges.
-    const seat = shapeFrom([[tz + 0.3, seatY - 0.04], [tz + 0.34, seatY + 0.01], [zr - 0.02, seatY + 0.025], [zr + 0.06, seatY + 0.01], [zr + 0.04, seatY - 0.05], [tz + 0.34, seatY - 0.06]]);
-    add(body, slab(seat, 0.22 * W, 0, 0.025), M.seat);
-    // Foot pegs.
-    for (const sx of [-1, 1]) {
-      const peg = new THREE.BoxGeometry(0.09, 0.025, 0.05);
-      peg.translate(sx * (D.peg.x + 0.01), D.peg.y, D.peg.z);
-      add(body, peg, M.steel);
-      const mount = new THREE.BoxGeometry(0.06, 0.1, 0.05);
-      mount.translate(sx * 0.13, D.peg.y + 0.05, D.peg.z);
-      add(body, mount, M.black);
-    }
-    // Rear shock mount on the frame.
-    const sm = new THREE.BoxGeometry(0.1, 0.06, 0.06);
-    sm.translate(0, D.shockTop.y, D.shockTop.z);
-    add(body, sm, M.frame);
-
-    // ---- Fork and bars: a group whose Y axis is the steering axis.
+    // Fork and bars: a group whose Y axis is the steering axis.
     const fork = (this.fork = new THREE.Group());
     fork.position.copy(D.axisBase);
     this.forkBase = new THREE.Quaternion().setFromUnitVectors(Yv, D.axisDir);
     fork.quaternion.copy(this.forkBase);
     model.add(fork);
+    fill(fork, 'fork');
     const fl = D.forkLen;
-    const spread = 0.085 * W;
-    // Triple clamps.
-    for (const t of [fl - (mx ? 0.2 : 0.17), fl]) {
-      const c = new THREE.BoxGeometry(spread * 2 + 0.07, 0.035, 0.07);
-      c.translate(0, t, 0.0);
-      add(fork, c, M.alu);
-    }
-    // Stanchions (upper tubes, fixed to the clamps).
-    for (const sx of [-1, 1]) {
-      const st = new THREE.CylinderGeometry(0.024, 0.024, 0.5, 14);
-      st.translate(sx * spread, fl - 0.23, -D.offset);
-      add(fork, st, M.stanchion);
-    }
-    // Bars, grips, levers, and a little display.
     const barW = mx ? 0.4 : 0.37;
-    const bar = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-barW, 0.1, 0.06), new THREE.Vector3(-barW * 0.55, 0.08, 0.04), new THREE.Vector3(-0.08, 0.06, 0),
-      new THREE.Vector3(0.08, 0.06, 0), new THREE.Vector3(barW * 0.55, 0.08, 0.04), new THREE.Vector3(barW, 0.1, 0.06),
-    ]);
-    const barGeo = new THREE.TubeGeometry(bar, 30, 0.0125, 8, false);
-    barGeo.translate(0, fl, 0);
-    add(fork, barGeo, M.black);
-    for (const sx of [-1, 1]) {
-      const grip = new THREE.CylinderGeometry(0.019, 0.019, 0.12, 10);
-      grip.rotateZ(Math.PI / 2);
-      grip.translate(sx * (barW - 0.05), fl + 0.098, 0.058);
-      add(fork, grip, M.black);
-      const lever = new THREE.BoxGeometry(0.14, 0.008, 0.02);
-      lever.rotateY(sx * 0.25);
-      lever.translate(sx * (barW - 0.1), fl + 0.1, -0.02);
-      add(fork, lever, M.alu);
-    }
-    const disp = new THREE.BoxGeometry(0.1, 0.04, 0.06);
-    disp.rotateX(-0.5);
-    disp.translate(0, fl + 0.09, 0.03);
-    add(fork, disp, M.black);
     // Grip positions (fork space) for the rider's hands.
     this.gripLocal = [new THREE.Vector3(-(barW - 0.06), fl + 0.098, 0.058), new THREE.Vector3(barW - 0.06, fl + 0.098, 0.058)];
-    // Front number plate and headlight.
-    const plate = new THREE.PlaneGeometry(mx ? 0.26 : 0.22, mx ? 0.24 : 0.2);
-    plate.rotateY(Math.PI);
-    plate.rotateX(0.18);
-    plate.translate(0, fl - 0.1, -0.09);
-    add(fork, plate, M.plate).material.side = THREE.DoubleSide;
-    const plateBack = new THREE.BoxGeometry(mx ? 0.27 : 0.23, mx ? 0.25 : 0.21, 0.012);
-    plateBack.rotateX(-0.18);
-    plateBack.translate(0, fl - 0.1, -0.08);
-    add(fork, plateBack, M.black);
-    const lamp = new THREE.CylinderGeometry(0.045, 0.045, 0.02, 20);
-    lamp.rotateX(Math.PI / 2 - 0.18);
-    lamp.translate(0, fl - (mx ? 0.22 : 0.18), -0.1);
-    add(fork, lamp, M.lamp);
-    // Front fender, high enough above the tyre to clear full compression.
-    const fenderCurve = new THREE.Shape();
-    const fr = R + 0.05;
-    fenderCurve.absarc(0, 0, fr, Math.PI * 0.3, Math.PI * 0.85, false);
-    fenderCurve.absarc(0, 0, fr + 0.022, Math.PI * 0.85, Math.PI * 0.3, true);
-    const fender = new THREE.ExtrudeGeometry(fenderCurve, { depth: 0.12 * W, bevelEnabled: false, curveSegments: 18 });
-    fender.translate(0, 0, -0.06 * W);
-    fender.rotateY(-Math.PI / 2);
-    fender.translate(0, S.travelF + 0.03, -D.offset);
-    add(fork, fender, M.plastic);
 
     // Slider: lower fork legs and the front wheel; moves along the axis.
     const slider = (this.slider = new THREE.Group());
     fork.add(slider);
-    for (const sx of [-1, 1]) {
-      const leg = new THREE.CylinderGeometry(0.034, 0.03, 0.4, 14);
-      leg.translate(sx * spread, 0.2, -D.offset);
-      add(slider, leg, M.fork);
-      const guard = new THREE.BoxGeometry(0.02, 0.26, 0.06);
-      guard.translate(sx * (spread + 0.035), 0.18, -D.offset - 0.02);
-      add(slider, guard, M.black);
-    }
-    const axle = new THREE.CylinderGeometry(0.012, 0.012, spread * 2 + 0.08, 8);
-    axle.rotateZ(Math.PI / 2);
-    axle.translate(0, 0, -D.offset);
-    add(slider, axle, M.alu);
-    const cal = new THREE.BoxGeometry(0.035, 0.09, 0.07);
-    cal.translate(-spread + 0.03, 0.09, -D.offset + 0.07);
-    add(slider, cal, M.caliper);
-    this.frontWheel = this._wheel(R, mx ? 0.085 : 0.075, true);
+    fill(slider, 'slider');
+    this.frontWheel = new THREE.Group();
+    fill(this.frontWheel, 'wheelF');
     this.frontWheel.position.set(0, 0, -D.offset);
     slider.add(this.frontWheel);
 
-    // ---- Swingarm and rear wheel.
+    // Swingarm and rear wheel.
     const arm = (this.swingarm = new THREE.Group());
     arm.position.copy(D.pivot);
     model.add(arm);
+    fill(arm, 'swingarm');
     const armLen = Math.hypot(zr - D.pivot.z, D.pivot.y - R);
     this.armLen = armLen;
-    for (const sx of [-1, 1]) {
-      const a = new THREE.BoxGeometry(0.035, 0.07, armLen + 0.06, 1, 1, 4);
-      const p = a.attributes.position;
-      for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) * (1 - 0.35 * ((p.getZ(i) + armLen / 2) / armLen)));
-      a.computeVertexNormals();
-      a.translate(sx * 0.1 * W, 0, armLen / 2);
-      add(arm, a, M.alu);
-    }
-    const brace = new THREE.BoxGeometry(0.2 * W, 0.05, 0.05);
-    brace.translate(0, 0.02, 0.12);
-    add(arm, brace, M.alu);
-    const pivotBolt = new THREE.CylinderGeometry(0.022, 0.022, 0.28 * W, 10);
-    pivotBolt.rotateZ(Math.PI / 2);
-    add(arm, pivotBolt, M.steel);
-    // Chain run: motor sprocket at the pivot to the rear sprocket.
-    const cr0 = 0.045, cr1 = 0.105;
-    const chainPath = new THREE.Shape();
-    chainPath.absarc(0, 0, cr0, Math.PI / 2, -Math.PI / 2, false);
-    chainPath.absarc(armLen, 0, cr1, -Math.PI / 2, Math.PI / 2, false);
-    const chainPts = chainPath.getSpacedPoints(80).map((q) => new THREE.Vector3(-0.075 * W, q.y, q.x));
-    add(arm, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(chainPts, true), 120, 0.007, 5, true), M.chain);
-    const sprocket = new THREE.CylinderGeometry(cr1 - 0.005, cr1 - 0.005, 0.008, 36);
-    sprocket.rotateZ(Math.PI / 2);
-    sprocket.translate(-0.075 * W, 0, armLen);
-    add(arm, sprocket, M.steel);
-    const rcal = new THREE.BoxGeometry(0.035, 0.07, 0.08);
-    rcal.translate(0.09 * W, 0.07, armLen - 0.05);
-    add(arm, rcal, M.caliper);
-    this.rearWheel = this._wheel(R, mx ? 0.105 : 0.09, false);
+    this.rearWheel = new THREE.Group();
+    fill(this.rearWheel, 'wheelR');
     this.rearWheel.position.set(0, 0, armLen);
     arm.add(this.rearWheel);
     this.armRestAngle = Math.atan2(D.pivot.y - R, zr - D.pivot.z);
@@ -498,11 +296,6 @@ export class BikeModel {
     model.add(this.rider.root);
     this.riderCrashGroup = new THREE.Group();
 
-    // Fewer draw calls: merge the static frame per material.
-    this._mergeGroup(body);
-    this._mergeGroup(fork, new Set([slider]));
-    this._mergeGroup(slider, new Set([this.frontWheel]));
-    this._mergeGroup(arm, new Set([this.rearWheel]));
     model.traverse((o) => {
       if (o.isMesh) {
         o.castShadow = true;
@@ -514,130 +307,6 @@ export class BikeModel {
     this.landT = 0;
     this.wheelieT = 0;
     this.riderAttached = true;
-  }
-
-  // Spoked wheel with a knobbly tyre, hub and brake disc; spins about x.
-  _wheel(R, width, front) {
-    const M = this.mat;
-    const g = new THREE.Group();
-    const rimR = R - (front ? 0.075 : 0.085);
-    // Tyre carcass: a rounded cross-section turned about the axle.
-    const prof = [];
-    const tw = width, th = R - rimR;
-    for (let i = 0; i <= 12; i++) {
-      const a = -Math.PI / 2 + (i / 12) * Math.PI;
-      prof.push(new THREE.Vector2(rimR + th * 0.5 + Math.cos(a) * th * 0.5, Math.sin(a) * tw * 0.5));
-    }
-    const tyre = new THREE.LatheGeometry(prof, 48);
-    tyre.rotateZ(Math.PI / 2);
-    // Sidewall text: spread the canvas round the wheel.
-    {
-      const uv = tyre.attributes.uv, pos = tyre.attributes.position;
-      for (let i = 0; i < uv.count; i++) uv.setXY(i, (Math.atan2(pos.getZ(i), pos.getY(i)) / (Math.PI * 2) + 0.5) * 2, 0.5 + pos.getX(i) * 4);
-    }
-    const parts = { rubber: [tyre], tread: [], rim: [], steel: [], alu: [] };
-    // Knobs in three staggered rows.
-    const knob = new THREE.BoxGeometry(0.022, 0.018, 0.026);
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1);
-    const n = Math.round((R * Math.PI * 2) / 0.05);
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2;
-      for (const [x, rowA, tilt] of [[0, 0, 0], [-tw * 0.32, 0.5, 0.45], [tw * 0.32, 0.5, -0.45]]) {
-        const aa = a + (rowA * Math.PI * 2) / n;
-        const r = R - 0.006 - Math.abs(tilt) * 0.012;
-        q.setFromEuler(new THREE.Euler(-aa, 0, tilt));
-        m4.compose(new THREE.Vector3(x, Math.cos(aa) * r, Math.sin(aa) * r), q, s);
-        parts.tread.push(knob.clone().applyMatrix4(m4));
-      }
-    }
-    // Rim: a shallow channel.
-    const rimProf = [new THREE.Vector2(rimR - 0.018, -0.022), new THREE.Vector2(rimR, -0.024), new THREE.Vector2(rimR + 0.004, -0.02), new THREE.Vector2(rimR - 0.004, 0), new THREE.Vector2(rimR + 0.004, 0.02), new THREE.Vector2(rimR, 0.024), new THREE.Vector2(rimR - 0.018, 0.022)];
-    const rim = new THREE.LatheGeometry(rimProf, 48);
-    rim.rotateZ(Math.PI / 2);
-    parts.rim.push(rim);
-    // Hub and spokes (crossed, from two flanges).
-    const hub = new THREE.CylinderGeometry(0.035, 0.035, 0.13, 14);
-    hub.rotateZ(Math.PI / 2);
-    parts.alu.push(hub);
-    for (const fx of [-0.045, 0.045]) {
-      const fl = new THREE.CylinderGeometry(0.052, 0.052, 0.008, 18);
-      fl.rotateZ(Math.PI / 2);
-      fl.translate(fx, 0, 0);
-      parts.alu.push(fl);
-    }
-    const spokes = 32;
-    const a0 = new THREE.Vector3(), a1 = new THREE.Vector3();
-    for (let i = 0; i < spokes; i++) {
-      const side = i % 2 ? 1 : -1;
-      const a = (i / spokes) * Math.PI * 2;
-      const cross = ((i % 4 < 2 ? 1 : -1) * Math.PI * 2 * 1.5) / spokes;
-      a0.set(side * 0.045, Math.cos(a + cross) * 0.048, Math.sin(a + cross) * 0.048);
-      a1.set(side * 0.006, Math.cos(a) * (rimR - 0.012), Math.sin(a) * (rimR - 0.012));
-      const len = a0.distanceTo(a1);
-      const sp = new THREE.CylinderGeometry(0.0022, 0.0022, len, 4, 1);
-      sp.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(Yv, a1.clone().sub(a0).normalize()));
-      sp.translate((a0.x + a1.x) / 2, (a0.y + a1.y) / 2, (a0.z + a1.z) / 2);
-      parts.steel.push(sp);
-    }
-    // Brake disc with cut-outs, on the left in front and the right at the back.
-    const discR = front ? 0.12 : 0.1;
-    const ds = new THREE.Shape();
-    const lobes = 12;
-    for (let i = 0; i <= lobes * 8; i++) {
-      const a = (i / (lobes * 8)) * Math.PI * 2;
-      const r = discR * (1 - 0.05 * (0.5 + 0.5 * Math.cos(a * lobes)));
-      i ? ds.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ds.moveTo(Math.cos(a) * r, Math.sin(a) * r);
-    }
-    const hole = new THREE.Path();
-    hole.absarc(0, 0, 0.05, 0, Math.PI * 2, true);
-    ds.holes.push(hole);
-    const disc = new THREE.ExtrudeGeometry(ds, { depth: 0.004, bevelEnabled: false, curveSegments: 8 });
-    disc.rotateY(Math.PI / 2);
-    disc.translate(front ? -0.07 : 0.07, 0, 0);
-    parts.steel.push(disc);
-
-    for (const [key, list] of Object.entries(parts)) {
-      if (!list.length) continue;
-      const geos = list.map((x) => {
-        const y = x.index ? x.toNonIndexed() : x;
-        for (const name of Object.keys(y.attributes)) if (!['position', 'normal', 'uv'].includes(name)) y.deleteAttribute(name);
-        if (!y.attributes.uv) y.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(y.attributes.position.count * 2), 2));
-        return y;
-      });
-      const merged = mergeGeometries(geos);
-      merged.computeBoundingSphere();
-      const mat = key === 'rubber' ? M.rubber : key === 'tread' ? M.tread : key === 'rim' ? M.rim : key === 'steel' ? M.steel : M.alu;
-      g.add(new THREE.Mesh(merged, mat));
-    }
-    return g;
-  }
-
-  _mergeGroup(group, skip = new Set()) {
-    group.updateMatrixWorld(true);
-    const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
-    const byMat = new Map();
-    const remove = [];
-    const visit = (o) => {
-      if (skip.has(o)) return;
-      if (o.isMesh && !o.isInstancedMesh) {
-        const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
-        g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
-        if (!g.attributes.normal) g.computeVertexNormals();
-        if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
-        for (const key of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(key)) g.deleteAttribute(key);
-        if (!byMat.has(o.material)) byMat.set(o.material, []);
-        byMat.get(o.material).push(g);
-        remove.push(o);
-      }
-      for (const c of o.children) visit(c);
-    };
-    for (const c of group.children) visit(c);
-    for (const o of remove) o.parent.remove(o);
-    for (const [mat, list] of byMat) {
-      const merged = mergeGeometries(list);
-      merged.computeBoundingSphere();
-      group.add(new THREE.Mesh(merged, mat));
-    }
   }
 
   setDirt(v) { this.shared.uDirt.value = v; }
