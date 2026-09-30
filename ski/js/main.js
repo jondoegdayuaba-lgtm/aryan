@@ -36,6 +36,9 @@ async function boot() {
   on('btn-next', () => game.nextRun());
   on('btn-menu', () => game.toMenu());
   on('btn-pause', () => game.pause(true));
+  on('btn-map-close', () => game.closeMap());
+  $('tb-lift').addEventListener('click', () => { if (game.open) game.open.interact(); });
+  $('tb-map').addEventListener('click', () => game.openMap());
   on('btn-cam', () => { game.save.data.camera = game.cameraRig.cycle(); game.save.save(); ui.toast(`Camera: ${game.cameraRig.mode}`); });
   on('btn-sound', () => { $('btn-sound').textContent = game.audio.toggleMute() ? 'Sound off' : 'Sound on'; game.save.data.muted = game.audio.muted; game.save.save(); });
   $('btn-sound').textContent = game.audio.muted ? 'Sound off' : 'Sound on';
@@ -60,7 +63,11 @@ async function boot() {
   addEventListener('keydown', () => game.audio.start(), { once: true });
   document.addEventListener('visibilitychange', () => { if (document.hidden) game.pause(true); });
 
-  // developer / test hooks: ?run=downhill&autoplay=1&t=40&manual=1
+  // developer / test hooks: ?run=downhill&autoplay=1&t=40&manual=1   ?open=1&ox=0&oz=1700&oyaw=3.14
+  if (params.has('open')) {
+    await game.startOpenWorld();
+    if (params.has('ox')) game.open.teleport(+params.get('ox'), +params.get('oz'), +(params.get('oyaw') || 0));
+  }
   if (params.has('run')) {
     const run = game.world.runs.find((r) => r.id === params.get('run'));
     if (run) game.startRun(run);
@@ -80,6 +87,12 @@ async function boot() {
 
   if (params.has('nolm')) WorldLight.useTex.value = 0;
   if (params.has('dbg')) game.terrain.uniforms.uDebug.value = +params.get('dbg');
+  if (params.has('cw')) {
+    // pinned camera in world coordinates: cw=x,z,height above the snow  cwl=x,z,height  cf=fov
+    const wp = (v) => { const [x, z, h] = v.split(',').map(Number); return new THREE.Vector3(x, game.world.height(x, z) + h, z); };
+    game.cameraRig.freeze = { pos: wp(params.get('cw')), look: wp(params.get('cwl') || params.get('cw')), fov: +(params.get('cf') || 55) };
+    game.step(0.001);
+  }
   if (params.has('cs')) {
     // pinned camera in piste coordinates: cs=s,t,height above snow  cl=s,t,height  cf=fov
     const pt = (v) => { const [s, t, h] = v.split(',').map(Number); const p = game.world.path.at(s, {}); const x = p.x + p.rx * t, z = p.z + p.rz * t; return new THREE.Vector3(x, game.world.height(x, z) + h, z); };

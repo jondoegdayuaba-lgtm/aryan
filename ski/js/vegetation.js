@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { injectWorldLight } from './shader-patches.js';
 
 const SPECIES = 4;
-const LOD_COUNT = 4;
+const LOD_COUNT = 5;                 // 0-2 foliage, 3 stacked cones, 4 a four-sided pyramid for the far forest
 
 const MAP_FRAG = /* glsl */`
 #ifdef USE_MAP
@@ -110,6 +110,27 @@ function foliageNormals(geo, info) {
   void yc;
 }
 
+/** four triangles that stand in for a whole tree beyond ~1 km: same height, width and average colour as its cone LOD */
+function farPyramid(cone) {
+  cone.computeBoundingBox();
+  const bb = cone.boundingBox;
+  const w = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) * 0.5;
+  const g = new THREE.ConeGeometry(w * 1.05, bb.max.y * 0.98, 4, 1, true);
+  g.translate(0, bb.max.y * 0.49, 0);
+  const c = cone.attributes.color;
+  let r = 0, gg = 0, b = 0;
+  for (let i = 0; i < c.count; i++) { r += c.getX(i); gg += c.getY(i); b += c.getZ(i); }
+  r /= c.count; gg /= c.count; b /= c.count;
+  const n = g.attributes.position.count;
+  const col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const tip = g.attributes.position.getY(i) > bb.max.y * 0.9 ? 1.25 : 0.9;
+    col[i * 3] = r * tip; col[i * 3 + 1] = gg * tip; col[i * 3 + 2] = b * tip;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
 export class Vegetation {
   /**
    * @param world WorldData
@@ -131,7 +152,7 @@ export class Vegetation {
     this.geos = [];
     for (let s = 0; s < SPECIES; s++) {
       this.geos[s] = [];
-      for (let l = 0; l < LOD_COUNT; l++) {
+      for (let l = 0; l < LOD_COUNT - 1; l++) {
         const node = gltf.scene.getObjectByName(`tree${s}_lod${l}`);
         if (!node) throw new Error(`trees.glb is missing tree${s}_lod${l}`);
         const mesh = node.isMesh ? node : node.children.find((c) => c.isMesh);
@@ -140,6 +161,7 @@ export class Vegetation {
         if (l < 3) foliageNormals(geo, info.species[s]);
         this.geos[s][l] = geo;
       }
+      this.geos[s][4] = farPyramid(this.geos[s][3]);
     }
 
     // ---- per-tree matrices
@@ -199,6 +221,8 @@ export class Vegetation {
     const fl = Math.hypot(fwd.x, fwd.z) || 1;
     const fx = fwd.x / fl, fz = fwd.z / fl;
     const [d0, d1, d2, d3] = this.lodDist;
+    const dFar = Math.min(d2 * 1.9, d3);
+    const dThin = d3 * 0.5;
     const counts = this._counts || (this._counts = new Int32Array(SPECIES * LOD_COUNT));
     counts.fill(0);
     const T = this.world.trees;
@@ -212,7 +236,8 @@ export class Vegetation {
       if (d < d0) lod = 0;
       else if (d < d1) lod = 1;
       else if (d < d2) lod = 2;
-      else lod = 3;
+      else if (d < dFar) lod = 3;
+      else { lod = 4; if ((i & 1) && d > dThin) continue; }                  // the far forest is thinned to half the trees
       if (lod >= 2 && d > 90 && (dx * fx + dz * fz) < -0.25 * d) continue;   // behind the camera and not casting shadows
       const s = this.species[i];
       const mesh = this.meshes[s][lod];

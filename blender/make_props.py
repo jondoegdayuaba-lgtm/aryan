@@ -6,7 +6,10 @@ Course furniture and buildings for Alpine Descent -> ski/assets/models/props.glb
   start_post / finish_post   gantry posts;  banner_start / banner_finish  1 m x 2.2 m banner strips (tiling texture)
   net_orange / net_blue   6 m safety-net panel with posts
   hut                     timing cabin at the start        lodge  base-area chalet with warm windows
-  lift_pylon, lift_chair  chairlift furniture
+  lift_pylon, lift_chair, lift_station   chairlift furniture
+  chalet_a / _b / _c      alpine chalets of the village      chapel   stone chapel with a bell tower
+  alp_hut                 mountain restaurant with a sun terrace      summit_cross   wooden summit cross on a cairn
+  sign_green/blue/red/black   trail signs      marker_green/blue/red/black   coloured piste poles      flag   collectible flag
 
 Every prop is written as one mesh per material named <prop>__<material>; the origin of each prop is on the
 ground at its centre (gates / poles / nets / posts) so the game only has to place and rotate them.
@@ -61,7 +64,7 @@ def tex_wood(size=512):
     gr = periodic_noise(size, 12, 1)
     fine = periodic_noise(size, 90, 2)
     for r in range(rows):
-        base = np.array([0.24, 0.135, 0.07]) * (0.75 + 0.5 * np.random.default_rng(r).random())
+        base = np.array([0.33, 0.19, 0.095]) * (0.75 + 0.5 * np.random.default_rng(r).random())
         y0, y1 = r * ph, (r + 1) * ph
         streak = 0.85 + 0.12 * gr[y0:y1] * 0.5 + 0.10 * np.sin(np.arange(w)[None, :] * 0.05 + r) * 0.2
         img[y0:y1] = base[None, None, :] * streak[..., None]
@@ -206,6 +209,14 @@ def build_materials():
     M['banner_check'] = material('banner_check', (1, 1, 1), 0.92, image=tex['check'])
     M['net_orange'] = material('net_orange', (1, 1, 1), 0.8, alpha_image=tex['net_orange'])
     M['net_blue'] = material('net_blue', (1, 1, 1), 0.8, alpha_image=tex['net_blue'])
+    M['marker_green'] = material('marker_green', (0.05, 0.55, 0.16), 0.4)
+    M['marker_blue'] = material('marker_blue', (0.05, 0.22, 0.85), 0.4)
+    M['marker_red'] = material('marker_red', (0.85, 0.06, 0.05), 0.4)
+    M['marker_black'] = material('marker_black', (0.03, 0.03, 0.035), 0.4)
+    M['marker_white'] = material('marker_white', (0.9, 0.9, 0.92), 0.5)
+    M['flag_cloth'] = material('flag_cloth', (0.95, 0.06, 0.03), 0.6, emission=(1.0, 0.10, 0.04, 0.9))
+    M['flag_pole'] = material('flag_pole', (0.85, 0.86, 0.9), 0.35, metal=0.6)
+    M['wood_dark'] = material('wood_dark', (0.12, 0.07, 0.04), 0.7)
     M['chair_red'] = material('chair_red', (0.7, 0.05, 0.05), 0.45)
     M['chair_dark'] = material('chair_dark', (0.04, 0.045, 0.05), 0.5)
     return M
@@ -435,13 +446,187 @@ def lift_station():
     return p
 
 
+# ============================================================================ village and trail furniture
+def marker_lvl(level):
+    """piste pole coloured by difficulty (black runs get a white band so they read against dark rock)"""
+    p = Prop(f'marker_{level}')
+    p.tube('marker_dark', (0, 0, 0), (0, 1.5, 0), 0.019, 0.017, sides=6)
+    p.tube(f'marker_{level}', (0, 1.5, 0), (0, 2.2, 0), 0.024, 0.021, sides=6)
+    if level == 'black':
+        p.tube('marker_white', (0, 1.82, 0), (0, 1.94, 0), 0.026, 0.026, sides=6, caps=(False, False))
+    return p
+
+
+def sign(level):
+    """trail sign: a post with a rounded difficulty board and a small roof of snow"""
+    p = Prop(f'sign_{level}')
+    p.box('wood_dark', (0, 1.1, 0), (0.12, 2.2, 0.12))
+    p.box(f'marker_{level}', (0, 1.75, 0.08), (0.95, 0.62, 0.05))
+    p.box('marker_white', (0, 1.75, 0.112), (0.8, 0.47, 0.02))
+    p.box(f'marker_{level}', (0, 1.75, 0.125), (0.66, 0.33, 0.02))
+    p.box('marker_white', (0.0, 1.75, 0.14), (0.42, 0.06, 0.02))
+    p.box('marker_white', (0.14, 1.75, 0.14), (0.08, 0.2, 0.02), rot=geo.rot_z(45))
+    p.box('snow', (0, 2.24, 0), (0.32, 0.06, 0.2))
+    return p
+
+
+def flag_prop():
+    p = Prop('flag')
+    p.tube('metal_dark', (0, 0, 0), (0, 0.55, 0), 0.10, 0.05, sides=8)
+    p.tube('flag_pole', (0, 0.4, 0), (0, 5.2, 0), 0.032, 0.024, sides=6)
+    p.tube('flag_pole', (0, 5.2, 0), (0, 5.32, 0), 0.06, 0.02, sides=8)
+    # swallow-tailed pennant, double sided
+    v = np.array([[0.02, 4.95, 0.0], [1.7, 4.95, 0.0], [1.35, 4.5, 0.0], [1.7, 4.05, 0.0], [0.02, 4.05, 0.0]])
+    t = np.array([[0, 1, 2], [0, 2, 4], [2, 3, 4]])
+    p.add('flag_cloth', v, np.vstack([t, t[:, ::-1]]))
+    for zz in (0.004, -0.004):
+        stripe = np.array([[0.02, 4.55, zz], [1.6, 4.55, zz], [1.6, 4.66, zz], [0.02, 4.66, zz]])
+        p.add('marker_white', stripe, np.array([[0, 1, 2], [0, 2, 3], [0, 2, 1], [0, 3, 2]]))
+    return p
+
+
+def chalet(name, L=10.0, D=8.0, wall_h=5.2, rise=2.5, dormer=False, lean_to=False, seed=1):
+    """alpine chalet: stone plinth, timber walls, deep gable roof with a snow blanket, balcony, shuttered windows.
+    The front (balcony, door) faces +z; the ridge runs along x."""
+    rng = np.random.default_rng(seed)
+    p = Prop(name)
+    b = 0.95
+    p.box('stone', (0, b / 2, 0), (L + 0.3, b, D + 0.3), uv=0.25)
+    p.box('wood', (0, b + wall_h / 2, 0), (L, wall_h, D), uv=0.3)
+    p.box('wood', (0, b + wall_h * 0.66, 0), (L + 0.44, wall_h * 0.34, D + 0.44), uv=0.3)      # jettied upper storey
+    eave = b + wall_h
+    v, t = geo.prism_roof(0, eave, 0, L, D / 2 + 0.4, rise, overhang=1.35, thickness=0.36, axis='x')
+    p.add('roof', v, t, 0.3)
+    v, t = geo.prism_roof(0, eave + 0.33, 0, L, D / 2 + 0.3, rise - 0.15, overhang=1.3, thickness=0.28, axis='x')
+    p.add('snow', v, t, 0.3)
+    n = max(2, int(L // 3.4))
+    xs = np.linspace(-L / 2 + 1.7, L / 2 - 1.7, n)
+    for zs in (1, -1):
+        zc = zs * (D / 2 + 0.24 * 0)
+        for i, x in enumerate(xs):
+            for yy, hh in ((b + 1.35, 1.25), (b + wall_h - 1.05, 1.1)):
+                if zs > 0 and i == n // 2 and yy < b + 2:
+                    continue                                                                # the door
+                p.box('glass', (x, yy, zc + zs * (D / 2 * 0 + 0.02) + 0 * zs), (1.0, hh, 0.06))
+                p.box('wood_dark', (x - 0.62, yy, zc + zs * 0.03), (0.28, hh + 0.1, 0.08))   # shutters
+                p.box('wood_dark', (x + 0.62, yy, zc + zs * 0.03), (0.28, hh + 0.1, 0.08))
+    # gable end windows
+    for xs_ in (1, -1):
+        p.box('glass', (xs_ * (L / 2 + 0.02), b + wall_h * 0.5, 0), (0.06, 1.2, 1.0))
+    # front door, steps
+    p.box('wood_dark', (xs[n // 2], b + 1.05, D / 2 + 0.05), (1.3, 2.1, 0.1))
+    p.box('stone', (xs[n // 2], 0.2, D / 2 + 0.6), (1.8, 0.4, 1.0), uv=0.3)
+    # balcony on the jetty, with a railing
+    by = b + wall_h * 0.46
+    p.box('wood', (0, by, D / 2 + 0.95), (L - 0.4, 0.14, 1.5), uv=0.4)
+    for i in range(int(L * 2) - 1):
+        p.box('wood_dark', (-L / 2 + 0.5 + i * 0.5, by + 0.5, D / 2 + 1.68), (0.05, 0.9, 0.05))
+    p.box('wood_dark', (0, by + 0.98, D / 2 + 1.68), (L - 0.4, 0.07, 0.1))
+    for x in (-L / 2 + 0.3, L / 2 - 0.3):
+        p.box('wood_dark', (x, by + 0.5, D / 2 + 1.68), (0.1, 1.0, 0.1))
+    if dormer:
+        p.box('wood', (L * 0.18, eave + rise * 0.28, D * 0.18), (2.4, 1.6, 2.2), uv=0.3)
+        v, t = geo.prism_roof(L * 0.18, eave + rise * 0.28 + 0.8, D * 0.18, 2.4, 1.3, 0.9, overhang=0.35, thickness=0.2, axis='z')
+        p.add('roof', v, t, 0.3)
+        p.box('glass', (L * 0.18, eave + rise * 0.28, D * 0.18 + 1.12), (1.2, 0.9, 0.06))
+    if lean_to:
+        p.box('wood', (-L / 2 - 1.6, b + 1.6, -0.5), (3.2, 3.2, D * 0.6), uv=0.3)
+        v, t = geo.prism_roof(-L / 2 - 1.6, b + 3.2, -0.5, D * 0.6, 1.9, 0.9, overhang=0.4, thickness=0.2, axis='z')
+        p.add('roof', v, t, 0.3)
+        p.box('stone', (-L / 2 - 1.6, 0.4, -0.5), (3.5, 0.8, D * 0.6 + 0.3), uv=0.3)
+    # chimney
+    p.box('stone', (L * (0.28 if seed % 2 else -0.28), eave + rise * 0.75, -D * 0.12), (0.9, rise * 1.1 + 0.6, 0.9), uv=0.3)
+    # woodpile against the wall
+    p.box('wood', (-L / 2 + 1.2, 0.55, -D / 2 - 0.35), (1.8, 1.0, 0.5), uv=0.5)
+    return p
+
+
+def chapel():
+    p = Prop('chapel')
+    W, L, H = 6.6, 11.0, 5.0
+    p.box('stone', (0, 0.4, -1.0), (W + 0.4, 0.8, L + 0.4), uv=0.25)
+    p.box('plaster', (0, 0.8 + H / 2, -1.0), (W, H, L), uv=0.3)
+    v, t = geo.prism_roof(0, 0.8 + H, -1.0, L, W / 2 + 0.2, 3.2, overhang=0.7, thickness=0.3, axis='z')
+    p.add('roof', v, t, 0.3)
+    v, t = geo.prism_roof(0, 0.8 + H + 0.28, -1.0, L, W / 2 + 0.1, 3.0, overhang=0.65, thickness=0.24, axis='z')
+    p.add('snow', v, t, 0.3)
+    for xs in (1, -1):
+        for k in range(3):
+            p.box('glass', (xs * (W / 2 + 0.02), 0.8 + 2.7, -4.5 + k * 3.5), (0.06, 2.0, 0.9))
+            p.box('stone', (xs * (W / 2 + 0.04), 0.8 + 3.75, -4.5 + k * 3.5), (0.05, 0.3, 1.1), uv=0.3)
+    # bell tower over the front (+z) end
+    tz = L / 2 - 1.0 + 1.2
+    p.box('plaster', (0, 0.8 + 5.5, tz), (3.6, 11.0, 3.6), uv=0.3)
+    p.box('stone', (0, 0.4, tz), (4.0, 0.8, 4.0), uv=0.25)
+    p.box('glass_dark', (0, 0.8 + 9.6, tz), (2.0, 1.8, 3.7))
+    p.box('glass_dark', (0, 0.8 + 9.6, tz), (3.7, 1.8, 2.0))
+    p.tube('roof', (0, 0.8 + 11.0, tz), (0, 0.8 + 16.5, tz), 2.55, 0.06, sides=4, caps=(True, False))
+    p.tube('roof', (0, 0.8 + 11.0, tz), (0, 0.8 + 16.5, tz), 2.55, 0.06, sides=4, caps=(False, False))
+    p.box('snow', (0, 0.8 + 11.05, tz), (3.9, 0.1, 3.9))
+    p.box('metal_dark', (0, 0.8 + 17.0, tz), (0.1, 1.2, 0.1))
+    p.box('metal_dark', (0, 0.8 + 17.2, tz), (0.6, 0.1, 0.1))
+    # door with a stone surround, steps
+    p.box('stone', (0, 0.8 + 1.7, tz + 1.82), (2.2, 3.4, 0.1), uv=0.3)
+    p.box('wood_dark', (0, 0.8 + 1.5, tz + 1.86), (1.6, 3.0, 0.1))
+    p.box('stone', (0, 0.2, tz + 2.6), (2.6, 0.4, 1.6), uv=0.3)
+    p.box('glass', (0, 0.8 + 6.4, tz + 1.82), (0.8, 1.4, 0.06))
+    return p
+
+
+def alp_hut():
+    """mountain restaurant: long timber house, big roof, terrace with parasols (front = +z)"""
+    p = Prop('alp_hut')
+    L, D, H = 16.0, 9.0, 3.6
+    p.box('stone', (0, 0.5, 0), (L + 0.3, 1.0, D + 0.3), uv=0.25)
+    p.box('wood', (0, 1.0 + H / 2, 0), (L, H, D), uv=0.3)
+    v, t = geo.prism_roof(0, 1.0 + H, 0, L, D / 2 + 0.5, 2.6, overhang=1.5, thickness=0.36, axis='x')
+    p.add('roof', v, t, 0.3)
+    v, t = geo.prism_roof(0, 1.0 + H + 0.32, 0, L, D / 2 + 0.4, 2.45, overhang=1.45, thickness=0.28, axis='x')
+    p.add('snow', v, t, 0.3)
+    for i in range(6):
+        x = -6.5 + i * 2.6
+        p.box('glass', (x, 1.0 + 1.9, D / 2 + 0.02), (1.7, 1.5, 0.06))
+        p.box('wood_dark', (x, 1.0 + 1.1, D / 2 + 0.04), (1.9, 0.12, 0.1))
+        p.box('glass', (x, 1.0 + 1.9, -D / 2 - 0.02), (1.7, 1.5, 0.06))
+    p.box('wood_dark', (0, 1.0 + 1.1, D / 2 + 0.05), (1.5, 2.2, 0.1))
+    # terrace
+    p.box('wood', (0, 0.95, D / 2 + 2.0), (L + 1.0, 0.16, 4.0), uv=0.4)
+    for i in range(int(L) + 1):
+        p.box('wood_dark', (-L / 2 - 0.4 + i * 1.0, 1.45, D / 2 + 3.92), (0.05, 0.9, 0.05))
+    p.box('wood_dark', (0, 1.9, D / 2 + 3.92), (L + 1.0, 0.07, 0.1))
+    for x in (-L / 2 - 0.4, L / 2 + 0.4):
+        p.box('wood_dark', (x, 1.45, D / 2 + 3.92), (0.1, 1.0, 0.1))
+    for x in (-5.0, 0.0, 5.0):                                                       # parasols
+        p.tube('steel', (x, 0.95, D / 2 + 2.4), (x, 3.3, D / 2 + 2.4), 0.04, 0.035, sides=6)
+        p.tube('panel_red' if x == 0 else 'panel_blue', (x, 2.7, D / 2 + 2.4), (x, 3.35, D / 2 + 2.4), 1.55, 0.05, sides=8, caps=(False, True))
+        p.box('wood', (x - 0.6, 1.4, D / 2 + 2.0), (0.9, 0.06, 0.5), uv=0.4)
+        p.box('wood', (x + 0.6, 1.4, D / 2 + 2.9), (0.9, 0.06, 0.5), uv=0.4)
+    p.box('stone', (-5.0, 1.0 + H + 2.6, -1.0), (1.1, 2.6, 1.1), uv=0.3)
+    p.box('wood_dark', (0, 1.0 + H + 0.05, D / 2 + 0.1), (4.0, 0.8, 0.12))
+    return p
+
+
+def summit_cross():
+    p = Prop('summit_cross')
+    p.box('stone', (0, 0.45, 0), (2.4, 0.9, 2.4), uv=0.3)
+    p.box('stone', (0, 1.1, 0), (1.6, 0.5, 1.6), uv=0.3)
+    p.box('wood', (0, 3.5, 0), (0.26, 4.8, 0.26), uv=0.4)
+    p.box('wood', (0, 4.6, 0), (1.9, 0.24, 0.24), uv=0.4)
+    p.box('marker_white', (0, 0.85, 0.85), (0.5, 0.35, 0.05))
+    return p
+
+
 # ============================================================================ main
 def main():
     C.reset_scene()
     M = build_materials()
     props = [gate('red'), gate('blue'), marker(), post('start_post', 6.5, 0.24), post('finish_post', 7.5, 0.26),
              banner('banner_start', 'banner_start'), banner('banner_finish', 'banner_finish'), banner('banner_check', 'banner_check'),
-             net('orange'), net('blue'), hut(), lodge(), lift_pylon(), lift_chair(), lift_station()]
+             net('orange'), net('blue'), hut(), lodge(), lift_pylon(), lift_chair(), lift_station(),
+             chalet('chalet_a', 10.0, 8.0, 5.2, 2.5, dormer=True, seed=1), chalet('chalet_b', 12.5, 9.0, 5.6, 2.8, lean_to=True, seed=2),
+             chalet('chalet_c', 8.5, 7.0, 4.8, 2.2, seed=3), chapel(), alp_hut(), summit_cross(), flag_prop(),
+             marker_lvl('green'), marker_lvl('blue'), marker_lvl('red'), marker_lvl('black'),
+             sign('green'), sign('blue'), sign('red'), sign('black')]
     objs = []
     stats = {}
     for pr in props:

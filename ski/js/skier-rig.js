@@ -113,7 +113,7 @@ export class SkierRig {
     this.airBlend = 0;
     this.time = 0;
     this._first = true;
-    this.pose = { tuck: 0, compress: 0, roll: 0, bodyYaw: 0, steer: 0, footLift: 0 };
+    this.pose = { tuck: 0, compress: 0, roll: 0, bodyYaw: 0, steer: 0, footLift: 0, sit: 0 };
     this.t = { H: V(), A: V(), K: V(), pole: V() };
     this.restPose();
   }
@@ -189,7 +189,8 @@ export class SkierRig {
   update(sk, dt) {
     this.time += dt;
     const P = this.pose;
-    this.airBlend = damp(this.airBlend, sk.grounded ? 0 : 1, 9, dt);
+    this.airBlend = damp(this.airBlend, sk.grounded || sk.seated > 0.05 ? 0 : 1, 9, dt);
+    P.sit = damp(P.sit, sk.seated || 0, 14, dt);
     P.tuck = damp(P.tuck, sk.crashed ? 0 : clamp(sk.tuck, 0, 1), 6, dt);
     P.compress = damp(P.compress, sk.compress, 10, dt);
     P.roll = damp(P.roll, sk.lean * 0.95, 16, dt);
@@ -257,10 +258,11 @@ export class SkierRig {
     }
 
     // hips: height, set-back and angulation
-    const crouch = 0.32 * tuck + 0.06 * comp + 0.14 * air * (0.4 + 0.6 * tuck) + 0.03 * Math.abs(P.roll);
-    const back = -0.20 * tuck - 0.03 * comp;
+    const sit = P.sit;
+    const crouch = 0.32 * tuck + 0.06 * comp + 0.14 * air * (0.4 + 0.6 * tuck) + 0.03 * Math.abs(P.roll) + 0.30 * sit;
+    const back = -0.20 * tuck - 0.03 * comp - 0.06 * sit;
     const inside = -P.roll * 0.10;
-    const torsoFwd = 0.66 * tuck + 0.05 * comp - 0.06 * air * (1 - tuck);
+    const torsoFwd = 0.66 * tuck + 0.05 * comp - 0.06 * air * (1 - tuck) - 0.10 * sit;
     const ang = -0.30 * P.roll;
     const twist = P.bodyYaw;
     this._rot('Hips', _qa.setFromEuler(_e.set(torsoFwd * 0.45, 0, ang * 0.3, 'XYZ')));
@@ -275,7 +277,7 @@ export class SkierRig {
     // legs: IK from the moved hips to the (fixed) ankles
     for (const [s, sx] of [['L', 1], ['R', -1]]) {
       const H = t.H.copy(this.modelPosOf(`UpperLeg.${s}`));
-      const A = t.A.copy(R[`Foot.${s}`].pos).add(_d.set(0, 0.06 * lift, -0.02 * lift));
+      const A = t.A.copy(R[`Foot.${s}`].pos).add(_d.set(0, 0.06 * lift + 0.04 * sit, -0.02 * lift + 0.16 * sit));
       t.pole.set(sx * 0.08, 0.05, 1);
       solveTwoBone(H, A, this.legLen.t, this.legLen.s, t.pole, t.K);
       this._rot(`UpperLeg.${s}`, this._aim(`UpperLeg.${s}`, `LowerLeg.${s}`, _d.copy(t.K).sub(H).normalize()));
@@ -288,14 +290,15 @@ export class SkierRig {
       const tg = t.A.copy(S).add(_d.copy(R[`Hand.${s}`].pos).sub(R[`UpperArm.${s}`].pos));
       tg.x += -sx * 0.11 * tuck + sx * 0.06 * air - P.steer * 0.05 + P.roll * 0.05;
       tg.y += 0.06 * tuck + 0.10 * air - 0.05 * comp;
-      tg.z += 0.16 * tuck - 0.04 * air;
+      tg.z += 0.16 * tuck - 0.04 * air + 0.12 * sit;
+      tg.y += 0.02 * sit;
       t.pole.set(sx * 0.7, -0.6, -0.35);
       solveTwoBone(S, tg, this.armLen.u, this.armLen.f, t.pole, t.K);
       this._rot(`UpperArm.${s}`, this._aim(`UpperArm.${s}`, `ForeArm.${s}`, _d.copy(t.K).sub(S).normalize()));
       const fa = this._aim(`ForeArm.${s}`, `Hand.${s}`, _d.copy(tg).sub(t.K).normalize());
       this._rot(`ForeArm.${s}`, fa);
       // the hand follows the forearm; tucking swings the poles back along the body
-      _qc.setFromEuler(_e.set(1.15 * tuck - 0.25 * air, 0, 0, 'XYZ')).multiply(fa);
+      _qc.setFromEuler(_e.set(1.15 * tuck - 0.25 * air + 0.7 * sit, 0, 0, 'XYZ')).multiply(fa);
       this._rot(`Hand.${s}`, _qc);
     }
   }

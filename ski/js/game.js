@@ -19,9 +19,13 @@ import { SnowSpray, SkiTracks } from './effects.js';
 import { GameAudio } from './audio.js';
 import { UI, SaveData } from './ui.js';
 import { Props } from './props.js';
+import { OpenProps } from './open-props.js';
+import { OpenMode } from './open-world.js';
+import { MapUI } from './map-ui.js';
 import { clamp, damp, formatTime, formatDelta } from './util.js';
 
 const AUTO_PUSH_SECONDS = 7;
+const $id = (id) => document.getElementById(id);
 
 export class Game {
   constructor(canvas, params) {
@@ -43,6 +47,10 @@ export class Game {
     this.hintTimer = 0;
     this.manual = params.has('manual');
     this._view = {};            // interpolated skier state for drawing
+    this.mode = 'race';         // 'race' | 'free' (open world)
+    this.bundles = {};          // per map: world, terrain, forest, boulders, props (the active one is aliased on the game)
+    this.mapId = 'race';
+    this.open = null;
   }
 
   // ==================================================================== loading
@@ -127,6 +135,9 @@ export class Game {
     if (this.rocks) scene.add(this.rocks.group);
     this.props = propsGltf ? new Props(world, propsGltf, { glow: this.snowRadiance * 0.32, radiance: this.snowRadiance, anisotropy: Math.min(8, renderer.capabilities.getMaxAnisotropy()) }) : null;
     if (this.props) scene.add(this.props.group);
+    // what the open world reuses (models and detail textures are shared, the terrain data is loaded on demand)
+    this.shared = { treeGltf, atlas, treeInfo, rockGltf, propsGltf, rockN, rockC, snowN, sunE, sunDir };
+    this.bundles.race = { id: 'race', world, terrain: this.terrain, veg: this.veg, rocks: this.rocks, props: this.props, light, mapTex: null };
 
     // ------------------------------------------------------------------ skier
     this.rigs = { race: new SkierRig(skierGltf, rigInfo) };
@@ -154,7 +165,7 @@ export class Game {
     addEventListener('resize', () => this.resize());
     this.resize();
 
-    this.ui.buildRunList(world.runs, this.save, (r) => this.startRun(r));
+    this.ui.buildRunList(world.runs, this.save, (r) => this.startRun(r), () => this.startOpenWorld());
     this.startAttract();
     this.screen = 'menu';
     this.ui.show('menu');
@@ -202,10 +213,16 @@ export class Game {
     const s = Q.shadow;
     this.sun.shadow.mapSize.set(s, s);
     if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); this.sun.shadow.map = null; }
-    this.veg.lodDist = [46, 150, 430, 2100].map((d, i) => d * (i < 3 ? Q.trees : 1));
-    this.terrain.uniforms.uSparkle.value = Q.sparkle;
-    this.terrain.uniforms.uDetail.value = q === 'low' ? 0 : 1;
+    for (const b of Object.values(this.bundles)) this._applyQuality(b, q);
     this.resize();
+  }
+
+  _applyQuality(b, q = this.qualityName) {
+    const Q = QUALITY[q];
+    const base = b.id === 'open' ? [46, 150, 430, 1500] : [46, 150, 430, 2100];
+    b.veg.lodDist = base.map((d, i) => d * (i < 3 ? Q.trees : 1));
+    b.terrain.uniforms.uSparkle.value = Q.sparkle;
+    b.terrain.uniforms.uDetail.value = q === 'low' ? 0 : 1;
   }
 
   resize() {
@@ -215,8 +232,67 @@ export class Game {
     this.post.setSize(w, h);
   }
 
+  // ============================================================= maps (race mountain, open world)
+  /** load the open world's height field, textures and forest the first time it is chosen */
+  async loadOpenWorld() {
+    if (this.bundles.open) return this.bundles.open;
+    const ui = this.ui;
+    ui.setLoading('Loading the open world...', 0.02);
+    if (window.__assetsEnsure) await window.__assetsEnsure('open/');
+    await new Promise((r) => setTimeout(r, 30));              // let the loading screen paint
+    const loader = new Loader('assets/', (done, total, name) => ui.setLoading(name, 0.1 + 0.6 * done / Math.max(total, 1)));
+    const world = await WorldData.load('assets/open/');
+    ui.setLoading('Painting the mountain...', 0.72);
+    const [color, mask, light, mapTex] = await Promise.all([
+      loader.texture('open/color.jpg'),
+      loader.texture('open/mask.png', { srgb: false }),
+      loader.texture('open/light.jpg', { srgb: false }),
+      loader.texture('open/map.jpg', { mip: false }),
+    ]);
+    if (!color || !mask) throw new Error('The open world textures are missing. Run blender/build.py to generate the assets.');
+    const sh = this.shared;
+    ui.setLoading('Raising the terrain...', 0.8);
+    await new Promise((r) => setTimeout(r, 30));
+    const terrain = new TerrainRenderer(world, { color, mask, rockN: sh.rockN, rockC: sh.rockC, snowN: sh.snowN },
+      { lodDist: [260, 600, 1300, 2600], pisteSize: [1152, 1152] });
+    terrain.setSun(sh.sunDir, new THREE.Vector3(sh.sunE[0] * 0.9, sh.sunE[1] * 0.9, sh.sunE[2] * 0.9));
+    ui.setLoading('Planting the forest...', 0.9);
+    await new Promise((r) => setTimeout(r, 30));
+    const veg = new Vegetation(world, sh.treeGltf, sh.atlas, sh.treeInfo);
+    const rocks = sh.rockGltf ? new Rocks(world, sh.rockGltf, sh.rockN, sh.rockC, { lodDist: [70, 240, 720] }) : null;
+    const props = new OpenProps(world, sh.propsGltf, { glow: this.snowRadiance * 0.32, radiance: this.snowRadiance, anisotropy: Math.min(8, this.renderer.capabilities.getMaxAnisotropy()) });
+    const b = { id: 'open', world, terrain, veg, rocks, props, light, mapTex, map: new MapUI(world, mapTex.image) };
+    for (const g of [terrain.group, veg.group, rocks && rocks.group, props.group]) if (g) { g.visible = false; this.scene.add(g); }
+    this.bundles.open = b;
+    this._applyQuality(b);
+    ui.hideLoading();
+    return b;
+  }
+
+  /** make one of the loaded maps the visible, active one */
+  setMap(id) {
+    const b = this.bundles[id];
+    if (!b) return;
+    for (const [k, o] of Object.entries(this.bundles)) {
+      for (const g of [o.terrain.group, o.veg.group, o.rocks && o.rocks.group, o.props && o.props.group]) if (g) g.visible = k === id;
+    }
+    this.mapId = id;
+    this.world = b.world;
+    this.terrain = b.terrain;
+    this.veg = b.veg;
+    this.rocks = b.rocks;
+    this.props = b.props;
+    setWorldLightTexture(b.light, b.world);
+    this.tracks.world = b.world;
+    this.cameraRig.world = b.world;
+    this.veg.update(this.camera, 0, true);
+    if (this.rocks) this.rocks.update(this.camera, 0, true);
+  }
+
   // =================================================================== state
   startAttract() {
+    if (this.mapId !== 'race') this.setMap('race');
+    this.mode = 'race';
     const runs = this.world.runs;
     const run = runs[Math.floor(Math.random() * runs.length)];
     this.session = new RunSession(this.world, run);
@@ -247,6 +323,10 @@ export class Game {
   startRun(run) {
     this.audio.start();
     this.audio.click();
+    if (this.mode === 'free') this._leaveOpen();
+    if (this.mapId !== 'race') this.setMap('race');
+    this.mode = 'race';
+    this.ui.setFreeMode(false);
     this.attract = false;
     this.run = run;
     this.session = new RunSession(this.world, run);
@@ -265,11 +345,59 @@ export class Game {
   }
 
   restart() {
+    if (this.mode === 'free') { this.screen = 'playing'; this.ui.show('hud'); this.open.respawn(); return; }
     if (this.run) this.startRun(this.run);
   }
 
+  /** menu -> open world */
+  async startOpenWorld() {
+    this.audio.start();
+    this.audio.click();
+    this.attract = false;
+    try {
+      const b = await this.loadOpenWorld();
+      this.setMap('open');
+      if (!this.open) this.open = new OpenMode(this, b);
+      this.mode = 'free';
+      this.open.begin();
+      this.session = this.open.session;
+      this.autopilot = null;
+      this.run = { id: 'open', name: 'Open World', mode: 'free', gates: [] };
+      this.startY = this.session.skier.y;
+      this.ui.setFreeMode(true);
+      this.ui.el.runName.textContent = 'Open World';
+      this.ui.el.gates.textContent = 'Alpine valley';
+      $id('btn-restart').textContent = 'Back on your feet';
+      this.input.captureTab = true;
+      this._resetVisuals();
+      this.cameraRig.mode = this.save.data.camera || 'chase';
+      this.cameraRig.world = b.world;
+      this.screen = 'playing';
+      this.ui.show('hud');
+      this.ui.toast('Welcome to the mountain', 'info');
+      this.hintTimer = 12;
+      this.ui.hint(this.ui.el.touch.hidden ? 'W tuck · Shift skate · E ride the lift · Tab map · R back on your feet' : 'Touch left / right to steer · walk to a lift and tap Lift');
+      this.input.clearPressed();
+    } catch (err) {
+      this.ui.hideLoading();
+      console.error(err);
+      this.ui.toast('Could not load the open world', 'bad');
+      this.toMenu();
+    }
+  }
+
+  _leaveOpen() {
+    $id('btn-restart').textContent = 'Restart run';
+    if (this.open) this.open.persist();
+    this.input.captureTab = false;
+    this.ui.setFreeMode(false);
+  }
+
   toMenu() {
-    this.ui.buildRunList(this.world.runs, this.save, (r) => this.startRun(r));
+    if (this.mode === 'free') this._leaveOpen();
+    this.mode = 'race';
+    if (this.mapId !== 'race') this.setMap('race');
+    this.ui.buildRunList(this.world.runs, this.save, (r) => this.startRun(r), () => this.startOpenWorld());
     this.startAttract();
     this.screen = 'menu';
     this.ui.show('menu');
@@ -305,13 +433,27 @@ export class Game {
 
     // ---- keys that work everywhere
     if (this.input.consume('KeyM')) { this.save.data.muted = this.audio.toggleMute(); this.save.save(); this.ui.toast(this.audio.muted ? 'Sound off' : 'Sound on'); }
-    if (this.screen === 'playing' || this.screen === 'paused') {
+    if (this.screen === 'map') {
+      if (this.input.consume('Escape') || this.input.consume('Tab') || this.input.consume('KeyP')) this.closeMap();
+    } else if (this.screen === 'playing' || this.screen === 'paused') {
       if (this.input.consume('Escape') || this.input.consume('KeyP')) this.pause(this.screen === 'playing');
       if (this.input.consume('KeyR') && this.screen === 'playing') this.restart();
       if (this.input.consume('KeyC')) { this.save.data.camera = this.cameraRig.cycle(); this.save.save(); this.ui.toast(`Camera: ${this.cameraRig.mode}`); }
+      if (this.mode === 'free' && this.screen === 'playing') {
+        if (this.input.consume('KeyE')) this.open.interact();
+        if (this.input.consume('Tab')) this.openMap();
+      }
     }
+    const frozen = this.screen === 'paused' || this.screen === 'map';
 
-    if (this.screen !== 'paused') {
+    if (!frozen && this.mode === 'free') {
+      // ---- open world: free roaming physics, chairlifts, flags
+      const inp = this.screen === 'playing' ? this.input.read(dt) : this.frameInput;
+      inp.autoPush = 0;
+      this.frameInput = inp;
+      const events = this.open.step(dt, this.frameInput);
+      for (const e of events) this._onEvent(e, sk);
+    } else if (!frozen) {
       // ---- input -> physics
       let inp;
       if (this.autopilot && !sk.crashed) inp = this.autopilot.control(sk, this.time);
@@ -333,15 +475,18 @@ export class Game {
     // ---- visuals (also while paused so the picture stays alive). The physics runs at a fixed 120 Hz, so
     // everything that is drawn uses the pose interpolated to the frame time: smooth at any refresh rate.
     const v = sk.interp(this.session.alpha, this._view);
-    this.rig.update(v, this.screen === 'paused' ? 0 : dt);
+    this.rig.update(v, frozen ? 0 : dt);
     this.cameraRig.update(dt, v, this.rig);
-    if (this.screen !== 'paused') this._effects(dt, v);
+    if (!frozen) this._effects(dt, v);
     this.audio.update(dt, sk, this.screen === 'playing' || this.attract);
     if (this.props) this.props.update(dt, this.time, c, sk);
     this.flash = damp(this.flash, 0, 5, dt);
 
     // ---- HUD
-    if (this.screen === 'playing' || this.screen === 'paused' || this.screen === 'results') {
+    if (this.mode === 'free') {
+      if (this.screen === 'playing' || this.screen === 'paused') this.ui.updateFree(dt, this._freeHud(v));
+      if (this.hintTimer > 0) { this.hintTimer -= dt; if (this.hintTimer <= 0) { this.ui.hint(''); this.hintTimer = 0; } }
+    } else if (this.screen === 'playing' || this.screen === 'paused' || this.screen === 'results') {
       const run = this.run;
       const remaining = Math.max(0, run.sEnd - sk.pathS);
       this.ui.update(dt, {
@@ -355,6 +500,54 @@ export class Game {
       this.finishTimer -= dt;
       if (this.finishTimer < 0) this._showResults();
     }
+  }
+
+  // ============================================================== open world screens
+  _freeHud(v) {
+    const o = this.open, b = this.bundles.open, cr = this.cameraRig, prog = o.progress;
+    const sk = this.session.skier;
+    return {
+      speed: sk.speed, altitude: sk.y, descended: Math.max(0, this.startY - sk.y),
+      flags: prog.flags, flagTotal: prog.flagTotal, found: prog.found, foundTotal: prog.foundTotal,
+      nearest: o.nearest, prompt: o.prompt, yaw: cr.heading + cr.orbitYaw, x: v.x, z: v.z,
+      map: b.map, taken: o.taken, flagList: o.flags, landmarks: o.landmarks, foundSet: o.found,
+    };
+  }
+
+  _mapState() {
+    const o = this.open, sk = this.session.skier;
+    return { x: sk.x, z: sk.z, yaw: sk.yaw, taken: o.taken, flagList: o.flags, landmarks: o.landmarks, foundSet: o.found, nearest: null };
+  }
+
+  openMap() {
+    if (this.mode !== 'free' || this.screen !== 'playing') return;
+    const o = this.open, b = this.bundles.open, ui = this.ui;
+    this.screen = 'map';
+    ui.show('map');
+    b.map.drawFull(ui.el.mapCanvas, this._mapState());
+    const p = o.progress;
+    ui.el.mapProgress.textContent = `Flags ${p.flags} / ${p.flagTotal}  ·  Places ${p.found} / ${p.foundTotal}  ·  ${(o.data.km || 0).toFixed(1)} km skied`;
+    // fast travel to the village and the lift bases
+    const box = ui.el.mapTravel;
+    box.innerHTML = '';
+    const add = (label, x, z, yaw) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ghost-btn';
+      btn.textContent = label;
+      btn.addEventListener('click', () => { o.teleport(x, z, yaw); this.closeMap(); ui.toast(`${label}`, 'info'); });
+      box.appendChild(btn);
+    };
+    const sp = o.world.info.spawn;
+    add('Village', sp.x, sp.z, sp.yaw || 0);
+    for (const lf of o.lifts) add(lf.name, lf.base.x - lf.base.dx * 14 + lf.base.dz * 8, lf.base.z - lf.base.dz * 14 - lf.base.dx * 8, Math.atan2(lf.base.dx, -lf.base.dz));
+  }
+
+  closeMap() {
+    if (this.screen !== 'map') return;
+    this.screen = 'playing';
+    this.ui.show('hud');
+    this.input.clearPressed();
   }
 
   _onDemoEvent(e) {
@@ -398,12 +591,12 @@ export class Game {
       case 'crash': {
         audio.crash(); ui.flashCrash(); this.cameraRig.impulse(1);
         this.flash = 0.35;
-        const why = { tree: 'Hit a tree', rock: 'Hit a rock', cliff: 'Too steep', impact: 'Hard landing', edge: 'Caught an edge', boundary: 'Out of bounds', net: 'Into the safety net' }[e.cause] || 'Crash';
+        const why = { tree: 'Hit a tree', rock: 'Hit a rock', cliff: 'Too steep', impact: 'Hard landing', edge: 'Caught an edge', boundary: 'Out of bounds', net: 'Into the safety net', edge2: 'Edge of the map' }[e.cause] || 'Crash';
         ui.toast(`${why}!`, 'bad');
         this._burst(sk, 90);
         break;
       }
-      case 'respawn': ui.toast('Back on the piste  +4 s', 'info'); this.tracks.breakTrack(); this.rig._first = true; this.cameraRig._init = true; break;
+      case 'respawn': ui.toast(this.mode === 'free' ? 'Back on your feet' : 'Back on the piste  +4 s', 'info'); this.tracks.breakTrack(); this.rig._first = true; this.cameraRig._init = true; break;
       case 'finish': {
         audio.finish();
         this.finishTimer = 2.6;

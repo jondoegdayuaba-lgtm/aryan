@@ -191,6 +191,7 @@ export class Rocks {
       const s = this.size[i];
       const d = Math.sqrt(dx * dx + dz * dz) / (0.55 + 0.45 * s);
       if (d > d2) continue;
+      if (d > 320 && s < 1.0) continue;                                                             // small stones vanish first
       if (d > 60 && (dx * fx + dz * fz) < -0.3 * Math.sqrt(dx * dx + dz * dz) - 5 * s) continue;   // behind the camera
       const lod = d < d0 ? 0 : d < d1 ? 1 : 2;
       const k = this.kind[i];

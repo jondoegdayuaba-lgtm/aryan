@@ -4,9 +4,34 @@ import { clamp, assetUrl } from './util.js';
 
 const CELL = 16;   // collision hash cell size (m)
 
+/**
+ * The open world stores its height field as prediction residuals (zigzag coded uint16 of h - (left + above - above-left)), which
+ * gzip shrinks four times better than the raw heights. Returns the raw uint16 heights.
+ */
+export function decodePredictedHeights(res, nx, nz) {
+  const out = new Uint16Array(nx * nz);
+  for (let y = 0; y < nz; y++) {
+    const row = y * nx, up = row - nx;
+    for (let x = 0; x < nx; x++) {
+      const z = res[row + x];
+      const r = (z >>> 1) ^ -(z & 1);
+      let pred;
+      if (y === 0) pred = x === 0 ? 0 : out[row + x - 1];
+      else if (x === 0) pred = out[up];
+      else pred = out[row + x - 1] + out[up + x] - out[up + x - 1];
+      out[row + x] = pred + r;
+    }
+  }
+  return out;
+}
+
 export class WorldData {
-  /** @param {object} info world.json  @param {Uint16Array} u16 heights  */
-  constructor(info, u16, trees, rocks, poles) {
+  /**
+   * @param {object} info world.json  @param {Uint16Array} u16 heights
+   * @param {Uint8Array} [groom] groomed-snow weight per height-field cell (open world); the race mountain measures the
+   *        distance to its single piste instead
+   */
+  constructor(info, u16, trees, rocks, poles, groom = null) {
     this.info = info;
     const g = info.grid;
     this.nx = g.nx;
@@ -23,10 +48,13 @@ export class WorldData {
     for (let i = 0; i < u16.length; i++) this.heights[i] = g.hMin + u16[i] / g.hQuant;
     this.trees = trees;    // x z y scale yaw species (6 floats)
     this.rocks = rocks;    // x z y scale yaw type
-    this.poles = poles;    // x z y side
-    this.path = new PathSampler(info.path);
+    this.poles = poles;    // x z y side (open world: x z y piste level)
+    this.path = info.path ? new PathSampler(info.path) : null;
+    this.pistes = (info.pistes || []).map((p) => ({ ...p, sampler: new PathSampler(p.path) }));
+    this.groom = groom;
+    this.open = info.kind === 'open';
     this.sunDir = info.sun.dir;
-    this.runs = info.runs;
+    this.runs = info.runs || [];
     this._buildHash();
   }
 
@@ -38,10 +66,27 @@ export class WorldData {
       onProgress(name);
       return out;
     };
-    const [info, hb, tb, rb, pb] = await Promise.all([
-      get('world.json', 'json'), get('heightmap.u16'), get('trees.f32'), get('rocks.f32'), get('poles.f32'),
+    const info = await get('world.json', 'json');
+    const open = info.kind === 'open';
+    const [hb, tb, rb, pb, gb] = await Promise.all([
+      get(open ? 'heightmap.pz' : 'heightmap.u16'), get('trees.f32'), get('rocks.f32'), get('poles.f32'), open ? get('groom.u8') : null,
     ]);
-    return new WorldData(info, new Uint16Array(hb), new Float32Array(tb), new Float32Array(rb), new Float32Array(pb));
+    const heights = open ? decodePredictedHeights(new Uint16Array(hb), info.grid.nx, info.grid.nz) : new Uint16Array(hb);
+    return new WorldData(info, heights, new Float32Array(tb), new Float32Array(rb), new Float32Array(pb), gb ? new Uint8Array(gb) : null);
+  }
+
+  // ------------------------------------------------------------------ groomed snow
+  /** 0..1: how much the snow under (x, z) is groomed piste (open world; bilinear on the groom raster) */
+  groomAt(x, z) {
+    const G = this.groom;
+    if (!G) return 0;
+    const fx = (x - this.x0) * this.invDx, fz = (z - this.z0) * this.invDx;
+    const ix = Math.floor(fx), iz = Math.floor(fz);
+    if (ix < 0 || iz < 0 || ix >= this.nx - 1 || iz >= this.nz - 1) return 0;
+    const tx = fx - ix, tz = fz - iz;
+    const o = iz * this.nx + ix;
+    const a = G[o], b = G[o + 1], c = G[o + this.nx], d = G[o + this.nx + 1];
+    return ((a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz) / 255;
   }
 
   // ------------------------------------------------------------------ heights

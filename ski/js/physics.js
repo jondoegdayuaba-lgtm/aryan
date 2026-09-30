@@ -76,6 +76,7 @@ export class SkierPhysics {
     this.pathDist = 0;
     this._proj = {};
     this.tune = { drag: 1, mu: 1, grip: 1 };      // run-specific multipliers
+    this.seated = 0;                 // 0..1 while riding a chairlift (set by the open-world mode, read by the rig)
   }
 
   reset(x, z, yaw, speed = 0) {
@@ -99,6 +100,7 @@ export class SkierPhysics {
     this.aLat = 0;
     this.lean = 0;
     this.compress = 0;
+    this.seated = 0;
     this.events.length = 0;
     this._hasPrev = false;
   }
@@ -130,6 +132,7 @@ export class SkierPhysics {
 
   /** surface under the skier: friction, grip and drag from the distance to the groomed piste */
   _surface(x, z) {
+    if (this.world.groom) return smoothstep(0.12, 0.85, this.world.groomAt(x, z));   // open world: the groom raster
     const p = this.world.path.project(x, z, this.hintS, this._proj);
     this.hintS = p.s;
     this.pathS = p.s;
@@ -218,7 +221,10 @@ export class SkierPhysics {
     this._collide();
     this._collideNets();
     if (!this.crashed && this.grounded && this.ny < 0.70) this.crash('cliff');   // steeper than ~45 degrees
-    if (!w.inside(this.x, this.z, 12)) this.crash('boundary');
+    if (!w.inside(this.x, this.z, 12)) {
+      if (w.open) this._softBounds();
+      else this.crash('boundary');
+    }
     // visual compression: crouch charge + absorbing bumps
     this.compress = damp(this.compress, Math.max(this.jumpCharge * 0.9, clamp(this.bumpKick, 0, 0.8)), 12, dt);
   }
@@ -409,6 +415,17 @@ export class SkierPhysics {
       if (vOut > 0) { this.vx -= ox * vOut * 1.3; this.vz -= oz * vOut * 1.3; }
       this.vx *= 0.985; this.vz *= 0.985;
     }
+  }
+
+  /** the edge of the open world is a soft wall: slide along it and say so */
+  _softBounds() {
+    const w = this.world, m = 12;
+    let hit = false;
+    if (this.x < w.x0 + m) { this.x = w.x0 + m; if (this.vx < 0) this.vx *= -0.2; hit = true; }
+    else if (this.x > w.x1 - m) { this.x = w.x1 - m; if (this.vx > 0) this.vx *= -0.2; hit = true; }
+    if (this.z < w.z0 + m) { this.z = w.z0 + m; if (this.vz < 0) this.vz *= -0.2; hit = true; }
+    else if (this.z > w.z1 - m) { this.z = w.z1 - m; if (this.vz > 0) this.vz *= -0.2; hit = true; }
+    if (hit) this.events.push({ type: 'edge' });
   }
 
   crash(cause) {

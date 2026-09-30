@@ -9,6 +9,7 @@ export class Input {
     this.pad = { steer: 0, tuck: 0, brake: 0, jump: false, push: false };
     this.pressed = new Set();      // one-shot presses since the last consume()
     this.enabled = true;
+    this.captureTab = false;
     this.handlers = {};
     addEventListener('keydown', (e) => {
       if (e.repeat) { if (this._isGame(e.code)) e.preventDefault(); return; }
@@ -22,6 +23,7 @@ export class Input {
   }
 
   _isGame(code) {
+    if (code === 'Tab') return this.captureTab;            // the open-world map key; the menu keeps normal tabbing
     return ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(code);
   }
 

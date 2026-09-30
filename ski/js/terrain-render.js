@@ -83,30 +83,33 @@ function buildNormalTexture(world) {
 
 
 /**
- * Lateral coordinate field of the groomed piste: RGBA half float, r = signed distance from the centre line (m),
- * gb = the lateral direction (x, z). Splatted from the path at load time; the shader uses it to draw corduroy.
+ * Lateral coordinate field of the groomed pistes: RGBA half float, r = signed distance from the centre line (m),
+ * gb = the lateral direction (x, z). Splatted from the pistes at load time; the shader uses it to draw corduroy.
+ * The race mountain has one piste, the open world several (each texel belongs to the nearest one).
  */
-function buildPisteField(world) {
-  const W = 512, H = 2048;
+function buildPisteField(world, W, H) {
   const data = new Uint16Array(W * H * 4);
   const best = new Float32Array(W * H).fill(1e9);
   const hint = new Float32Array(W * H);
+  const owner = new Uint8Array(W * H);
   const sx = W / (world.x1 - world.x0), sz = H / (world.z1 - world.z0);
   const half = THREE.DataUtils.toHalfFloat;
-  const path = world.path;
+  const paths = world.pistes && world.pistes.length ? world.pistes.map((p) => p.sampler) : [world.path];
   const p = {};
-  // pass 1: mark the texels near the piste and remember which stretch of path they belong to
-  for (let s = path.s0; s <= path.sEnd; s += 0.7) {
-    path.at(s, p);
-    const reach = p.width * 0.5 + 12;
-    for (let l = -reach; l <= reach; l += 0.55) {
-      const i = Math.floor((p.x + p.rx * l - world.x0) * sx), j = Math.floor((p.z + p.rz * l - world.z0) * sz);
-      if (i < 0 || j < 0 || i >= W || j >= H) continue;
-      const k = j * W + i;
-      const a = Math.abs(l);
-      if (a < best[k]) { best[k] = a; hint[k] = s; }
+  // pass 1: mark the texels near a piste and remember which stretch of which piste they belong to
+  paths.forEach((path, pi) => {
+    for (let s = path.s0; s <= path.sEnd; s += 0.7) {
+      path.at(s, p);
+      const reach = p.width * 0.5 + 12;
+      for (let l = -reach; l <= reach; l += 0.55) {
+        const i = Math.floor((p.x + p.rx * l - world.x0) * sx), j = Math.floor((p.z + p.rz * l - world.z0) * sz);
+        if (i < 0 || j < 0 || i >= W || j >= H) continue;
+        const k = j * W + i;
+        const a = Math.abs(l);
+        if (a < best[k]) { best[k] = a; hint[k] = s; owner[k] = pi; }
+      }
     }
-  }
+  });
   // pass 2: exact lateral offset and direction at every marked texel centre, so bilinear filtering is exact
   const pr = {}, q = {};
   for (let j = 0; j < H; j++) {
@@ -114,6 +117,7 @@ function buildPisteField(world) {
       const k = j * W + i;
       if (best[k] > 1e8) continue;
       const cx = world.x0 + (i + 0.5) / sx, cz = world.z0 + (j + 0.5) / sz;
+      const path = paths[owner[k]];
       path.project(cx, cz, hint[k], pr);
       path.at(pr.s, q);
       data[k * 4] = half(pr.t);
@@ -324,7 +328,7 @@ export class TerrainRenderer {
       uSnowN: { value: snowN },
       uRockN: { value: rock.normal },
       uRockC: { value: rock.color },
-      uPisteTex: { value: this.pisteTex = buildPisteField(world) },
+      uPisteTex: { value: this.pisteTex = buildPisteField(world, ...(opts.pisteSize || [512, 2048])) },
       uGrid: { value: new THREE.Vector4(world.x0, world.z0, world.dx, 0) },
       uGridDim: { value: new THREE.Vector2(world.nx, world.nz) },
       uSunDir: { value: new THREE.Vector3(...world.sunDir) },

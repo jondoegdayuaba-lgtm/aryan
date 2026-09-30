@@ -20,10 +20,18 @@
         <span id="hud-run-name" class="hud-run-name"></span>
         <span id="hud-gates" class="hud-gates"></span>
       </div>
-      <div class="hud-time">
-        <span id="hud-time" class="hud-time-value">0:00.00</span>
-        <span id="hud-penalty" class="hud-penalty"></span>
-        <span id="hud-split" class="hud-split"></span>
+      <div class="hud-mid">
+        <div class="hud-time">
+          <span id="hud-time" class="hud-time-value">0:00.00</span>
+          <span id="hud-penalty" class="hud-penalty"></span>
+          <span id="hud-split" class="hud-split"></span>
+        </div>
+        <canvas id="compass" class="compass" width="720" height="60" hidden></canvas>
+        <div id="free-stats" class="free-stats" hidden>
+          <div><span class="ico flag">&#9873;</span><b id="free-flags">0</b><small id="free-flags-total">/ 24 flags</small></div>
+          <div><span class="ico gem">&#9670;</span><b id="free-found">0</b><small id="free-found-total">/ 10 places</small></div>
+          <div class="target" id="free-target" hidden><span class="ico flag">&#9873;</span><b id="free-target-dist">0</b><small>m to the nearest flag</small></div>
+        </div>
       </div>
       <div class="hud-right">
         <button id="btn-cam" class="icon-btn" type="button" aria-label="Change camera" title="Camera (C)">
@@ -64,6 +72,10 @@
       <div class="profile-label"><span id="hud-remaining">0 m</span> to the finish</div>
     </div>
 
+    <canvas id="minimap" class="minimap" width="440" height="440" hidden></canvas>
+    <div id="prompt" class="prompt" hidden><kbd>E</kbd><span id="prompt-text"></span></div>
+    <div id="discover" class="discover" aria-live="polite"></div>
+
     <div id="hint" class="hint"></div>
 
     <div id="touch" class="touch" hidden>
@@ -71,6 +83,8 @@
       <button id="tb-jump" type="button">Jump</button>
       <button id="tb-tuck" type="button">Tuck</button>
       <button id="tb-push" type="button">Push</button>
+      <button id="tb-lift" type="button" hidden>Lift</button>
+      <button id="tb-map" type="button" hidden>Map</button>
     </div>
   </div>
 
@@ -82,9 +96,10 @@
           <svg viewBox="0 0 64 64"><path d="M4 50l22-28 9 11 7-9 18 26z" fill="#eef4ff"/><path d="M26 22l9 11 7-9 4 6-11 14-9-11z" fill="#8fb8f0"/></svg>
         </div>
         <h1 id="title" class="title">Alpine <span>Descent</span></h1>
-        <p class="tagline">A real-time downhill through a mountain built and lit in Blender.</p>
+        <p class="tagline">A real-time downhill and a whole mountain to explore, built and lit in Blender.</p>
       </div>
 
+      <div id="open-slot" class="open-slot"></div>
       <div id="run-list" class="run-list" role="list"></div>
 
       <div class="menu-foot">
@@ -132,7 +147,28 @@
           <div><dt>Drag / wheel</dt><dd>Look around / zoom</dd></div>
           <div><dt>C</dt><dd>Camera</dd></div>
           <div><dt>R / Esc</dt><dd>Restart / Pause</dd></div>
+          <div><dt>E</dt><dd>Ride a lift (open world)</dd></div>
+          <div><dt>Tab</dt><dd>Map (open world)</dd></div>
         </dl>
+      </div>
+    </div>
+  </section>
+
+  <section id="mapscreen" class="screen center" hidden aria-label="Map">
+    <div class="card map-card">
+      <div class="map-head">
+        <h2>Map</h2>
+        <div class="map-legend">
+          <span><i style="background:#2fa84f"></i>Green</span><span><i style="background:#2f7dff"></i>Blue</span>
+          <span><i style="background:#e0352b"></i>Red</span><span><i style="background:#15161a"></i>Black</span>
+          <span><i class="dash"></i>Chairlift</span><span><i class="dia"></i>Place</span><span><i class="dot"></i>Flag</span>
+        </div>
+        <button id="btn-map-close" class="ghost-btn" type="button">Close (Esc)</button>
+      </div>
+      <canvas id="map-canvas" width="1000" height="1000"></canvas>
+      <div class="map-foot">
+        <div id="map-progress" class="map-progress"></div>
+        <div id="map-travel" class="map-travel"></div>
       </div>
     </div>
   </section>

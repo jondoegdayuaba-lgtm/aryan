@@ -90,3 +90,52 @@ export class Autopilot {
     return { steer, tuck, brake, jump, push: speed < 8.5 };
   }
 }
+
+/**
+ * Follows one piste of the open world by pure pursuit (used by the automated tests and the open-world title demo).
+ * piste = entry of world.pistes ({ sampler: PathSampler, ... }).
+ */
+export class PisteFollower {
+  constructor(world, piste, skill = 0.9) {
+    this.world = world;
+    this.piste = piste;
+    this.path = piste.sampler;
+    this.skill = skill;
+    this.aLatMax = 0.7 * (TUNING.gripBase + TUNING.gripEdge) * G * skill;
+    this.hint = this.path.s0;
+    this.s = this.path.s0;
+    this.off = 0;
+    this.done = false;
+    this._proj = {};
+  }
+
+  control(sk, time = 0) {
+    const path = this.path;
+    const speed = Math.hypot(sk.vx, sk.vz);
+    const pr = path.project(sk.x, sk.z, this.hint, this._proj);
+    this.hint = pr.s;
+    this.s = pr.s;
+    this.off = pr.t;
+    this.done = pr.s > path.sEnd - 12;
+    const Ld = clamp(8 + 0.75 * speed, 10, 42);
+    path.at(pr.s + Ld, _p);
+    const desired = Math.atan2(_p.x - sk.x, -(_p.z - sk.z));
+    const err = angleDiff(desired, sk.yaw);
+    let steer = clamp(2.6 * err, -1, 1);
+    const vheading = Math.atan2(sk.vx, -sk.vz);
+    const drift = speed > 2 ? angleDiff(vheading, sk.yaw) : 0;
+    steer = clamp(steer + 0.6 * drift, -1, 1);
+    // corner speed from the curvature ahead
+    let vmin = 60;
+    const look = 10 + speed * 2.6;
+    for (let d = 8; d <= look; d += 8) {
+      path.at(pr.s + d, _q);
+      const v = Math.sqrt(this.aLatMax / Math.max(Math.abs(_q.curv), 1e-4));
+      if (v < vmin) vmin = v;
+    }
+    if (this.done) vmin = 3;
+    const brake = clamp((speed - vmin - 0.8) / 5, 0, 1);
+    const tuck = Math.abs(err) < 0.10 && vmin > speed + 3 ? 1 : 0;
+    return { steer, tuck, brake: sk.crashed ? 0 : brake, jump: false, push: speed < 8.5 && !this.done };
+  }
+}

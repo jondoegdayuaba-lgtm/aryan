@@ -4,6 +4,8 @@
 import * as THREE from 'three';
 import { applyWorldLight } from './shader-patches.js';
 import { clamp } from './util.js';
+import { collectParts, Inst, spawn, Banner } from './props-kit.js';
+import { Chairlift } from './chairlift.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const _m = new THREE.Matrix4();
@@ -14,127 +16,6 @@ const _s = new THREE.Vector3(1, 1, 1);
 const _a = new THREE.Vector3();
 const _x = new THREE.Vector3();
 const _z = new THREE.Vector3();
-
-// -------------------------------------------------------------------------------- glb helpers
-function collectParts(gltf) {
-  const map = new Map();
-  gltf.scene.updateMatrixWorld(true);
-  gltf.scene.traverse((o) => {
-    if (!o.isMesh) return;
-    const [prop, mat] = o.name.split('__');
-    if (!mat) return;
-    const geometry = o.geometry.clone().applyMatrix4(o.matrixWorld);
-    if (!map.has(prop)) map.set(prop, []);
-    map.get(prop).push({ geometry, material: o.material, name: mat });
-  });
-  return map;
-}
-
-/** InstancedMesh set for one prop (one InstancedMesh per material). */
-class Inst {
-  constructor(parts, capacity, { cast = true, receive = true, group }) {
-    this.capacity = capacity;
-    this.meshes = parts.map((p) => {
-      const im = new THREE.InstancedMesh(p.geometry, p.material, capacity);
-      im.count = 0;
-      im.frustumCulled = false;
-      im.castShadow = cast;
-      im.receiveShadow = receive;
-      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      group.add(im);
-      return im;
-    });
-    this.count = 0;
-  }
-
-  set(i, matrix) {
-    for (const im of this.meshes) im.setMatrixAt(i, matrix);
-  }
-
-  commit(count = this.count) {
-    this.count = count;
-    for (const im of this.meshes) {
-      im.count = count;
-      im.instanceMatrix.needsUpdate = true;
-    }
-  }
-}
-
-function spawn(parts, { cast = true, receive = true } = {}) {
-  const g = new THREE.Group();
-  for (const p of parts) {
-    const m = new THREE.Mesh(p.geometry, p.material);
-    m.castShadow = cast;
-    m.receiveShadow = receive;
-    g.add(m);
-  }
-  return g;
-}
-
-/** A cloth strip between two posts that flutters in the wind. Textures are glTF style (v = 0 at the top). */
-class Banner {
-  constructor(material, width, height, seed = 0) {
-    const segs = Math.max(10, Math.round(width / 0.7));
-    this.segs = segs;
-    this.width = width;
-    this.height = height;
-    this.seed = seed;
-    const n = (segs + 1) * 2;
-    this.pos = new Float32Array(n * 3);
-    const uv = new Float32Array(n * 2);
-    const idx = [];
-    const repeats = Math.max(1, Math.round(width / (height * 4)));
-    for (let i = 0; i <= segs; i++) {
-      const u = (i / segs) * repeats;
-      uv.set([u, 0, u, 1], i * 4);
-      if (i < segs) {
-        const a = i * 2;
-        idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-      }
-    }
-    const g = this.geometry = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
-    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage));
-    g.setIndex(idx);
-    this.mesh = new THREE.Mesh(g, material);
-    this.mesh.castShadow = true;
-    this.mesh.receiveShadow = true;
-    this.mesh.frustumCulled = false;
-    this.update(0);
-  }
-
-  update(time) {
-    const { segs, width, height, seed, pos } = this;
-    const nor = this.geometry.attributes.normal.array;
-    for (let i = 0; i <= segs; i++) {
-      const t = i / segs;
-      const edge = Math.sin(Math.PI * t);                                   // pinned at both posts
-      const w = 0.16 * edge * Math.sin(t * 9.0 - time * 2.6 + seed) + 0.07 * edge * Math.sin(t * 17.0 - time * 4.3 + seed * 2);
-      const sag = -0.35 * edge;
-      for (let k = 0; k < 2; k++) {
-        const j = (i * 2 + k) * 3;
-        const hang = k === 0 ? 0 : -height;
-        pos[j] = t * width;
-        pos[j + 1] = sag * (k === 0 ? 1 : 0.6) + hang;
-        pos[j + 2] = w * (k === 0 ? 0.5 : 1.0);
-      }
-      // normal from the ripple slope
-      const dz = 0.16 * edge * 9.0 / width * Math.cos(t * 9.0 - time * 2.6 + seed);
-      const l = Math.hypot(dz, 1);
-      for (let k = 0; k < 2; k++) {
-        const j = (i * 2 + k) * 3;
-        nor[j] = -dz / l; nor[j + 1] = 0; nor[j + 2] = 1 / l;
-      }
-    }
-    this.geometry.attributes.position.needsUpdate = true;
-    this.geometry.attributes.normal.needsUpdate = true;
-  }
-
-  dispose() {
-    this.geometry.dispose();
-  }
-}
 
 // ------------------------------------------------------------------------------------ Props
 export class Props {
@@ -263,122 +144,11 @@ export class Props {
     const lift = this.world.info.props && this.world.info.props.lift;
     this.lift = null;
     if (!lift || lift.points.length < 3) return;
-    const w = this.world;
-    const pts = lift.points;
-    const N = pts.length;
-    const ARM = 2.3, PYLON_H = 9.0, CABLE_PYL = PYLON_H + 0.84, CABLE_STN = 4.6;
-    const dirs = [];
-    for (let i = 0; i < N; i++) {
-      const a = pts[Math.max(i - 1, 0)], b = pts[Math.min(i + 1, N - 1)];
-      const dx = b[0] - a[0], dz = b[1] - a[1];
-      const l = Math.hypot(dx, dz) || 1;
-      dirs.push([dx / l, dz / l]);
-    }
-    // pylons
-    const pyl = new Inst(this.need('lift_pylon'), N, { cast: true, receive: true, group: this.group });
-    const top = [];        // cable points on the up (+ARM) and down (-ARM) lines
-    for (let i = 0; i < N; i++) {
-      const [x, z] = pts[i];
-      const y = w.height(x, z);
-      const [dx, dz] = dirs[i];
-      const rx = -dz, rz = dx;
-      const cy = y + (i === 0 || i === N - 1 ? CABLE_STN : CABLE_PYL);
-      top.push({ up: new THREE.Vector3(x + rx * ARM, cy, z + rz * ARM), down: new THREE.Vector3(x - rx * ARM, cy, z - rz * ARM), c: new THREE.Vector3(x, cy, z) });
-      if (i > 0 && i < N - 1) {
-        _q.setFromAxisAngle(UP, Math.atan2(-rz, rx));
-        _p.set(x, y - 0.1, z);
-        _m.compose(_p, _q, _s);
-        pyl.set(i - 1, _m);
-      }
-    }
-    pyl.commit(N - 2);
-    // terminals
-    const stationParts = this.need('lift_station');
-    const st0 = spawn(stationParts);
-    st0.position.set(pts[0][0], w.height(pts[0][0], pts[0][1]), pts[0][1]);
-    st0.rotation.y = Math.atan2(dirs[0][0], dirs[0][1]);
-    const st1 = spawn(stationParts);
-    st1.position.set(pts[N - 1][0], w.height(pts[N - 1][0], pts[N - 1][1]), pts[N - 1][1]);
-    st1.rotation.y = Math.atan2(-dirs[N - 1][0], -dirs[N - 1][1]);
-    this.group.add(st0, st1);
-
-    // closed loop polyline: up line, wrap around the top wheel, down line, wrap around the bottom wheel
-    const loop = [];
-    const push = (v) => loop.push(v.clone());
-    const span = (A, B) => {
-      const L = A.distanceTo(B);
-      const sag = 0.02 * L;
-      const n = Math.max(4, Math.round(L / 8));
-      for (let k = 0; k < n; k++) {
-        const f = k / n;
-        const v = A.clone().lerp(B, f);
-        v.y -= sag * 4 * f * (1 - f);
-        loop.push(v);
-      }
-    };
-    const wrap = (C, from, dir) => {          // half circle from the +ARM side to the -ARM side (or back) passing through C + dir * ARM
-      const a0 = Math.atan2(from.z - C.z, from.x - C.x);
-      const mid = Math.atan2(dir[1], dir[0]);
-      let da = mid - a0;
-      while (da > Math.PI) da -= 2 * Math.PI;
-      while (da < -Math.PI) da += 2 * Math.PI;
-      const sgn = da >= 0 ? 1 : -1;
-      const n = 14;
-      for (let k = 0; k < n; k++) {
-        const a = a0 + sgn * Math.PI * (k / n);
-        loop.push(new THREE.Vector3(C.x + Math.cos(a) * ARM, C.y, C.z + Math.sin(a) * ARM));
-      }
-    };
-    for (let i = 0; i < N - 1; i++) span(top[i].up, top[i + 1].up);
-    wrap(top[N - 1].c, top[N - 1].up, dirs[N - 1]);
-    for (let i = N - 1; i > 0; i--) span(top[i].down, top[i - 1].down);
-    wrap(top[0].c, top[0].down, [-dirs[0][0], -dirs[0][1]]);
-    loop.push(loop[0].clone());
-    const cum = [0];
-    for (let i = 1; i < loop.length; i++) cum.push(cum[i - 1] + loop[i].distanceTo(loop[i - 1]));
-    const total = cum[cum.length - 1];
-
-    // cables (two thin lines)
-    const seg = [];
-    for (let i = 0; i < loop.length - 1; i++) seg.push(loop[i].x, loop[i].y, loop[i].z, loop[i + 1].x, loop[i + 1].y, loop[i + 1].z);
-    const lg = new THREE.BufferGeometry();
-    lg.setAttribute('position', new THREE.Float32BufferAttribute(seg, 3));
-    const cable = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: new THREE.Color(0.55, 0.55, 0.58).multiplyScalar(this.opts.radiance ? this.opts.radiance * 0.03 : 0.6) }));
-    cable.frustumCulled = false;
-    this.group.add(cable);
-
-    // chairs
-    const spacing = 34;
-    const count = Math.floor(total / spacing);
-    const chairs = new Inst(this.need('lift_chair'), count, { cast: false, receive: true, group: this.group });
-    chairs.commit(count);
-    this.lift = { loop, cum, total, count, chairs, spacing: total / count, speed: 5.0, offset: 0, phase: Array.from({ length: count }, (_, i) => i * 1.7) };
+    this.lift = new Chairlift(this.world, this.group, this.parts, { id: 'race', name: 'Chairlift', points: lift.points, speed: 5.0 }, { radiance: this.opts.radiance });
   }
 
   _updateLift(dt, time) {
-    const L = this.lift;
-    if (!L) return;
-    L.offset = (L.offset + L.speed * dt) % L.total;
-    const { loop, cum } = L;
-    let seg = 0;
-    for (let c = 0; c < L.count; c++) {
-      const u = (L.offset + c * L.spacing) % L.total;
-      // segments are visited in order as c grows (mod wrap), so a binary search keeps this cheap
-      let lo = 0, hi = cum.length - 1;
-      while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= u) lo = mid; else hi = mid; }
-      seg = lo;
-      const A = loop[seg], B = loop[seg + 1];
-      const f = (u - cum[seg]) / Math.max(cum[seg + 1] - cum[seg], 1e-4);
-      _p.copy(A).lerp(B, f);
-      _a.copy(B).sub(A);
-      _q.setFromAxisAngle(UP, Math.atan2(_a.x, _a.z));
-      const sway = 0.045 * Math.sin(time * 1.3 + L.phase[c]);
-      _q2.setFromAxisAngle(_z.set(_a.x, 0, _a.z).normalize(), sway);
-      _q.premultiply(_q2);
-      _m.compose(_p, _q, _s);
-      L.chairs.set(c, _m);
-    }
-    L.chairs.commit(L.count);
+    if (this.lift) this.lift.update(dt, time);
   }
 
   // ============================================================================ per run
