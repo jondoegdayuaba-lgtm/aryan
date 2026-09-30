@@ -1,6 +1,6 @@
 // Menus: lobby, locker, settings, how-to-play, pause, death and victory screens.
 import { OUTFITS, SKIN_TONES } from './character.js';
-import { GAME } from './config.js';
+import { GAME, MAPS } from './config.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -13,6 +13,7 @@ export class UI {
     const click = (id, fn) => $(id).addEventListener('click', () => { game.audio.init(); game.audio.ui(); fn(); });
     click('btn-play', () => this.play());
     click('btn-online', () => this.panel('online'));
+    for (const el of document.querySelectorAll('.map-card')) el.addEventListener('click', () => { game.audio.init(); game.audio.ui(); this.pickMap(el.dataset.map); });
     this.bindOnline();
     click('btn-settings', () => this.panel('settings'));
     click('btn-howto', () => this.panel('howto'));
@@ -47,13 +48,47 @@ export class UI {
     $('menu').hidden = true;
     this.panel(null);
     $('matchmaking').hidden = false;
-    $('mm-text').textContent = friends ? `Starting a match with ${friends} friend${friends > 1 ? 's' : ''}…` : 'Finding a match…';
-    setTimeout(() => { $('mm-text').textContent = `${Math.max(g.settings.bots + 1, friends + 1)} players found — boarding the airship`; }, 700);
+    const duel = (MAPS[g.settings.map] || MAPS.island).mode === 'duel';
+    $('mm-text').textContent = friends ? `Starting a match with ${friends} friend${friends > 1 ? 's' : ''}…` : duel ? 'Finding an opponent…' : 'Finding a match…';
+    setTimeout(() => {
+      $('mm-text').textContent = duel ? (friends ? `${friends + 1} players — heading to the Duel Grounds` : 'Opponent found — heading to the Duel Grounds')
+        : `${Math.max(g.settings.bots + 1, friends + 1)} players found — boarding the airship`;
+    }, 700);
     setTimeout(() => {
       $('matchmaking').hidden = true;
       this.starting = false;
       if (g.state === 'lobby') g.startMatch();
     }, 1500);
+  }
+
+  // Choose the map. The lobby backdrop moves to it right away (the island is rebuilt in a moment).
+  pickMap(key) {
+    const g = this.game;
+    if (!MAPS[key] || g.state !== 'lobby' || g.net.isClient) return;
+    g.settings.map = key;
+    g.saveSettings();
+    this.refreshMap();
+    if (g.mapKey !== key) {
+      $('matchmaking').hidden = false;
+      $('mm-text').textContent = `Loading ${MAPS[key].name}…`;
+      setTimeout(() => {
+        g.switchMap(key);
+        g.enterLobby();
+        $('matchmaking').hidden = true;
+      }, 60);
+    }
+    if (g.net.isHost) g.net.syncRoster();
+  }
+
+  refreshMap() {
+    const g = this.game;
+    const key = g.net.isClient ? (g.net.hostMap || 'island') : (MAPS[g.settings.map] ? g.settings.map : 'island');
+    for (const el of document.querySelectorAll('.map-card')) {
+      el.classList.toggle('on', el.dataset.map === key);
+      el.setAttribute('aria-checked', el.dataset.map === key ? 'true' : 'false');
+      el.disabled = g.net.isClient;
+    }
+    return key;
   }
 
   // ------------------------------------------------------------------ play with friends
@@ -138,8 +173,9 @@ export class UI {
     // the big buttons show the room too
     $('btn-online').classList.toggle('room', inRoom);
     $('online-sub').textContent = inRoom ? `Room ${net.code} · ${n} player${n === 1 ? '' : 's'}` : 'Online · share a room code';
-    $('play-sub').textContent = net.isHost ? (n > 1 ? `Start with ${n - 1} friend${n > 2 ? 's' : ''}` : 'Solo · Island Royale')
-      : net.isClient ? 'Waiting for the host' : 'Solo · Island Royale';
+    const mapName = MAPS[this.refreshMap()].name;
+    $('play-sub').textContent = net.isHost ? (n > 1 ? `${mapName} · with ${n - 1} friend${n > 2 ? 's' : ''}` : `Solo · ${mapName}`)
+      : net.isClient ? `Waiting for the host · ${mapName}` : `Solo · ${mapName}`;
   }
 
   toLobby(silent = false) {
@@ -168,6 +204,7 @@ export class UI {
     $('pause').hidden = true;
     this.refreshStats();
     this.refreshOutfit();
+    this.refreshOnline();
   }
 
   showMatch() {

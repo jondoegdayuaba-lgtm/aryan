@@ -2,12 +2,16 @@
 import * as THREE from 'three';
 import { WORLD, GRID } from './config.js';
 import { Noise2D, clamp, smoothstep, lerp } from './util.js';
-import { POIS, ROADS } from './layout.js';
+import { POIS, ROADS, DUEL_POIS } from './layout.js';
 
 const SPLAT_RES = 512;
 
 export class Terrain {
-  constructor(seed) {
+  constructor(seed, map = 'island') {
+    this.seed = seed;
+    this.map = map;
+    this.pois = map === 'duel' ? DUEL_POIS : POIS;
+    this.roads = map === 'duel' ? [] : ROADS;
     this.size = WORLD.size;
     this.res = WORLD.res;
     this.n = this.size / this.res + 1; // vertices per side
@@ -23,8 +27,23 @@ export class Terrain {
     this.base = this.heights.slice();
   }
 
+  // Regenerate the heightmap for another map in place (the same arrays, so everything that holds them stays valid).
+  setMap(map) {
+    this.map = map;
+    this.pois = map === 'duel' ? DUEL_POIS : POIS;
+    this.roads = map === 'duel' ? [] : ROADS;
+    this.roadMask.fill(0);
+    this.flatMask.fill(0);
+    this.poiHeights.clear();
+    this.roadSegs = [];
+    this.generate();
+    this.base = this.heights.slice();
+    if (this.heightTex) this.heightTex.needsUpdate = true;
+  }
+
   // ------------------------------------------------------------------ generation
   naturalHeight(x, z) {
+    if (this.map === 'duel') return this.duelHeight(x, z);
     const nz = this.noise;
     const r = Math.hypot(x, z);
     const ang = Math.atan2(z, x);
@@ -54,6 +73,25 @@ export class Terrain {
     return h;
   }
 
+  // Duel Grounds: a round island about 210 m across, with a low ridge ringing the arena.
+  duelHeight(x, z) {
+    const nz = this.noise;
+    const r = Math.hypot(x, z);
+    const ang = Math.atan2(z, x);
+    const coast = 104 * (1 + 0.07 * nz.noise(Math.cos(ang) * 1.6 + 3, Math.sin(ang) * 1.6 - 2)
+      + 0.04 * nz.noise(Math.cos(ang) * 5 + 7, Math.sin(ang) * 5 + 1));
+    const d = r / coast;
+    const land = smoothstep(1.08, 0.8, d);
+    let h = 4.6 + 1.6 * nz.fbm(x * 0.025 + 5, z * 0.025 - 3, 3);
+    // ridge around the arena: natural cover and high ground on the edge
+    const ring = smoothstep(0.42, 0.62, d) * (1 - smoothstep(0.7, 0.9, d));
+    h += ring * (4 + 5 * (0.5 + 0.5 * nz.noise(Math.cos(ang) * 2.2 + 11, Math.sin(ang) * 2.2 + 4)));
+    h += 0.6 * nz.fbm(x * 0.06, z * 0.06, 2);
+    h = h * land + (1 - land) * (-12 + 3 * nz.noise(x * 0.02, z * 0.02));
+    const beach = smoothstep(0.72, 0.92, d) * smoothstep(1.1, 0.95, d);
+    return lerp(h, Math.min(h, 1.2 + (0.92 - d) * 14), beach * 0.85);
+  }
+
   generate() {
     const { n, res, half } = this;
     const H = this.heights;
@@ -65,11 +103,11 @@ export class Terrain {
       }
     }
     // lakes and quarries dig down, towns flatten to a build level
-    for (const p of POIS) {
+    for (const p of this.pois) {
       if (p.lake) this.carveLake(p);
       if (p.kind === 'quarry') this.carveQuarry(p);
     }
-    for (const p of POIS) if (p.flat > 0 && p.kind !== 'quarry') this.flatten(p);
+    for (const p of this.pois) if (p.flat > 0 && p.kind !== 'quarry') this.flatten(p);
     this.buildRoads();
     this.smooth(1);
   }
@@ -147,9 +185,9 @@ export class Terrain {
     const R = SPLAT_RES;
     const cell = this.size / R;
     const segs = [];
-    for (const [a, b] of ROADS) {
-      const pa = POIS[a];
-      const pb = POIS[b];
+    for (const [a, b] of this.roads) {
+      const pa = this.pois[a];
+      const pb = this.pois[b];
       // meander with a couple of intermediate points
       const pts = [[pa.x, pa.z]];
       const steps = 6;
@@ -206,7 +244,7 @@ export class Terrain {
       // keep flattened town levels exact
       for (let k = 0; k < H.length; k++) H[k] = tmp[k];
     }
-    for (const p of POIS) {
+    for (const p of this.pois) {
       if (!(p.flat > 0)) continue;
       const lvl = this.poiHeights.get(p.name);
       if (lvl === undefined) continue;
@@ -468,6 +506,19 @@ export class Terrain {
     }
     this.mesh = group;
     return group;
+  }
+
+  // Rebuild the render mesh and ground textures after setMap (the material is recreated with the new splat map).
+  rebuildMesh(tex) {
+    const old = this.mesh;
+    if (old) {
+      if (old.parent) old.parent.remove(old);
+      for (const m of old.children) m.geometry.dispose();
+      if (this.material) this.material.dispose();
+    }
+    if (this.splatTex) this.splatTex.dispose();
+    this.buildSplat();
+    return this.buildMesh(tex);
   }
 
   // Pick a mesh resolution per chunk from the camera distance.

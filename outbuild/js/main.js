@@ -1,6 +1,6 @@
 // Outbuild — an original island battle royale with building. Game orchestration: lobby, match, results.
 import * as THREE from 'three';
-import { GAME, DEFAULT_SETTINGS, QUALITY, WORLD, PLAYER, RARITIES, MATS } from './config.js';
+import { GAME, DEFAULT_SETTINGS, QUALITY, WORLD, PLAYER, RARITIES, MATS, MAPS, DUEL_STORM, STORM } from './config.js';
 import { Rng, clamp, damp, formatTime } from './util.js';
 import { Renderer, TIMES } from './renderer.js';
 import { Assets } from './assets.js';
@@ -27,7 +27,8 @@ import { Hud } from './hud.js';
 import { PickupSystem, floorLoot, chestLoot, ammoBoxLoot, supplyLoot, WEAPONS, CONSUMABLES, itemName } from './items.js';
 import { OUTFITS, SKIN_TONES, CharacterModel } from './character.js';
 import { UI } from './ui.js';
-import { LOBBY } from './layout.js';
+import { LOBBY, DUEL_LOBBY } from './layout.js';
+import { DuelWorld } from './duel.js';
 import { Net, v3, toV } from './net.js';
 
 const $ = (id) => document.getElementById(id);
@@ -92,6 +93,7 @@ class Game {
     if (u.get('q')) s.quality = u.get('q');
     if (u.get('time')) s.timeOfDay = u.get('time');
     if (u.get('bots')) s.bots = +u.get('bots');
+    if (u.get('map')) s.map = u.get('map');
     return s;
   }
   saveSettings() { try { localStorage.setItem('outbuild.settings', JSON.stringify(this.settings)); } catch { /* private mode */ } }
@@ -138,7 +140,8 @@ class Game {
     this.assets = new Assets();
     await this.assets.load((p) => { bar.style.width = `${(p * 80) | 0}%`; });
     await this.tick();
-    this.terrain = new Terrain(GAME.seed);
+    this.mapKey = MAPS[this.settings.map] ? this.settings.map : 'island';
+    this.terrain = new Terrain(GAME.seed, this.mapKey);
     this.physics = new Physics(this.terrain);
     this.pieces = new PieceSystem(this.scene, this.physics, this.terrain, this.assets);
     this.pickups = new PickupSystem(this.scene, this.assets, this.terrain, this.physics);
@@ -148,6 +151,7 @@ class Game {
     this.terrain.buildSplat();
     this.terrain.buildHeightTexture();
     this.scene.add(this.terrain.buildMesh(this.assets.textures));
+    this.textures = this.assets.textures;
     this.water = createWater(this.terrain, this.assets.textures.water_n, this.renderer);
     this.scene.add(this.water);
     this.makeGrass();
@@ -163,7 +167,7 @@ class Game {
     this.weakPoint = new WeakPoint(this.scene);
     this.hud = new Hud(this);
     this.hud.renderIcons(this.renderer, this.assets);
-    this.hud.buildMap(this.terrain, this.pieces);
+    this.hud.buildMap(this.terrain, this.pieces, MAPS[this.mapKey].view);
     this.pieces.onDestroyed = (p, cause, b) => {
       if (cause === 'clear') return;
       this.effects.debris(b, p.mat);
@@ -253,7 +257,8 @@ class Game {
       if (this.effects) this.effects.propBreak(p);
       if (this.audio) this.audio.breakPiece(p.mat, new THREE.Vector3(p.x, p.y + 1, p.z));
     };
-    this.world = new World({ seed: GAME.seed, terrain: this.terrain, pieces: this.pieces, props: this.props }).build();
+    const WorldType = this.mapKey === 'duel' ? DuelWorld : World;
+    this.world = new WorldType({ seed: GAME.seed, terrain: this.terrain, pieces: this.pieces, props: this.props }).build();
     this.props.finalize();
     this.props.setDrawDist(QUALITY[this.settings.quality].drawDist);
     this.windmill = null;
@@ -321,8 +326,22 @@ class Game {
   }
 
   findLobbySpot() {
-    const h = this.terrain.heightAt(LOBBY.x, LOBBY.z);
-    return { pos: new THREE.Vector3(LOBBY.x, h, LOBBY.z), yaw: LOBBY.yaw };
+    const L = this.mapKey === 'duel' ? DUEL_LOBBY : LOBBY;
+    const h = this.physics.groundAt(L.x, L.z, 200, 0.3, 300);
+    return { pos: new THREE.Vector3(L.x, h, L.z), yaw: L.yaw };
+  }
+
+  // Swap the whole world for another map: heightmap, ground textures, buildings, props, grass and the map screen.
+  switchMap(key) {
+    if (!MAPS[key] || key === this.mapKey) return;
+    this.mapKey = key;
+    this.terrain.setMap(key);
+    this.buildLevel();
+    this.scene.add(this.terrain.rebuildMesh(this.textures));
+    this.makeGrass();
+    this.hud.buildMap(this.terrain, this.pieces, MAPS[key].view);
+    this.lobbySpot = null;
+    this.played = false;
   }
 
   updateLobby(dt) {
@@ -354,7 +373,10 @@ class Game {
     this.rng = new Rng(seed);
     const online = net.isHost && net.conns.size > 0;
     net.mute++;
-    if (this.played) this.buildLevel();
+    const mapKey = MAPS[this.settings.map] ? this.settings.map : 'island';
+    if (mapKey !== this.mapKey) this.switchMap(mapKey);
+    else if (this.played) this.buildLevel();
+    const duel = MAPS[this.mapKey].mode === 'duel';
     this.played = true;
     this.prepareMatch();
     this.spawnLoot(this.rng);
@@ -371,8 +393,8 @@ class Game {
         return a;
       });
     }
-    // bots fill the match up to the chosen size
-    const nBots = Math.max(0, s.bots - (this.actors.length - 1));
+    // bots fill the match up to the chosen size (a duel needs just one opponent)
+    const nBots = duel ? Math.max(0, 2 - this.actors.length) : Math.max(0, s.bots - (this.actors.length - 1));
     this.bots = [];
     for (let i = 0; i < nBots; i++) {
       const a = new Actor(this, { name: botName(this.rng), outfit: this.rng.int(0, OUTFITS.length - 1), skin: this.rng.pick(SKIN_TONES) });
@@ -383,18 +405,39 @@ class Game {
     }
     this.actorById = new Map(this.actors.map((a) => [a.id, a]));
     this.makeController();
-    this.airship.start(this.rng);
-    for (const b of this.bots) b.planDrop(this.airship);
-    this.rig.yaw = Math.atan2(this.airship.dir.x, this.airship.dir.z);
-    this.rig.pitch = -0.25;
-    this.storm.reset();
+    const spawns = [];
+    if (duel) {
+      // everyone starts on the ground, fully equipped, with a short countdown
+      this.airship.active = false;
+      this.airship.group.visible = false;
+      const extra = this.world.spawns.slice(2).sort(() => this.rng.next() - 0.5);
+      const order = this.world.spawns.slice(0, 2).concat(extra);
+      this.actors.forEach((a, i) => {
+        const sp = order[i % order.length];
+        this.placeOnGround(a, sp.x, sp.z, sp.yaw);
+        this.giveLoadout(a);
+        spawns.push([a.id, sp.x, sp.z, sp.yaw]);
+      });
+      this.freezeT = 3.5;
+      this.rig.yaw = this.player.intent.yaw;
+      this.rig.pitch = -0.1;
+      this.storm.reset(DUEL_STORM);
+    } else {
+      this.freezeT = 0;
+      this.airship.start(this.rng);
+      for (const b of this.bots) b.planDrop(this.airship);
+      this.rig.yaw = Math.atan2(this.airship.dir.x, this.airship.dir.z);
+      this.rig.pitch = -0.25;
+      this.storm.reset(STORM);
+    }
     this.storm.start(this.rng);
     this.stormTick = 1;
     net.mute--;
     if (online) {
       net.installHostProxies();
       const msg = {
-        t: 'start', tod: this.renderer.timeKey, ship: this.airship.route0,
+        t: 'start', tod: this.renderer.timeKey, map: this.mapKey, ship: duel ? null : this.airship.route0, spawns,
+        freeze: this.freezeT,
         actors: this.actors.map((a) => [a.id, a.name, a.look.outfit, a.look.skin, a.human ? 1 : 0]),
         containers: this.pickups.chests.map((c) => [c.id, c.kind, c.x, c.y, c.z, c.yaw]),
         pickups: this.pickups.list.map((p) => [p.id, p.item, p.x, p.y, p.z]),
@@ -430,7 +473,37 @@ class Game {
     this.input.enabled = true;
     this.input.lock();
     this.paused = false;
-    this.hud.announce('Board the airship', 'Press SPACE to jump when you are over a place you like', 4);
+    if (this.freezeT > 0) {
+      const n = this.actors.length;
+      this.hud.announce(MAPS[this.mapKey].name, n > 2 ? `${n} players · last one standing wins` : 'One opponent · last one standing wins', 2.5);
+      this.countdown = -1;
+    } else this.hud.announce('Board the airship', 'Press SPACE to jump when you are over a place you like', 4);
+  }
+
+  // Duel start: stand on the ground at a spawn point, facing the middle.
+  placeOnGround(a, x, z, yaw) {
+    a.mode = 'ground';
+    a.pos.set(x, this.physics.groundAt(x, z, 200, 0.3, 300), z);
+    a.vel.set(0, 0, 0);
+    a.grounded = true;
+    a.hittable = true;
+    a.fallStartY = a.pos.y;
+    a.yaw = yaw;
+    a.intent.yaw = yaw;
+    a.intent.pitch = 0;
+    a.model.root.visible = true;
+    if (a.brain) { a.brain.aimYaw = yaw; a.brain.landedAt = 0; }
+  }
+
+  giveLoadout(a) {
+    const inv = a.inv;
+    const w = (id, rarity) => ({ type: 'weapon', id, rarity, mag: WEAPONS[id].mag });
+    inv.slots = [w('ar', 3), w('pump', 3), w('smg', 2), { type: 'consumable', id: 'shieldSmall', count: 4 },
+      { type: 'consumable', id: 'medkit', count: 2 }];
+    inv.selected = 0;
+    inv.ammo = { light: 240, medium: 240, heavy: 0, shells: 40, rockets: 0 };
+    inv.mats = { wood: 500, stone: 400, metal: 300 };
+    a.shield = 100;
   }
 
   // Online client: the host started a match. Build the same island, loot and players, then follow the host.
@@ -444,7 +517,9 @@ class Game {
     this.audio.init();
     this.audio.stopMusic();
     this.rng = new Rng((Math.random() * 1e9) | 0);
-    if (this.played) this.buildLevel();
+    const mapKey = MAPS[m.map] ? m.map : 'island';
+    if (mapKey !== this.mapKey) this.switchMap(mapKey);
+    else if (this.played) this.buildLevel();
     this.played = true;
     if (m.tod && TIMES[m.tod] && this.renderer.timeKey !== m.tod) this.renderer.setTime(m.tod);
     this.prepareMatch();
@@ -462,10 +537,22 @@ class Game {
     this.actorById = new Map(this.actors.map((a) => [a.id, a]));
     this.bots = [];
     this.makeController();
-    this.airship.startFrom(m.ship[0], m.ship[1]);
-    this.rig.yaw = Math.atan2(this.airship.dir.x, this.airship.dir.z);
-    this.rig.pitch = -0.25;
-    this.storm.reset();
+    this.freezeT = m.freeze || 0;
+    if (m.ship) {
+      this.airship.startFrom(m.ship[0], m.ship[1]);
+      this.rig.yaw = Math.atan2(this.airship.dir.x, this.airship.dir.z);
+      this.rig.pitch = -0.25;
+    } else {
+      this.airship.active = false;
+      this.airship.group.visible = false;
+      for (const [id, x, z, yaw] of m.spawns || []) {
+        const a = this.actorById.get(id);
+        if (a) this.placeOnGround(a, x, z, yaw);
+      }
+      this.rig.yaw = this.player.intent.yaw;
+      this.rig.pitch = -0.1;
+    }
+    this.storm.reset(MAPS[mapKey].mode === 'duel' ? DUEL_STORM : STORM);
     this.storm.net = true;
     this.stormTick = 1;
     this.beginMatch();
@@ -506,8 +593,9 @@ class Game {
     if (clear) { this.marker = null; return; }
     const c = $('bigmap');
     const r = c.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width * WORLD.size - WORLD.size / 2;
-    const z = (e.clientY - r.top) / r.height * WORLD.size - WORLD.size / 2;
+    const M = this.hud.mapSize || WORLD.size;
+    const x = (e.clientX - r.left) / r.width * M - M / 2;
+    const z = (e.clientY - r.top) / r.height * M - M / 2;
     this.marker = { x, z };
     this.audio.ui();
   }
@@ -770,6 +858,10 @@ class Game {
     if (actor.isPlayer) this.hud.announce(CONSUMABLES[item.id].shield ? 'Shield is full' : 'Health is full', '', 1, 'small');
     this.tell(actor, 'cantuse', !!CONSUMABLES[item.id].shield);
   }
+  onThrow(actor) {
+    actor.model.state.throwT = 0.26;
+    this.net.emit('throw', actor.id);
+  }
   onExplosion(pos) {
     this.audio.explosion(pos);
     this.net.emit('snd', 'ex', v3(pos));
@@ -916,7 +1008,7 @@ class Game {
   }
 
   onStorm(phase, storm) {
-    if (phase === 'wait' && storm.phase >= 1 && storm.phase <= 4 && !this.net.isClient) setTimeout(() => { if (this.state === 'match' && !this.over) this.spawnSupplyDrop(); }, 6000);
+    if (phase === 'wait' && storm.phase >= 1 && storm.phase <= 4 && !this.net.isClient && MAPS[this.mapKey].mode === 'royale') setTimeout(() => { if (this.state === 'match' && !this.over) this.spawnSupplyDrop(); }, 6000);
     if (phase === 'wait') {
       this.hud.announce('Storm eye forming', `Shrinks in ${formatTime(storm.timer)} — get inside the white circle`, 4, 'storm');
     } else if (phase === 'shrink') {
@@ -1015,9 +1107,26 @@ class Game {
     const client = this.net.isClient;
     this.time += dt;
     const p = this.player;
+    // duel countdown: nobody moves until it ends
+    let frozen = false;
+    if (this.freezeT > 0) {
+      this.freezeT -= dt;
+      const n = Math.ceil(this.freezeT);
+      if (n !== this.countdown && this.freezeT < 3) {
+        this.countdown = n;
+        if (n > 0) { this.hud.announce(String(n), '', 0.9, 'count'); this.audio.ui('hover'); } else { this.hud.announce('FIGHT!', '', 1.2, 'count'); this.audio.warning(); }
+      }
+      frozen = this.freezeT > 0;
+    }
     // controllers
     if (p.alive) this.controller.update(dt);
     for (const b of this.bots) b.update(dt);
+    if (frozen) {
+      for (const a of this.actors) {
+        const it = a.intent;
+        it.moveX = it.moveZ = 0; it.fire = it.firePressed = it.jump = it.place = it.interact = false; it.buildMode = false;
+      }
+    }
     this.airship.update(dt);
     for (const a of this.actors) {
       a.update(dt);

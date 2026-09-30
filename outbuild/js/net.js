@@ -151,7 +151,7 @@ export class Net {
   syncRoster() {
     this.roster = [{ id: 'host', ...this.me(), host: true },
       ...[...this.conns.entries()].map(([id, c]) => ({ id, name: c.name, outfit: c.outfit, skin: c.skin }))];
-    this.broadcast({ t: 'roster', roster: this.roster });
+    this.broadcast({ t: 'roster', roster: this.roster, map: this.game.settings.map || 'island' });
     this.changed();
   }
 
@@ -446,7 +446,7 @@ export class Net {
   clientMessage(m) {
     const g = this.game;
     switch (m.t) {
-      case 'roster': this.roster = m.roster; this.changed(); break;
+      case 'roster': this.roster = m.roster; this.hostMap = m.map; this.changed(); break;
       case 'busy': this.status('That match has already started. Wait for it to finish and join again.', true); this.leave(); break;
       case 'full': this.status('That room is full', true); this.leave(); break;
       case 'start': g.startClientMatch(m); break;
@@ -523,6 +523,7 @@ export class Net {
         break;
       }
       case 'snd': g.netSound(x, me); break;
+      case 'throw': { const a = g.actorById.get(x[0]); if (a) a.model.state.throwT = 0.26; break; }
       case 'hit': if (x[0] === me) g.onHitConfirm(g.player, null, x[1], x[2], toV(x[3]), x[4]); break;
       case 'hurt': if (x[0] === me) g.onDamage(g.player, x[1], x[2] ? { pos: toV(x[2]) } : null, { toShield: x[3], shieldBroken: x[4], storm: x[5] }); break;
       case 'harv': if (x[0] === me) g.hud.matGain(x[1], x[2]); break;

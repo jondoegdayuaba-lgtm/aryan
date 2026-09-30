@@ -115,6 +115,26 @@ export const STORM = {
   startRadius: 620,
 };
 
+// A faster storm for the small duel island.
+export const DUEL_STORM = {
+  startDelay: 40,
+  phases: [
+    { wait: 25, shrink: 25, radius: 62, dps: 2 },
+    { wait: 20, shrink: 20, radius: 36, dps: 4 },
+    { wait: 15, shrink: 20, radius: 16, dps: 7 },
+    { wait: 10, shrink: 20, radius: 0, dps: 10 },
+  ],
+  startRadius: 118,
+};
+
+// The maps you can pick in the lobby. `view` is how many metres the map screen covers.
+export const MAPS = {
+  island: { name: 'Island Royale', short: 'Island', desc: 'Drop from the airship onto the full island. Loot, build and outlast everyone.',
+    view: 1024, mode: 'royale' },
+  duel: { name: 'Duel Grounds', short: '1v1 Duel', desc: 'A small arena island. Spawn fully loaded, face one opponent, last one standing wins.',
+    view: 280, mode: 'duel' },
+};
+
 export const QUALITY = {
   low: { pixelRatio: 0.75, shadows: false, shadowSize: 1024, ao: false, bloom: false, aa: 'fxaa', grass: 0, drawDist: 420 },
   medium: { pixelRatio: 1, shadows: true, shadowSize: 2048, ao: false, bloom: true, aa: 'fxaa', grass: 0.5, drawDist: 600 },
@@ -134,4 +154,5 @@ export const DEFAULT_SETTINGS = {
   timeOfDay: 'random',
   outfit: 0,
   difficulty: 'normal',
+  map: 'island',
 };

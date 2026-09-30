@@ -1,4 +1,5 @@
-// Rigged characters from character.glb: outfits and fully procedural animation (gait, aim, IK arms).
+// Rigged characters from character.glb: outfits, keyframed Blender clips (gaits, air, dance, death, swings)
+// blended by speed and state, with aiming, IK arms and recoil layered on top.
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { clamp, lerp, damp, wrapAngle } from './util.js';
@@ -123,6 +124,36 @@ function buildMergedGeometry(parts, show, colors) {
   return merged;
 }
 
+// ----------------------------------------------------------------------------- Blender clips
+// Clips are baked at a fixed rate, so sampling is an index plus a normalised lerp between two keys.
+const LIBS = new WeakMap();
+const UPPER = ['spine', 'chest', 'neck', 'head'];
+const ARMS = ['shoulderL', 'upperarmL', 'forearmL', 'handL', 'shoulderR', 'upperarmR', 'forearmR', 'handR'];
+
+function clipLibrary(gltf) {
+  let lib = LIBS.get(gltf);
+  if (lib) return lib;
+  const order = [];
+  const index = new Map();
+  const idx = (n) => { if (!index.has(n)) { index.set(n, order.length); order.push(n); } return index.get(n); };
+  const clips = {};
+  for (const clip of gltf.animations || []) {
+    const c = { name: clip.name, duration: clip.duration, rot: [], pos: null, step: 1 / 30, frames: 0 };
+    for (const tr of clip.tracks) {
+      const dot = tr.name.lastIndexOf('.');
+      const node = tr.name.slice(0, dot), prop = tr.name.slice(dot + 1);
+      if (tr.times.length > 1) c.step = tr.times[1] - tr.times[0];
+      c.frames = Math.max(c.frames, tr.times.length);
+      if (prop === 'quaternion') c.rot[idx(node)] = tr.values;
+      else if (prop === 'position' && node === 'hips') c.pos = tr.values;
+    }
+    clips[clip.name] = c;
+  }
+  lib = { order, index, clips };
+  LIBS.set(gltf, lib);
+  return lib;
+}
+
 // ----------------------------------------------------------------------------- model
 
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
@@ -184,6 +215,18 @@ export class CharacterModel {
     };
     this.footPlant = [false, false];
     this.onFootstep = null;
+    this.onEject = null;     // (worldPos, worldDir, kind) when a gun throws out a shell
+    this.onMagDrop = null;   // (mover) when a magazine leaves the gun during a reload
+    // blended pose buffers
+    this.lib = clipLibrary(gltf);
+    const nb = this.lib.order.length;
+    this.lbones = this.lib.order.map((n) => this.bones[n.replace(/\./g, '')] || this.bones[n] || null);
+    this.acc = new Float32Array(nb * 4);
+    this.accW = new Float32Array(nb);
+    this.pacc = new Float32Array(3);
+    this.paccW = 0;
+    Object.assign(this.state, { cycle: 0, idleT: 0, airT: 0, land: 0, deadT: 0, danceW: 0, deadW: 0, throwT: -1,
+      equip: 0, gunFireT: -1, gunFireDur: 0.2, lastReload: 0, magDropped: false, lastGrounded: true });
     this.setOutfit(outfitIndex, skinTone);
   }
 
@@ -228,7 +271,14 @@ export class CharacterModel {
       obj.traverse((m) => { if (m.isMesh) m.castShadow = true; });
       this.gripL = obj.children.find((c) => c.name.endsWith('_Hand')) || null;
       this.muzzle = obj.children.find((c) => c.name.endsWith('_Muzzle')) || null;
+      this.eject = obj.children.find((c) => c.name.endsWith('_Eject')) || null;
+      this.gun = obj.userData.gun || null;   // { name, clips: { Fire, Reload }, nodes, rest }
+      this.state.equip = 1;
+      this.state.gunFireT = -1;
+      if (this.gun) restGun(this.gun);
     } else {
+      this.gun = null;
+      this.eject = null;
       this.gripL = null;
       this.muzzle = null;
     }
@@ -308,24 +358,35 @@ export class CharacterModel {
   update(dt, a) {
     const s = this.state;
     const root = this.root;
-    this.resetPose();
 
     // local movement
     const sinY = Math.sin(a.yaw), cosY = Math.cos(a.yaw);
     const lx = a.vel.x * cosY - a.vel.z * sinY;   // character's left-right (+X = left)
     const lz = a.vel.x * sinY + a.vel.z * cosY;   // forward
     const speed = Math.hypot(lx, lz);
-    s.speed = damp(s.speed, a.mode === 'ground' && a.grounded ? speed : 0, 10, dt);
+    const onGround = a.mode === 'ground' && a.grounded;
+    s.speed = damp(s.speed, onGround ? speed : 0, 10, dt);
     s.crouch = damp(s.crouch, a.crouch ? 1 : 0, 12, dt);
     s.air = damp(s.air, a.mode === 'ground' && !a.grounded ? 1 : 0, 10, dt);
     s.sky = damp(s.sky, a.mode === 'sky' ? 1 : 0, 6, dt);
     s.glide = damp(s.glide, a.mode === 'glide' ? 1 : 0, 6, dt);
-    s.dead = a.mode === 'dead' ? Math.min(1, s.dead + dt * 2.2) : 0;
     s.aimPitch = damp(s.aimPitch, a.aimPitch || 0, 18, dt);
     s.recoil = Math.max(0, s.recoil - dt * 9);
     if (a.fired) s.recoil = Math.min(1.2, s.recoil + a.fired);
     s.hit = Math.max(0, s.hit - dt * 5);
+    s.equip = Math.max(0, s.equip - dt * 4);
+    s.idleT += dt;
+    s.airT = a.mode === 'ground' && !a.grounded ? s.airT + dt : 0;
+    // landing: a short knee dip scaled by how hard we came down
+    if (onGround && !s.lastGrounded && a.mode === 'ground') s.land = Math.min(1, 0.35 + Math.max(0, -(this._vy || 0)) / 18);
+    s.lastGrounded = onGround || a.mode !== 'ground';
+    this._vy = a.vel.y;
+    s.land = Math.max(0, s.land - dt * 4);
+    if (a.mode === 'dead') s.deadT += dt; else s.deadT = 0;
+    s.deadW = a.mode === 'dead' ? Math.min(1, s.deadT / 0.12) : 0;
     s.dance = a.dance ? s.dance + dt : 0;
+    s.danceW = damp(s.danceW, a.dance ? 1 : 0, 8, dt);
+    if (s.throwT >= 0) { s.throwT += dt; if (s.throwT > 0.6) s.throwT = -1; }
 
     // movement direction relative to facing
     let moveAng = Math.atan2(lx, lz); // 0 forward, +pi/2 left
@@ -336,99 +397,211 @@ export class CharacterModel {
     const targetHipsYaw = moving ? clamp(moveAng, -1.0, 1.0) * 0.75 : 0;
     s.hipsYaw = damp(s.hipsYaw, targetHipsYaw, 8, dt);
 
-    // gait phase: a full cycle every ~2.3 m (run) / 1.7 m (walk)
-    const stride = lerp(1.5, 2.4, clamp(s.speed / 7, 0, 1)) * (s.crouch > 0.5 ? 0.8 : 1);
-    s.phase += (s.speed / stride) * Math.PI * 2 * dt * (backwards ? -1 : 1);
-    const ph = s.phase;
-    const run = clamp((s.speed - 1) / 6, 0, 1);
-    const moveAmt = clamp(s.speed / 2.5, 0, 1);
-
-    // ---- pelvis
-    const hips = this.bones.hips;
-    const bob = (Math.cos(ph * 2) * (0.02 + 0.03 * run)) * moveAmt;
-    hips.position.y = this.hipsY - s.crouch * 0.36 + bob - s.air * 0.04;
-    hips.position.z = this.rest.hips.p.z + s.crouch * 0.05;
-    // lean into the run; hips turn toward the move direction, torso turns back to the aim
-    const lean = (0.08 + run * 0.18) * moveAmt * (1 - s.backwards * 1.6) + s.crouch * 0.25;
-    this.rotate('hips', lean * 0.5, s.hipsYaw + Math.sin(ph) * 0.08 * moveAmt, Math.cos(ph) * 0.04 * moveAmt);
-    this.rotate('spine', lean * 0.4 - s.aimPitch * 0.25, -s.hipsYaw * 0.45 - Math.sin(ph) * 0.06 * moveAmt, 0);
-    this.rotate('chest', -s.aimPitch * 0.35 - s.recoil * 0.05, -s.hipsYaw * 0.45 - Math.sin(ph) * 0.04 * moveAmt, 0);
-    this.rotate('neck', -s.aimPitch * 0.2, 0, 0);
-    this.rotate('head', -s.aimPitch * 0.2 - lean * 0.5, -s.hipsYaw * 0.1, 0);
-
-    // ---- legs
-    for (const [side, off] of [['L', 0], ['R', Math.PI]]) {
-      const p = ph + off;
-      const sw = Math.sin(p);
-      const swing = sw * (0.28 + 0.42 * run) * moveAmt;
-      const knee = (Math.max(0, Math.cos(p - 0.35)) ** 1.4 * (0.55 + 0.9 * run) + 0.08) * moveAmt;
-      const crouchT = s.crouch * 1.05, crouchK = s.crouch * 1.75;
-      const airT = s.air * (side === 'L' ? 0.55 : 0.15), airK = s.air * (side === 'L' ? 0.9 : 0.35);
-      this.rotate('thigh' + side, -(swing + crouchT + airT), 0, (side === 'L' ? -1 : 1) * 0.04);
-      this.rotate('shin' + side, knee + crouchK + airK, 0, 0);
-      this.rotate('foot' + side, -(knee * 0.35) + swing * 0.3 - crouchK * 0.35 + crouchT * 0.1, 0, 0);
-      // footstep events: foot plants when the swing turns
-      const planted = sw < -0.2;
-      const idx = side === 'L' ? 0 : 1;
-      if (planted && !this.footPlant[idx] && s.speed > 1.2 && this.onFootstep) this.onFootstep(side, s.speed);
-      this.footPlant[idx] = planted;
+    // ---- locomotion weights from speed: idle 0, walk 3.4, run 6.2, sprint 8.2 m/s
+    const sp = s.speed;
+    let wIdle = 0, wWalk = 0, wRun = 0, wSprint = 0;
+    if (sp < 0.3) wIdle = 1;
+    else if (sp < 3.4) { const t = (sp - 0.3) / 3.1; wIdle = 1 - t; wWalk = t; }
+    else if (sp < 6.2) { const t = (sp - 3.4) / 2.8; wWalk = 1 - t; wRun = t; }
+    else { const t = clamp((sp - 6.2) / 2.0, 0, 1); wRun = 1 - t; wSprint = t; }
+    const stand = 1 - s.crouch, crouch = s.crouch;
+    const move = 1 - wIdle;
+    // metres per gait cycle (two steps) for each style
+    const mw = wWalk + wRun + wSprint;
+    const stride = lerp(mw > 0 ? (wWalk * 1.9 + wRun * 3.3 + wSprint * 4.2) / mw : 1.9, 1.8, crouch);
+    if (!Number.isFinite(s.cycle)) s.cycle = 0;
+    const prevCycle = s.cycle;
+    s.cycle += (sp / stride) * dt * (backwards ? -1 : 1);
+    s.phase = s.cycle * Math.PI * 2;
+    // footsteps at each heel strike (cycle 0 and 0.5)
+    if (sp > 1.2 && this.onFootstep) {
+      const a0 = Math.floor(prevCycle * 2), a1 = Math.floor(s.cycle * 2);
+      if (a0 !== a1) this.onFootstep((a1 & 1) ? 'R' : 'L', sp);
     }
 
-    // ---- sky poses override
-    if (s.sky > 0.01) this.poseSky(s.sky, a);
-    if (s.glide > 0.01) this.poseGlide(s.glide, a);
+    // ---- blend the Blender clips
+    this.beginPose();
+    const ground = (1 - s.air) * (1 - s.sky) * (1 - s.glide);
+    const alive = 1 - s.deadW;
+    const base = ground * alive * (1 - s.danceW);
+    const cyc = ((s.cycle % 1) + 1) % 1;
+    if (base > 0.001) {
+      this.addClip('Idle', s.idleT, wIdle * stand * base);
+      this.addClip('CrouchIdle', s.idleT, wIdle * crouch * base);
+      this.addClipU('Walk', cyc, wWalk * stand * base);
+      this.addClipU('Run', cyc, wRun * stand * base);
+      this.addClipU('Sprint', cyc, wSprint * stand * base);
+      this.addClipU('CrouchWalk', cyc, move * crouch * base);
+    }
+    if (s.air > 0.001 && alive > 0) {
+      const w = s.air * (1 - s.sky) * (1 - s.glide) * alive;
+      const rising = clamp(a.vel.y / 3, 0, 1);
+      this.addClip('Jump', Math.min(s.airT, 0.49), w * rising, false);
+      this.addClip('Fall', s.airT, w * (1 - rising));
+    }
+    this.addClip('Sky', s.idleT, s.sky * alive);
+    this.addClip('Glide', s.idleT, s.glide * (1 - s.sky) * alive);
+    if (s.danceW > 0.001) this.addClip('Dance', s.dance, s.danceW * ground * alive);
+    if (s.deadW > 0) this.addClip('Death', s.deadT, s.deadW, false);
+    this.endPose();
+
+    // ---- layered on top: the pelvis turns toward the move direction, the torso aims
+    const aimW = (1 - s.sky) * (1 - s.glide) * alive * (1 - s.danceW);
+    this.rotate('hips', 0, s.hipsYaw * aimW, 0);
+    this.rotate('spine', -s.aimPitch * 0.25 * aimW, -s.hipsYaw * 0.45 * aimW, 0);
+    this.rotate('chest', (-s.aimPitch * 0.35 - s.recoil * 0.05 - s.hit * 0.12) * aimW, -s.hipsYaw * 0.45 * aimW, 0);
+    this.rotate('neck', -s.aimPitch * 0.2 * aimW, 0, 0);
+    this.rotate('head', (-s.aimPitch * 0.2 - s.hit * 0.1) * aimW, -s.hipsYaw * 0.1 * aimW, 0);
+    if (s.land > 0 && alive) {
+      const k = s.land * s.land;
+      this.bones.hips.position.y -= 0.14 * k;
+      for (const side of ['L', 'R']) {
+        this.rotate('thigh' + side, -0.4 * k, 0, 0);
+        this.rotate('shin' + side, 0.8 * k, 0, 0);
+        this.rotate('foot' + side, -0.4 * k, 0, 0);
+      }
+      this.rotate('spine', 0.15 * k, 0, 0);
+    }
+    // pickaxe swing turns the upper body
+    if (this.holdKind === 'tool' && a.harvest >= 0 && alive) this.overlay('Swing', a.harvest * 0.6, 0.9, UPPER);
 
     // ---- arms
     root.updateMatrixWorld(true);
-    this.poseArms(dt, a, moveAmt, run);
+    this.updateGun(dt, a);
+    this.poseArms(dt, a, move, wRun + wSprint);
+    if (s.throwT >= 0 && alive) {
+      const env = Math.min(1, s.throwT / 0.08) * Math.min(1, (0.6 - s.throwT) / 0.12);
+      this.overlay('Throw', s.throwT, env, [...UPPER, ...ARMS]);
+      if (s.throwT > 0.4) this.socket.visible = false;
+    }
 
-    // ---- death: topple backwards
-    if (s.dead > 0) {
-      const t = s.dead;
-      this.model.rotation.x = -Math.PI / 2 * (t * t * (3 - 2 * t));
-      this.model.position.y = 0.12 * t;
-    } else if (a.mode === 'sky') {
+    // ---- whole-body tilt while skydiving and gliding (death lies down in its clip)
+    if (a.mode === 'sky') {
       this.model.rotation.x = lerp(this.model.rotation.x, 1.2 + (a.dive || 0) * 0.3, 1 - Math.exp(-dt * 6));
       this.model.position.y = 0.9;
     } else {
       this.model.rotation.x = damp(this.model.rotation.x, a.mode === 'glide' ? 0.15 : 0, 8, dt);
       this.model.position.y = damp(this.model.position.y, 0, 10, dt);
     }
-    if (s.dance > 0) this.poseDance(s.dance);
   }
 
-  poseSky(w, a) {
-    for (const side of ['L', 'R']) {
-      const sg = side === 'L' ? 1 : -1;
-      this.rotate('thigh' + side, 0.35 * w, 0, sg * 0.18 * w);
-      this.rotate('shin' + side, 0.9 * w, 0, 0);
-    }
-    this.rotate('spine', -0.25 * w, 0, 0);
-    this.rotate('head', -0.9 * w, 0, 0);
+  // ------------------------------------------------------------------ clip blending
+  beginPose() {
+    this.acc.fill(0);
+    this.accW.fill(0);
+    this.pacc.fill(0);
+    this.paccW = 0;
   }
 
-  poseGlide(w) {
-    const t = performance.now() / 1000;
-    for (const side of ['L', 'R']) {
-      const sg = side === 'L' ? 1 : -1;
-      this.rotate('thigh' + side, (0.25 + Math.sin(t * 2 + sg) * 0.12) * w, 0, sg * 0.06 * w);
-      this.rotate('shin' + side, (0.4 + Math.sin(t * 2 + sg + 1) * 0.15) * w, 0, 0);
+  // Add a clip at time t (seconds), looping unless told otherwise.
+  addClip(name, t, w, loop = true) {
+    const c = this.lib.clips[name];
+    if (!c || w <= 0.001) return;
+    const d = c.duration || 1;
+    this.addClipU(name, loop ? t / d : clamp(t / d, 0, 1), w, loop);
+  }
+
+  // Add a clip at normalised time u (0..1).
+  addClipU(name, u, w, loop = true) {
+    const c = this.lib.clips[name];
+    if (!c || w <= 0.001) return;
+    const last = c.frames - 1;
+    let f = (loop ? ((u % 1) + 1) % 1 : clamp(u, 0, 1)) * last;
+    const i0 = Math.min(last, Math.floor(f));
+    const i1 = Math.min(last, i0 + 1);
+    const k = f - i0;
+    const acc = this.acc;
+    for (let b = 0; b < c.rot.length; b++) {
+      const v = c.rot[b];
+      if (!v) continue;
+      const o0 = i0 * 4, o1 = i1 * 4;
+      let x = v[o0] + (v[o1] - v[o0]) * k, y = v[o0 + 1] + (v[o1 + 1] - v[o0 + 1]) * k;
+      let z = v[o0 + 2] + (v[o1 + 2] - v[o0 + 2]) * k, ww = v[o0 + 3] + (v[o1 + 3] - v[o0 + 3]) * k;
+      const j = b * 4;
+      // keep every sample in the same hemisphere as what is already there
+      if (acc[j] * x + acc[j + 1] * y + acc[j + 2] * z + acc[j + 3] * ww < 0) { x = -x; y = -y; z = -z; ww = -ww; }
+      acc[j] += x * w; acc[j + 1] += y * w; acc[j + 2] += z * w; acc[j + 3] += ww * w;
+      this.accW[b] += w;
+    }
+    if (c.pos) {
+      const v = c.pos, o0 = i0 * 3, o1 = i1 * 3;
+      for (let a = 0; a < 3; a++) this.pacc[a] += (v[o0 + a] + (v[o1 + a] - v[o0 + a]) * k) * w;
+      this.paccW += w;
     }
   }
 
-  poseDance(t) {
-    const beat = t * Math.PI * 2 * 2;
-    this.bones.hips.position.y += Math.abs(Math.sin(beat)) * 0.06;
-    this.rotate('hips', 0, Math.sin(beat * 0.5) * 0.3, Math.sin(beat) * 0.12);
-    this.rotate('chest', 0, -Math.sin(beat * 0.5) * 0.4, -Math.sin(beat) * 0.1);
-    this.rotate('head', Math.sin(beat) * 0.15, 0, 0);
-    for (const side of ['L', 'R']) {
-      const sg = side === 'L' ? 1 : -1;
-      this.rotate('upperarm' + side, 0, 0, sg * (1.1 + Math.sin(beat + sg) * 0.6));
-      this.rotate('forearm' + side, -1.2 - Math.sin(beat * 2) * 0.4, 0, 0);
-      this.rotate('thigh' + side, -Math.max(0, Math.sin(beat + (sg > 0 ? 0 : Math.PI))) * 0.5, 0, 0);
-      this.rotate('shin' + side, Math.max(0, Math.sin(beat + (sg > 0 ? 0 : Math.PI))) * 0.8, 0, 0);
+  endPose() {
+    const acc = this.acc;
+    for (let b = 0; b < this.lbones.length; b++) {
+      const bone = this.lbones[b];
+      if (!bone) continue;
+      if (this.accW[b] > 0) {
+        const j = b * 4;
+        bone.quaternion.set(acc[j], acc[j + 1], acc[j + 2], acc[j + 3]).normalize();
+      } else bone.quaternion.copy(this.rest[bone.name].q);
     }
+    for (const [n, b] of Object.entries(this.bones)) if (!this.lib.index.has(n) && !this.lib.index.has(dotted(n))) b.quaternion.copy(this.rest[n].q);
+    const hips = this.bones.hips;
+    if (this.paccW > 0) hips.position.set(this.pacc[0] / this.paccW, this.pacc[1] / this.paccW, this.pacc[2] / this.paccW);
+    else hips.position.copy(this.rest.hips.p);
+  }
+
+  // Blend some bones toward a clip's pose (upper-body swings and throws on top of everything else).
+  overlay(name, t, w, bones) {
+    const c = this.lib.clips[name];
+    if (!c || w <= 0.001) return;
+    const last = c.frames - 1;
+    const f = clamp(t / (c.duration || 1), 0, 1) * last;
+    const i0 = Math.floor(f), i1 = Math.min(last, i0 + 1), k = f - i0;
+    for (const n of bones) {
+      const bi = this.lib.index.has(n) ? this.lib.index.get(n) : this.lib.index.get(dotted(n));
+      const v = bi !== undefined ? c.rot[bi] : null;
+      const bone = this.bones[n];
+      if (!v || !bone) continue;
+      _q1.fromArray(v, i0 * 4);
+      _q2.fromArray(v, i1 * 4);
+      _q1.slerp(_q2, k);
+      bone.quaternion.slerp(_q1, w);
+    }
+  }
+
+  // ------------------------------------------------------------------ gun parts (Blender clips on the weapon)
+  updateGun(dt, a) {
+    const s = this.state;
+    const gun = this.gun;
+    if (!gun) return;
+    const rl = a.reload || 0;
+    if (a.fired && gun.clips.Fire) {
+      s.gunFireT = 0;
+      s.gunFireDur = Math.min(gun.clips.Fire.duration, a.fireDur || gun.clips.Fire.duration);
+      s.ejected = false;
+    }
+    let clip = null, u = 0;
+    if (rl > 0 && gun.clips.Reload) {
+      clip = gun.clips.Reload;
+      u = rl;
+      if (s.lastReload === 0) s.magDropped = false;
+      if (!s.magDropped && gun.magDropAt !== undefined && rl >= gun.magDropAt) {
+        s.magDropped = true;
+        if (this.onMagDrop && gun.nodes[gun.name + '_Mag'] && !this.socket.userData.far) this.onMagDrop(gun.nodes[gun.name + '_Mag']);
+      }
+      s.gunFireT = -1;
+    } else if (s.gunFireT >= 0) {
+      s.gunFireT += dt;
+      u = s.gunFireT / s.gunFireDur;
+      clip = gun.clips.Fire;
+      if (!s.ejected && u >= (gun.ejectAt || 0) && this.eject && this.onEject && !this.socket.userData.far) {
+        s.ejected = true;
+        this.root.updateMatrixWorld(true);
+        const p = this.eject.getWorldPosition(new THREE.Vector3());
+        const q = this.eject.getWorldQuaternion(new THREE.Quaternion());
+        this.onEject(p, new THREE.Vector3(0, 1, 0).applyQuaternion(q), gun.shell || 'brass');
+      }
+      if (u >= 1) { s.gunFireT = -1; clip = null; }
+    }
+    s.lastReload = rl;
+    if (clip) sampleGun(gun, clip, clamp(u, 0, 1));
+    else restGun(gun);
   }
 
   // Model-space point -> world.
@@ -441,16 +614,7 @@ export class CharacterModel {
     const sock = this.socket;
     const kind = this.holdKind;
     sock.visible = !!this.weapon && !sock.userData.far;
-    if (a.mode === 'sky') {
-      // arms spread like a skydiver
-      for (const side of ['L', 'R']) {
-        const sg = side === 'L' ? 1 : -1;
-        this.rotate('upperarm' + side, -0.3, 0, sg * 0.75);
-        this.rotate('forearm' + side, -0.9, 0, 0);
-      }
-      sock.visible = false;
-      return;
-    }
+    if (a.mode === 'sky') { sock.visible = false; return; }
     if (a.mode === 'glide' && this.glider) {
       sock.visible = false;
       this.root.updateMatrixWorld(true);
@@ -458,7 +622,7 @@ export class CharacterModel {
       this.ikArm('R', this.toWorld(-0.3, 2.0, 0.12), this.toWorld(-0.7, 1.4, -0.3));
       return;
     }
-    if (a.mode === 'dead' || a.mode === 'bus') { sock.visible = false; this.relaxArms(0, 0); return; }
+    if (a.mode === 'dead' || a.mode === 'bus') { sock.visible = false; return; }
     if (s.dance > 0) { sock.visible = false; return; }
 
     const pitch = s.aimPitch;
@@ -472,17 +636,23 @@ export class CharacterModel {
     if (kind === 'rocket') { gx = -0.04; gy = 0.05; gz = 0.22; }
     if (kind === 'none' || kind === 'item' || kind === 'build') { gy = -0.2; gz = 0.25; }
     // idle sway + run bounce
-    sway = Math.sin(s.phase) * 0.02 * moveAmt;
+    sway = Math.sin(s.phase * 2) * 0.012 * moveAmt + Math.sin(s.idleT * 1.7) * 0.004;
+    // just switched to this item: it comes up from low
+    const eq = s.equip * s.equip;
+    gy -= eq * 0.22;
+    rx += eq * 0.9;
     // recoil pushes back and up
     gz -= s.recoil * 0.06;
     rx -= s.recoil * 0.12;
-    // reload: dip and roll the weapon
+    // reload: dip and roll the weapon (guns with a Blender reload clip move less: their parts do the work)
     const rl = a.reload || 0;
+    const clipReload = !!(this.gun && this.gun.clips.Reload);
     if (rl > 0) {
       const k = Math.sin(clamp(rl, 0, 1) * Math.PI);
-      roll += k * 0.6;
-      gy -= k * 0.08;
-      rx += k * 0.35;
+      const m = clipReload ? 0.55 : 1;
+      roll += k * 0.6 * m;
+      gy -= k * 0.08 * m;
+      rx += k * 0.35 * m;
     }
     // sprint: hold the weapon lower and across the chest
     const sprint = a.sprint && moveAmt > 0.5 ? 1 : 0;
@@ -517,12 +687,11 @@ export class CharacterModel {
     // elbows down and out
     const poleR = this.toWorld(-0.55, 0.9, -0.25);
     const poleL = this.toWorld(0.55, 0.9, -0.1);
-    if (kind === 'none') { this.relaxArms(moveAmt, run); return; }
+    if (kind === 'none') return;   // arms from the clips
     if (kind === 'build') {
-      // right hand reaches forward to "draw" the build, left relaxed
+      // right hand reaches forward to "draw" the build, left arm from the clips
       this.ikArm('R', this.toWorld(-0.18, 1.25 + sp * 0.3, 0.45), poleR);
       this.aimHand('R', this.toWorld(-0.18, 1.3 + sp * 0.3, 0.7));
-      this.relaxArm('L', moveAmt, run, 0);
       return;
     }
     this.ikArm('R', handR, poleR);
@@ -539,14 +708,13 @@ export class CharacterModel {
         sock.getWorldPosition(handR);
         this.ikArm('R', handR, poleR);
       }
-      this.relaxArm('L', moveAmt, run, 0);
       return;
     }
     let lt;
     if (this.gripL) lt = this.gripL.getWorldPosition(new THREE.Vector3());
     else lt = handR.clone().addScaledVector(fwd, 0.25);
-    if (kind === 'pistol') lt = handR.clone().add(new THREE.Vector3(0.05, -0.02, 0).applyQuaternion(this.root.quaternion));
-    if (rl > 0 && kind !== 'tool') {
+    if (kind === 'pistol' && !(rl > 0 && clipReload)) lt = handR.clone().add(new THREE.Vector3(0.05, -0.02, 0).applyQuaternion(this.root.quaternion));
+    if (rl > 0 && kind !== 'tool' && !clipReload) {
       // left hand grabs the magazine area and comes back
       const k = Math.sin(clamp(rl, 0, 1) * Math.PI);
       lt.lerp(handR.clone().add(new THREE.Vector3(0, -0.25, 0)), k);
@@ -575,5 +743,40 @@ export class CharacterModel {
   muzzleWorld(out = new THREE.Vector3()) {
     if (this.muzzle) return this.muzzle.getWorldPosition(out);
     return this.socket.getWorldPosition(out);
+  }
+}
+
+function dotted(n) { return n.replace(/(L|R)$/, '.$1'); }
+
+// ----------------------------------------------------------------------------- gun clips
+// A held gun's moving parts (magazine, bolt, slide, pump, warhead) and its left-hand grip follow the
+// weapon's Fire and Reload clips from weapons.glb.
+function restGun(gun) {
+  if (gun.atRest) return;
+  for (const [n, node] of Object.entries(gun.nodes)) {
+    const r = gun.rest[n];
+    node.position.copy(r.p); node.quaternion.copy(r.q); node.scale.copy(r.s);
+  }
+  gun.atRest = true;
+}
+
+function sampleGun(gun, clip, u) {
+  restGun(gun);
+  gun.atRest = false;
+  for (const t of clip.tracks) {
+    const node = gun.nodes[t.node];
+    if (!node) continue;
+    const last = t.frames - 1;
+    const step = last > 0 ? t.times[1] - t.times[0] : 1;
+    const f = Math.min(last, (u * clip.duration - t.times[0]) / step);
+    const i0 = Math.max(0, Math.floor(f)), i1 = Math.min(last, i0 + 1), k = clamp(f - i0, 0, 1);
+    const v = t.values, n = t.size;
+    if (t.prop === 'quaternion') {
+      _q1.fromArray(v, i0 * 4); _q2.fromArray(v, i1 * 4); node.quaternion.copy(_q1.slerp(_q2, k));
+    } else {
+      const o = t.prop === 'position' ? node.position : node.scale;
+      o.set(v[i0 * n] + (v[i1 * n] - v[i0 * n]) * k, v[i0 * n + 1] + (v[i1 * n + 1] - v[i0 * n + 1]) * k,
+        v[i0 * n + 2] + (v[i1 * n + 2] - v[i0 * n + 2]) * k);
+    }
   }
 }

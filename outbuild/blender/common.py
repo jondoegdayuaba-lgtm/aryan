@@ -395,7 +395,7 @@ def vertex_color_ao(obj, strength=0.6, samples=24, dist=0.5, name='AO'):
 
 # --------------------------------------------------------------------------- export
 
-def export_glb(filename, objects, skins=False, colors=False):
+def export_glb(filename, objects, skins=False, colors=False, anims=False):
     os.makedirs(OUT_MODELS, exist_ok=True)
     path = os.path.join(OUT_MODELS, filename)
     bpy.ops.object.select_all(action='DESELECT')
@@ -409,7 +409,9 @@ def export_glb(filename, objects, skins=False, colors=False):
         use_selection=True,
         export_apply=True,
         export_yup=True,
-        export_animations=False,
+        export_animations=anims,
+        **(dict(export_animation_mode='NLA_TRACKS', export_force_sampling=True, export_frame_step=1,
+                export_optimize_animation_size=False, export_anim_slide_to_zero=True) if anims else {}),
         export_skins=skins,
         export_morph=False,
         export_materials='EXPORT',

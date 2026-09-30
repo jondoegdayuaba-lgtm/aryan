@@ -9,6 +9,8 @@ const BASE = 'assets/';
 const EMBEDDED = (typeof window !== 'undefined' && window.__OUTBUILD_ASSETS) || null;
 const url = (path) => (EMBEDDED && EMBEDDED[path]) || path;
 const MODELS = ['character', 'pieces', 'props', 'items', 'weapons', 'vehicles'];
+// Separately animated gun parts (see blender/gun_anims.py)
+const MOVER = /_(Mag|Bolt|Slide|Pump|Handle|Warhead|Shell)$/;
 const TEXTURES = ['wood', 'stone', 'metal', 'siding', 'brick', 'shingles', 'floorboards', 'corrugated', 'concrete',
   'plaster', 'grass', 'dirt', 'rock', 'sand', 'bark', 'fabric', 'water'];
 
@@ -47,6 +49,7 @@ export class Assets {
     setTextures(this.textures);
     buildLibrary();
     for (const m of MODELS) if (m !== 'character' && this.gltf[m]) this.extract(this.gltf[m].scene, m);
+    this.gunClips = gunClips(this.gltf.weapons);
   }
 
   // Top-level nodes of a file become prototypes: a list of (geometry, material) parts plus named empties.
@@ -56,7 +59,38 @@ export class Assets {
       const inv = new THREE.Matrix4().copy(node.matrixWorld).invert();
       const parts = [];
       const empties = {};
+      const movers = {};
+      // the nearest ancestor (below the prototype node) that is a moving part, if any
+      const moverOf = (o) => { for (let p = o; p && p !== node; p = p.parent) if (MOVER.test(p.name)) return p; return null; };
       node.traverse((o) => {
+        const mv = o !== node ? moverOf(o) : null;
+        if (mv) {
+          let m = movers[mv.name];
+          if (!m) {
+            const rel = new THREE.Matrix4().multiplyMatrices(inv, mv.matrixWorld);
+            const pp = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+            rel.decompose(pp, q, sc);
+            // geometry is kept in the part's unscaled space (a part may rest at scale 0, hidden until a clip shows it)
+            const wp = new THREE.Vector3(), wq = new THREE.Quaternion(), ws = new THREE.Vector3();
+            mv.matrixWorld.decompose(wp, wq, ws);
+            if (Math.abs(ws.x * ws.y * ws.z) < 1e-9) ws.set(1, 1, 1);
+            m = movers[mv.name] = { parts: [], position: pp, quaternion: q, scale: sc,
+              inv: new THREE.Matrix4().compose(wp, wq, ws).invert() };
+          }
+          if (o.isMesh) {
+            const g = o.geometry.clone();
+            // transform relative to the part from local matrices (so a zero-scale part does not flatten it)
+            const rel = new THREE.Matrix4();
+            for (let q = o; q && q !== mv; q = q.parent) rel.premultiply(q.matrix);
+            if (o === mv) rel.identity();
+            g.applyMatrix4(rel);
+            convertColors(g);
+            const srcName = o.material.name || 'Default';
+            g.computeBoundingBox();
+            m.parts.push({ geometry: g, material: libMaterial(srcName, o.material), matName: srcName });
+          }
+          return;
+        }
         if (o.isMesh) {
           const g = o.geometry.clone();
           const rel = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld);
@@ -77,7 +111,7 @@ export class Assets {
       const box = new THREE.Box3();
       for (const p of parts) box.union(p.geometry.boundingBox);
       this.protos.set(node.name, {
-        name: node.name, file, parts, empties, userData: { ...node.userData }, box,
+        name: node.name, file, parts, empties, movers, userData: { ...node.userData }, box,
         // node transform in the file (used for things like the airship propellers)
         position: node.position.clone(), quaternion: node.quaternion.clone(),
       });
@@ -119,7 +153,41 @@ export class Assets {
       g.add(o);
     }
     g.userData = { ...p.userData };
+    this.addMovers(g, p, tints, shadows);
     return g;
+  }
+
+  // Moving gun parts as their own meshes, plus what the character needs to play the gun's clips.
+  addMovers(g, p, tints, shadows) {
+    const movers = p.movers || {};
+    const names = Object.keys(movers);
+    if (!names.length && !(this.gunClips && this.gunClips[p.name])) return;
+    const nodes = {}, rest = {};
+    for (const n of names) {
+      const mv = movers[n];
+      const key = p.name + '|' + n + JSON.stringify(tints);
+      let geo = this.flatCache.get(key);
+      if (!geo) { geo = flattenProto({ parts: mv.parts }, tints); this.flatCache.set(key, geo); }
+      const o = new THREE.Group();
+      o.name = n;
+      const mesh = new THREE.Mesh(geo, flatMaterial());
+      mesh.castShadow = shadows;
+      mesh.receiveShadow = true;
+      o.add(mesh);
+      o.position.copy(mv.position);
+      o.quaternion.copy(mv.quaternion);
+      o.scale.copy(mv.scale);
+      g.add(o);
+    }
+    for (const c of g.children) {
+      if (c.name.endsWith('_Hand') || MOVER.test(c.name)) {
+        nodes[c.name] = c;
+        rest[c.name] = { p: c.position.clone(), q: c.quaternion.clone(), s: c.scale.clone() };
+      }
+    }
+    const ud = p.userData || {};
+    g.userData.gun = { name: p.name, clips: (this.gunClips && this.gunClips[p.name]) || {}, nodes, rest, atRest: false,
+      magDropAt: ud.mag_drop_at, ejectAt: ud.eject_at || 0, shell: ud.shell || 'brass' };
   }
 
   // A plain (non-instanced) Object3D built from a prototype. Materials can be overridden per part name.
@@ -134,6 +202,20 @@ export class Assets {
       m.receiveShadow = true;
       m.userData.matName = part.matName;
       g.add(m);
+    }
+    for (const [n, mv] of Object.entries(p.movers || {})) {
+      const o = new THREE.Group();
+      o.name = n;
+      for (const part of mv.parts) {
+        const m = new THREE.Mesh(part.geometry, (override && override(part.matName, part.material)) || part.material);
+        m.castShadow = shadows;
+        m.userData.matName = part.matName;
+        o.add(m);
+      }
+      o.position.copy(mv.position);
+      o.quaternion.copy(mv.quaternion);
+      o.scale.copy(mv.scale);
+      g.add(o);
     }
     for (const [en, e] of Object.entries(p.empties)) {
       const o = new THREE.Object3D();
@@ -239,4 +321,22 @@ function placeholder(name) {
   return { name, parts: [{ geometry: g, material: PLACEHOLDER_MAT, matName: 'Placeholder' }], empties: {},
     userData: { col: 'box', sx: 0.6, sy: 0.6, sz: 0.6, hp: 50, mat: 'wood' }, box: g.boundingBox.clone(),
     position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), placeholder: true };
+}
+
+// Gun clips from weapons.glb: { W_AR: { Fire: { duration, tracks: [{ node, prop, values, size, times }] }, Reload } }
+function gunClips(gltf) {
+  const out = {};
+  if (!gltf) return out;
+  for (const clip of gltf.animations || []) {
+    const m = /^(.*)_(Fire|Reload)$/.exec(clip.name);
+    if (!m) continue;
+    const tracks = [];
+    for (const tr of clip.tracks) {
+      const dot = tr.name.lastIndexOf('.');
+      tracks.push({ node: tr.name.slice(0, dot), prop: tr.name.slice(dot + 1), values: tr.values, size: tr.getValueSize(),
+        times: tr.times, frames: tr.times.length });
+    }
+    (out[m[1]] = out[m[1]] || {})[m[2]] = { duration: clip.duration, tracks };
+  }
+  return out;
 }

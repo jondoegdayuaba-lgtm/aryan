@@ -403,7 +403,115 @@ export class Effects {
       1.4, 1.1, 0.4, 1, 0.08, 0.9);
   }
 
+  // ------------------------------------------------------------------ shell casings and dropped magazines
+  initShells() {
+    const geo = new THREE.CylinderGeometry(0.0045, 0.0045, 0.022, 7, 1);
+    geo.rotateZ(Math.PI / 2);
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 1 });
+    this.shellMesh = new THREE.InstancedMesh(geo, mat, 160);
+    this.shellMesh.count = 0;
+    this.shellMesh.frustumCulled = false;
+    this.shellMesh.castShadow = false;
+    this.shellMesh.setColorAt(0, new THREE.Color(1, 1, 1));
+    this.game.scene.add(this.shellMesh);
+    this.shells = [];
+    this.mags = [];
+  }
+
+  // A spent case flies out of the ejection port (dir: the port's outward direction, world space).
+  shell(p, dir, kind = 'brass', carrier = null) {
+    if (!this.shellMesh) this.initShells();
+    if (p.distanceToSquared(this.game.camera.position) > 30 * 30) return;
+    if (this.shells.length >= 150) this.shells.shift();
+    const sp = 2.2 + Math.random() * 1.2;
+    const v = new THREE.Vector3().copy(dir).multiplyScalar(sp);
+    v.y += 1.2 + Math.random() * 0.8;
+    if (carrier) v.addScaledVector(carrier, 0.8);
+    const big = kind === 'shell';
+    this.shells.push({ x: p.x, y: p.y, z: p.z, vx: v.x, vy: v.y, vz: v.z, rx: Math.random() * 6, ry: Math.random() * 6,
+      sx: (Math.random() - 0.5) * 30, sy: (Math.random() - 0.5) * 30, life: 3 + Math.random(), rest: false,
+      scale: big ? 2.6 : 1, color: big ? 0xc8302a : 0xd8a940, bounced: 0 });
+  }
+
+  // The magazine leaves the gun during a reload: a copy of it falls to the ground and stays a while.
+  dropMag(node) {
+    if (!this.shellMesh) this.initShells();
+    const src = node.children[0];
+    if (!src || !src.isMesh) return;
+    if (node.getWorldPosition(new THREE.Vector3()).distanceToSquared(this.game.camera.position) > 35 * 35) return;
+    node.updateWorldMatrix(true, false);
+    const m = new THREE.Mesh(src.geometry, src.material);
+    node.matrixWorld.decompose(m.position, m.quaternion, m.scale);
+    m.castShadow = true;
+    this.game.scene.add(m);
+    if (this.mags.length >= 12) { const old = this.mags.shift(); this.game.scene.remove(old.mesh); }
+    this.mags.push({ mesh: m, vy: -0.5, spin: new THREE.Vector3((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 6),
+      life: 6, rest: false, s0: m.scale.x });
+  }
+
+  updateShells(dt) {
+    if (!this.shellMesh) return;
+    const phys = this.game.physics;
+    const m4 = this._sm || (this._sm = new THREE.Matrix4());
+    const q = this._sq || (this._sq = new THREE.Quaternion());
+    const e = this._se || (this._se = new THREE.Euler());
+    const pv = this._sp || (this._sp = new THREE.Vector3());
+    const sv = this._ss || (this._ss = new THREE.Vector3());
+    const col = this._sc || (this._sc = new THREE.Color());
+    let w = 0;
+    for (const c of this.shells) {
+      c.life -= dt;
+      if (c.life <= 0) continue;
+      if (!c.rest) {
+        c.vy -= 16 * dt;
+        c.x += c.vx * dt; c.y += c.vy * dt; c.z += c.vz * dt;
+        c.rx += c.sx * dt; c.ry += c.sy * dt;
+        const g = phys.groundAt(c.x, c.z, c.y + 0.3, 0.02, 0.6);
+        if (c.y < g + 0.005) {
+          c.y = g + 0.005;
+          if (c.bounced++ > 2 || Math.abs(c.vy) < 1) { c.rest = true; c.rx = Math.PI / 2 * Math.round(c.rx / (Math.PI / 2)); }
+          c.vy *= -0.35; c.vx *= 0.45; c.vz *= 0.45; c.sx *= 0.4; c.sy *= 0.4;
+        }
+      }
+      this.shells[w++] = c;
+    }
+    this.shells.length = w;
+    for (let i = 0; i < w; i++) {
+      const c = this.shells[i];
+      q.setFromEuler(e.set(c.rx, c.ry, 0));
+      const s = c.scale * Math.min(1, c.life * 2);
+      m4.compose(pv.set(c.x, c.y, c.z), q, sv.set(s, s, s));
+      this.shellMesh.setMatrixAt(i, m4);
+      this.shellMesh.setColorAt(i, col.setHex(c.color));
+    }
+    this.shellMesh.count = w;
+    this.shellMesh.instanceMatrix.needsUpdate = true;
+    if (this.shellMesh.instanceColor) this.shellMesh.instanceColor.needsUpdate = true;
+    for (let i = this.mags.length - 1; i >= 0; i--) {
+      const g = this.mags[i];
+      const mesh = g.mesh;
+      g.life -= dt;
+      if (!g.rest) {
+        g.vy -= 14 * dt;
+        mesh.position.y += g.vy * dt;
+        mesh.rotation.x += g.spin.x * dt; mesh.rotation.y += g.spin.y * dt; mesh.rotation.z += g.spin.z * dt;
+        const ground = phys.groundAt(mesh.position.x, mesh.position.z, mesh.position.y + 0.3, 0.05, 1);
+        if (mesh.position.y < ground + 0.02) {
+          mesh.position.y = ground + 0.02;
+          if (Math.abs(g.vy) < 2.5) {
+            g.rest = true;
+            // lie on its side
+            mesh.rotation.set(Math.PI / 2, mesh.rotation.y, 0);
+          } else { g.vy *= -0.3; g.spin.multiplyScalar(0.5); }
+        }
+      }
+      if (g.life < 1) mesh.scale.setScalar(g.s0 * Math.max(0.001, g.life));
+      if (g.life <= 0) { this.game.scene.remove(mesh); this.mags.splice(i, 1); }
+    }
+  }
+
   update(dt) {
+    this.updateShells(dt);
     const cam = this.game.camera;
     this.add.mat.uniforms.uScale.value = this.smoke.mat.uniforms.uScale.value =
       (this.game.renderer.renderer.domElement.height / 2) / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));

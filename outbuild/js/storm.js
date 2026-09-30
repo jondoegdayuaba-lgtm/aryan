@@ -65,9 +65,10 @@ export class Storm {
     this.reset();
   }
 
-  reset() {
+  reset(cfg = STORM) {
+    this.cfg = cfg;
     this.center = new THREE.Vector2(0, 0);
-    this.radius = STORM.startRadius;
+    this.radius = cfg.startRadius;
     this.from = { c: this.center.clone(), r: this.radius };
     this.next = { c: this.center.clone(), r: this.radius };
     this.phase = -1;
@@ -92,7 +93,7 @@ export class Storm {
     if (changed && (st.state === 'wait' || st.state === 'shrink') && this.game.onStorm) this.game.onStorm(st.state, this);
   }
 
-  start(rng, delay = STORM.startDelay) {
+  start(rng, delay = this.cfg.startDelay) {
     this.rng = rng;
     this.state = 'pre';
     this.timer = delay;
@@ -102,7 +103,7 @@ export class Storm {
   }
 
   pickNext() {
-    const ph = STORM.phases[this.phase + 1];
+    const ph = this.cfg.phases[this.phase + 1];
     if (!ph) return;
     const r = ph.radius;
     const maxOff = Math.max(0, this.radius - r) * (this.phase < 0 ? 0.55 : 1);
@@ -140,22 +141,22 @@ export class Storm {
     if (this.state === 'pre' && this.timer <= 0) {
       this.phase = 0;
       this.state = 'wait';
-      this.timer = STORM.phases[0].wait;
-      this.dps = STORM.phases[0].dps;
+      this.timer = this.cfg.phases[0].wait;
+      this.dps = this.cfg.phases[0].dps;
       if (this.game.onStorm) this.game.onStorm('wait', this);
     } else if (this.state === 'wait' && this.timer <= 0) {
       this.state = 'shrink';
-      this.timer = STORM.phases[this.phase].shrink;
+      this.timer = this.cfg.phases[this.phase].shrink;
       if (this.game.onStorm) this.game.onStorm('shrink', this);
     } else if (this.state === 'shrink') {
-      const ph = STORM.phases[this.phase];
+      const ph = this.cfg.phases[this.phase];
       const t = clamp(1 - this.timer / ph.shrink, 0, 1);
       this.center.set(lerp(this.from.c.x, this.next.c.x, t), lerp(this.from.c.y, this.next.c.y, t));
       this.radius = lerp(this.from.r, this.next.r, t);
       if (this.timer <= 0) {
         this.center.copy(this.next.c);
         this.radius = this.next.r;
-        const nextPh = STORM.phases[this.phase + 1];
+        const nextPh = this.cfg.phases[this.phase + 1];
         if (nextPh) {
           this.pickNext();
           this.phase++;
@@ -165,7 +166,7 @@ export class Storm {
           if (this.game.onStorm) this.game.onStorm('wait', this);
         } else {
           this.state = 'final';
-          this.dps = STORM.phases[STORM.phases.length - 1].dps + 4;
+          this.dps = this.cfg.phases[this.cfg.phases.length - 1].dps + 4;
         }
       }
     }

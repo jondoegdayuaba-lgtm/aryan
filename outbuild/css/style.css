@@ -96,6 +96,21 @@ select { background: rgba(0,0,0,0.3); color: var(--ink); border: 1px solid var(-
   box-shadow: 0 4px 0 #b86f12; margin-top: 6px; }
 .keys { display: grid; gap: 7px; font-size: 14px; }
 @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+.map-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 320px; }
+.map-card { display: flex; gap: 10px; align-items: center; text-align: left; padding: 10px 12px; border-radius: 14px;
+  border: 2px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; transition: transform 0.08s, border-color 0.15s; }
+.map-card:hover { transform: translateY(-1px); border-color: rgba(255,255,255,0.35); }
+.map-card.on { border-color: var(--accent); background: var(--panel-2); box-shadow: 0 0 0 3px rgba(255,207,86,0.25); }
+.map-card b { display: block; font: 400 17px var(--display); }
+.map-card small { display: block; font-size: 11px; color: var(--ink-dim); letter-spacing: 0.04em; }
+.map-card:disabled { opacity: 0.55; cursor: default; }
+.map-ico { flex: none; width: 38px; height: 38px; border-radius: 50%; background: #2a6f9a; position: relative; overflow: hidden; }
+.map-ico::before { content: ''; position: absolute; border-radius: 45% 55% 50% 48%; background: radial-gradient(circle at 40% 40%, #7fbf5a, #4f8f3a 60%, #e2d09e 72%); }
+.map-ico.island::before { inset: 5px 4px 6px 5px; }
+.map-ico.duel::before { inset: 11px; border-radius: 50%; }
+.map-ico.duel::after { content: ''; position: absolute; inset: 16px; border: 2px solid #c9a36b; border-radius: 2px; }
+#hud #announce.count #announce-text, #announce.count #announce-text { font-size: clamp(64px, 12vw, 140px); }
+@media (max-width: 640px) { .map-pick { grid-template-columns: 1fr; min-width: 0; } }
 .play.alt { font-size: 30px; padding: 14px 30px 12px; color: var(--ink); background: linear-gradient(180deg, #4d8fe0, #2d5fb0);
   box-shadow: 0 6px 0 #1d3d78, 0 14px 30px rgba(0,0,0,0.4); }
 .play.alt small { font-size: 12px; }

@@ -378,14 +378,27 @@ def drop_to_ground(obj):
     obj.data.transform(Matrix.Translation((0, 0, -zmin)))
 
 
-def add_empty(parent, name, loc):
+def add_empty(parent, name, loc, rot=None):
     e = bpy.data.objects.new(name, None)
     e.empty_display_type = 'PLAIN_AXES'
     e.empty_display_size = 0.03
     bpy.context.scene.collection.objects.link(e)
     e.parent = parent
     e.location = Vector(loc)
+    if rot:
+        e.rotation_euler = rot
     return e
+
+
+def gun_mover(parent, builder, name, pivot, ao=0.03):
+    """A separately animated gun part (magazine, bolt, slide, pump...) with its origin at `pivot`."""
+    obj = builder.to_object(name)
+    finish(obj, ao_dist=ao)
+    obj.data.transform(Matrix.Translation(-Vector(pivot)))
+    obj.parent = parent
+    obj.location = Vector(pivot)
+    obj.rotation_mode = 'QUATERNION'
+    return obj
 
 
 # ============================================================================ preview rendering
@@ -639,25 +652,30 @@ def w_pistol(m):
     for i in range(3):
         f = 0.105 + i * 0.018
         bx(b, f, f + 0.01, 0.03, 0.036, 0.022, mat=m['body'])
-    # slide
-    slab(b, rounded([(-0.046, 0.06), (0.172, 0.06), (0.174, 0.094, 0.006), (0.166, 0.102, 0.004),
-                     (-0.04, 0.102, 0.004), (-0.046, 0.094, 0.004)], segs=2), 0.031, m['metal'], bevel=0.0045)
-    plate(b, [(-0.006, -0.018), (0.006, -0.018), (0.006, 0.13), (-0.006, 0.13)], 0.102, 1, m['rar'], h=0.003,
+    # slide (a moving part: it cycles on every shot)
+    sb = C.MeshBuilder()
+    slab(sb, rounded([(-0.046, 0.06), (0.172, 0.06), (0.174, 0.094, 0.006), (0.166, 0.102, 0.004),
+                      (-0.04, 0.102, 0.004), (-0.046, 0.094, 0.004)], segs=2), 0.031, m['metal'], bevel=0.0045)
+    plate(sb, [(-0.006, -0.018), (0.006, -0.018), (0.006, 0.13), (-0.006, 0.13)], 0.102, 1, m['rar'], h=0.003,
           axis='z')
     for s in (1, -1):
         for i in range(4):
             f = -0.036 + i * 0.008
-            plate(b, [(f - 0.002, 0.068), (f + 0.002, 0.068), (f + 0.002, 0.094), (f - 0.002, 0.094)], s * 0.0155,
+            plate(sb, [(f - 0.002, 0.068), (f + 0.002, 0.068), (f + 0.002, 0.094), (f - 0.002, 0.094)], s * 0.0155,
                   s, m['body'], h=0.0012, chamfer=0.0005)
-    plate(b, rounded([(0.035, 0.09), (0.078, 0.09), (0.078, 0.1), (0.035, 0.1)], r=0.002, segs=1), -0.0155, -1,
+    plate(sb, rounded([(0.035, 0.09), (0.078, 0.09), (0.078, 0.1), (0.035, 0.1)], r=0.002, segs=1), -0.0155, -1,
           m['body'], h=0.001)
+    bx(sb, 0.152, 0.164, 0.1, 0.11, 0.007, mat=m['body'], bevel=0.002)
+    bx(sb, -0.042, -0.026, 0.1, 0.112, 0.022, mat=m['body'], bevel=0.0025)
+    sb.sphere(0.0022, loc=V(0.158, 0.108, 0.0), segs=6, rings=4, mat=m['glass'])
+    # magazine inside the grip (its base plate shows under the grip)
+    mb = C.MeshBuilder()
+    slab(mb, [(0.019, 0.03), (-0.007, 0.03), (-0.031, -0.066), (-0.005, -0.066)], 0.022, m['metal'], bevel=0.002)
+    slab(mb, rounded([(-0.038, -0.064), (0.0, -0.064), (0.0, -0.075), (-0.038, -0.075)], r=0.003, segs=1), 0.03,
+         m['rar'], bevel=0.002)
     # muzzle + bore
     cy(b, 0.0085, 0.168, 0.1755, 0.08, segs=10, mat=m['body'])
     cy(b, 0.005, 0.174, 0.177, 0.08, segs=8, mat=m['metal'])
-    # sights
-    bx(b, 0.152, 0.164, 0.1, 0.11, 0.007, mat=m['body'], bevel=0.002)
-    bx(b, -0.042, -0.026, 0.1, 0.112, 0.022, mat=m['body'], bevel=0.0025)
-    b.sphere(0.0022, loc=V(0.158, 0.108, 0.0), segs=6, rings=4, mat=m['glass'])
     # hammer + slide stop
     bx(b, -0.054, -0.042, 0.066, 0.084, 0.012, mat=m['metal'], bevel=0.002, rot=(0.3, 0, 0))
     plate(b, rounded([(0.02, 0.063), (0.062, 0.063), (0.062, 0.07), (0.02, 0.07)], r=0.003, segs=1), 0.0155, 1,
@@ -666,6 +684,9 @@ def w_pistol(m):
     finish(obj, ao_dist=0.04)
     add_empty(obj, 'W_Pistol_Muzzle', V(0.177, 0.08))
     add_empty(obj, 'W_Pistol_Hand', V(0.006, -0.02, 0.024))
+    add_empty(obj, 'W_Pistol_Eject', V(0.055, 0.095, -0.02), rot=(0, -0.9, 0))
+    gun_mover(obj, sb, 'W_Pistol_Slide', V(0.06, 0.08))
+    gun_mover(obj, mb, 'W_Pistol_Mag', V(-0.019, -0.07))
     return obj
 
 
@@ -703,24 +724,26 @@ def w_smg(m):
                               (f - 0.005, zb + 0.006)], r=0.003, segs=1), s * 0.0215, s, m['metal'], h=0.002)
     revolve(b, [(0.0, 0.27), (0.01, 0.27), (0.01, 0.286), (0.014, 0.288), (0.014, 0.302), (0.012, 0.306),
                 (0.0065, 0.306), (0.0065, 0.298), (0.0, 0.298)], 'y', (0, 0, zb), segs=10, mat=m['metal'])
-    # straight magazine
-    slab(b, rounded([(0.07, 0.03), (0.114, 0.03), (0.12, -0.15, 0.005), (0.078, -0.15, 0.005)], segs=1),
+    # straight magazine (moving part)
+    mb = C.MeshBuilder()
+    slab(mb, rounded([(0.07, 0.03), (0.114, 0.03), (0.12, -0.15, 0.005), (0.078, -0.15, 0.005)], segs=1),
          0.026, m['metal'], bevel=0.003)
-    slab(b, rounded([(0.072, -0.145), (0.126, -0.145), (0.126, -0.162, 0.005), (0.07, -0.162, 0.005)], segs=1),
+    slab(mb, rounded([(0.072, -0.145), (0.126, -0.145), (0.126, -0.162, 0.005), (0.07, -0.162, 0.005)], segs=1),
          0.032, m['body'], bevel=0.003)
     for s in (1, -1):
         for i in range(2):
             z = -0.025 - i * 0.055
-            plate(b, rounded([(0.082, z - 0.008), (0.108, z - 0.008), (0.109, z + 0.008), (0.083, z + 0.008)],
-                             r=0.003, segs=1), s * 0.013, s, m['body'], h=0.002)
+            plate(mb, rounded([(0.082, z - 0.008), (0.108, z - 0.008), (0.109, z + 0.008), (0.083, z + 0.008)],
+                              r=0.003, segs=1), s * 0.013, s, m['body'], h=0.002)
     # angled foregrip
     slab(b, rounded([(0.156, 0.052), (0.204, 0.052), (0.2, -0.012, 0.012), (0.194, -0.03, 0.008),
                      (0.162, -0.03, 0.008), (0.158, 0.0, 0.01)], segs=2), 0.032, m['body'], bevel=0.006, bsegs=1)
     for i in range(3):
         z = 0.03 - i * 0.02
         bx(b, 0.162, 0.2, z - 0.003, z + 0.003, 0.034, mat=m['rar'], bevel=0.001)
-    # charging knob (left)
-    b.cylinder(0.007, 0.022, loc=(0.034, -0.14, 0.13), rot=(0, PI / 2, 0), segs=8, mat=m['metal'])
+    # charging knob (left, moves with the bolt)
+    kb = C.MeshBuilder()
+    kb.cylinder(0.007, 0.022, loc=(0.034, -0.14, 0.13), rot=(0, PI / 2, 0), segs=8, mat=m['metal'])
     # folding stock: hinge + two struts + butt
     b.cylinder(0.012, 0.056, loc=(0.0, 0.113, 0.1), segs=10, mat=m['metal'])
     bx(b, -0.117, -0.1, 0.07, 0.134, 0.042, mat=m['metal'], bevel=0.003)
@@ -735,6 +758,9 @@ def w_smg(m):
     finish(obj, ao_dist=0.05)
     add_empty(obj, 'W_SMG_Muzzle', V(0.306, zb))
     add_empty(obj, 'W_SMG_Hand', V(0.18, 0.012))
+    add_empty(obj, 'W_SMG_Eject', V(0.06, 0.125, -0.03), rot=(0, -0.9, 0))
+    gun_mover(obj, mb, 'W_SMG_Mag', V(0.098, -0.06))
+    gun_mover(obj, kb, 'W_SMG_Bolt', V(0.14, 0.13, 0.034))
     return obj
 
 
@@ -755,14 +781,17 @@ def w_ar(m):
     # upper receiver
     slab(b, rounded([(-0.114, 0.104), (0.222, 0.104), (0.222, 0.162, 0.006), (-0.1, 0.162, 0.006),
                      (-0.114, 0.148, 0.006)], segs=2), 0.054, m['body'], bevel=0.005, bsegs=1)
-    plate(b, rounded([(0.02, 0.114), (0.1, 0.114), (0.1, 0.142), (0.02, 0.142)], r=0.004, segs=1), -0.027, -1,
+    # bolt carrier seen through the ejection port (right side): it cycles on every shot
+    bb = C.MeshBuilder()
+    plate(bb, rounded([(0.02, 0.114), (0.1, 0.114), (0.1, 0.142), (0.02, 0.142)], r=0.004, segs=1), -0.027, -1,
           m['metal'], h=0.003)
     plate(b, rounded([(-0.09, 0.118), (0.0, 0.118), (0.0, 0.13), (-0.09, 0.13)], r=0.004, segs=1), 0.027, 1,
           m['rar'], h=0.003)
     plate(b, rounded([(-0.09, 0.118), (0.0, 0.118), (0.0, 0.13), (-0.09, 0.13)], r=0.004, segs=1), -0.027, -1,
           m['rar'], h=0.003)
     b.cylinder(0.009, 0.02, loc=(-0.03, 0.075, 0.138), rot=(PI / 2, 0, 0.5), segs=8, mat=m['metal'])
-    bx(b, -0.126, -0.1, 0.146, 0.16, 0.04, mat=m['metal'], bevel=0.003)
+    hb = C.MeshBuilder()   # T-shaped charging handle at the back
+    bx(hb, -0.126, -0.1, 0.146, 0.16, 0.04, mat=m['metal'], bevel=0.003)
     # rail + red dot
     rail(b, m, -0.095, 0.455, 0.162, w=0.026)
     red_dot(b, m, 0.03, 0.176)
@@ -793,8 +822,9 @@ def w_ar(m):
     # front sight post on rail end
     slab(b, rounded([(0.42, 0.176), (0.452, 0.176), (0.446, 0.204, 0.005), (0.43, 0.204, 0.005)], segs=1),
          0.024, m['body'], bevel=0.004)
-    # curved magazine
-    curved_mag(b, (0.134, 0.05), (0.196, -0.125), 0.03, 0.062, 0.068, m['metal'], m['body'])
+    # curved magazine (moving part)
+    mb = C.MeshBuilder()
+    curved_mag(mb, (0.134, 0.05), (0.196, -0.125), 0.03, 0.062, 0.068, m['metal'], m['body'])
     # stock: solid chunky body + rarity inserts + butt pad
     stock = [(-0.12, 0.158), (-0.29, 0.158, 0.012), (-0.306, 0.14), (-0.306, -0.028, 0.01), (-0.29, -0.04, 0.01),
              (-0.262, -0.03, 0.02), (-0.2, 0.066, 0.05), (-0.14, 0.094, 0.02), (-0.12, 0.098)]
@@ -809,6 +839,10 @@ def w_ar(m):
     finish(obj, ao_dist=0.07)
     add_empty(obj, 'W_AR_Muzzle', V(0.616, zb))
     add_empty(obj, 'W_AR_Hand', V(0.34, 0.066))
+    add_empty(obj, 'W_AR_Eject', V(0.06, 0.128, -0.032), rot=(0, -0.9, 0))
+    gun_mover(obj, mb, 'W_AR_Mag', V(0.16, -0.03))
+    gun_mover(obj, bb, 'W_AR_Bolt', V(0.06, 0.128, -0.027))
+    gun_mover(obj, hb, 'W_AR_Handle', V(-0.113, 0.153))
     return obj
 
 
@@ -850,9 +884,14 @@ def w_pump(m):
         prof += [(0.032, f), (0.032, f + 0.012), (0.028, f + 0.016), (0.028, f + 0.022)]
         f += 0.022
     prof += [(0.032, f), (0.032, f + 0.02), (0.027, f + 0.028), (0.019, f + 0.032), (0.0, f + 0.032)]
-    revolve(b, prof, 'y', (0, 0, zt + 0.006), segs=10, mat=m['wood'], scale=(1.0, 0.92), rot0=PI / 10)
+    pb = C.MeshBuilder()
+    revolve(pb, prof, 'y', (0, 0, zt + 0.006), segs=10, mat=m['wood'], scale=(1.0, 0.92), rot0=PI / 10)
     for s in (1, -1):
-        cy(b, 0.0045, 0.15, 0.26, zt + 0.004, x=s * 0.021, segs=6, mat=m['metal'])
+        cy(pb, 0.0045, 0.15, 0.26, zt + 0.004, x=s * 0.021, segs=6, mat=m['metal'])
+    # a shell for the loading animation (hidden until the reload clip shows it)
+    shb = C.MeshBuilder()
+    cy(shb, 0.0105, 0.0, 0.05, 0.0, segs=10, mat=m['rar'])
+    cy(shb, 0.011, -0.012, 0.0, 0.0, segs=10, mat=m['metal'])
     # stock (wood, tapered) + recoil pad + rarity band
     stock = [(-0.06, 0.144), (-0.2, 0.134), (-0.318, 0.138, 0.008), (-0.322, 0.12), (-0.322, -0.022, 0.006),
              (-0.31, -0.034), (-0.2, 0.018, 0.05), (-0.11, 0.052, 0.03), (-0.04, 0.06)]
@@ -867,6 +906,11 @@ def w_pump(m):
     finish(obj, ao_dist=0.07)
     add_empty(obj, 'W_Pump_Muzzle', V(0.69, zb))
     add_empty(obj, 'W_Pump_Hand', V(0.35, zt - 0.02))
+    add_empty(obj, 'W_Pump_Eject', V(0.07, 0.125, -0.03), rot=(0, -0.9, 0))
+    gun_mover(obj, pb, 'W_Pump_Pump', V(0.35, zt))
+    sh = gun_mover(obj, shb, 'W_Pump_Shell', V(0.0, 0.0))
+    sh.location = V(0.07, 0.035)
+    sh.scale = (0.0, 0.0, 0.0)
     return obj
 
 
@@ -916,18 +960,19 @@ def w_tactical(m):
     slab(b, rounded([(0.41, 0.184), (0.446, 0.184), (0.44, 0.212, 0.006), (0.418, 0.212, 0.006)], segs=1), 0.028,
          m['body'], bevel=0.004)
     bx(b, 0.426, 0.432, 0.207, 0.22, 0.004, mat=m['rar'])
-    # drum magazine (axis X)
+    # drum magazine (axis X, moving part)
     df, dz = 0.148, -0.066
-    bx(b, 0.108, 0.19, -0.01, 0.036, 0.042, mat=m['body'], bevel=0.005)
-    revolve(b, [(0.0, -0.035), (0.05, -0.035), (0.062, -0.033), (0.07, -0.025), (0.072, -0.012),
+    db = C.MeshBuilder()
+    bx(db, 0.108, 0.19, -0.01, 0.036, 0.042, mat=m['body'], bevel=0.005)
+    revolve(db, [(0.0, -0.035), (0.05, -0.035), (0.062, -0.033), (0.07, -0.025), (0.072, -0.012),
                 (0.072, 0.012), (0.07, 0.025), (0.062, 0.033), (0.05, 0.035), (0.0, 0.035)], 'x',
             (0, -df, dz), segs=18, mat=m['metal'])
     for s in (1, -1):
-        revolve(b, ring_prof(0.03, 0.048, s * 0.033, s * 0.04), 'x', (0, -df, dz), segs=18, mat=m['rar'],
+        revolve(db, ring_prof(0.03, 0.048, s * 0.033, s * 0.04), 'x', (0, -df, dz), segs=18, mat=m['rar'],
                 closed_prof=True)
-        revolve(b, [(0.0, s * 0.036), (0.016, s * 0.036), (0.016, s * 0.043), (0.0, s * 0.043)], 'x',
+        revolve(db, [(0.0, s * 0.036), (0.016, s * 0.036), (0.016, s * 0.043), (0.0, s * 0.043)], 'x',
                 (0, -df, dz), segs=10, mat=m['body'])
-    bx(b, df - 0.004, df + 0.004, dz - 0.012, dz + 0.012, 0.094, mat=m['body'], bevel=0.002)
+    bx(db, df - 0.004, df + 0.004, dz - 0.012, dz + 0.012, 0.094, mat=m['body'], bevel=0.002)
     # stock
     slab(b, [(-0.11, 0.165), (-0.27, 0.165), (-0.29, 0.15), (-0.29, -0.03), (-0.275, -0.045), (-0.24, -0.045),
              (-0.225, -0.02), (-0.18, 0.05), (-0.13, 0.07), (-0.11, 0.07)], 0.052, m['body'], bevel=0.008)
@@ -940,6 +985,8 @@ def w_tactical(m):
     finish(obj, ao_dist=0.07)
     add_empty(obj, 'W_Tactical_Muzzle', V(0.588, zb))
     add_empty(obj, 'W_Tactical_Hand', V(0.38, 0.062))
+    add_empty(obj, 'W_Tactical_Eject', V(0.1, 0.13, -0.036), rot=(0, -0.9, 0))
+    gun_mover(obj, db, 'W_Tactical_Mag', V(df, dz))
     return obj
 
 
@@ -971,11 +1018,12 @@ def w_sniper(m):
     # receiver cylinder + bolt
     revolve(b, [(0.0, -0.11), (0.018, -0.11), (0.023, -0.1), (0.023, 0.2), (0.019, 0.21), (0.0, 0.21)], 'y',
             (0, 0, zb + 0.006), segs=12, mat=m['metal'])
-    revolve(b, [(0.0, -0.145), (0.013, -0.145), (0.018, -0.134), (0.018, -0.108), (0.0, -0.108)], 'y',
+    bolt = C.MeshBuilder()
+    revolve(bolt, [(0.0, -0.145), (0.013, -0.145), (0.018, -0.134), (0.018, -0.108), (0.0, -0.108)], 'y',
             (0, 0, zb + 0.006), segs=10, mat=m['body'])
-    sweep(b, bez([V(-0.06, zb + 0.01, -0.02), V(-0.06, zb + 0.006, -0.052), V(-0.068, zb - 0.02, -0.06)], 3),
+    sweep(bolt, bez([V(-0.06, zb + 0.01, -0.02), V(-0.06, zb + 0.006, -0.052), V(-0.068, zb - 0.02, -0.06)], 3),
           0.0055, segs=8, mat=m['metal'])
-    b.sphere(0.013, loc=V(-0.068, zb - 0.027, -0.062), segs=10, rings=6, mat=m['rar'])
+    bolt.sphere(0.013, loc=V(-0.068, zb - 0.027, -0.062), segs=10, rings=6, mat=m['rar'])
     plate(b, rounded([(0.02, zb), (0.1, zb), (0.1, zb + 0.016), (0.02, zb + 0.016)], r=0.003, segs=1), -0.022, -1,
           m['body'], h=0.002)
     # rail + scope mounts + scope
@@ -1015,10 +1063,11 @@ def w_sniper(m):
               mat=m['metal'])
         sweep(b, [V(0.62, 0.058, s * 0.014), V(0.74, 0.067, s * 0.017)], 0.0085, segs=8, mat=m['body'])
         b.sphere(0.011, loc=V(0.795, 0.07, s * 0.017), scale=(1, 1.3, 0.8), segs=8, rings=6, mat=m['body'])
-    # box magazine
-    slab(b, rounded([(0.085, 0.056), (0.155, 0.056), (0.155, -0.02), (0.085, -0.02)], r=0.004, segs=1), 0.038,
+    # box magazine (moving part)
+    mb = C.MeshBuilder()
+    slab(mb, rounded([(0.085, 0.056), (0.155, 0.056), (0.155, -0.02), (0.085, -0.02)], r=0.004, segs=1), 0.038,
          m['metal'], bevel=0.003)
-    slab(b, rounded([(0.08, -0.016), (0.162, -0.016), (0.162, -0.032), (0.08, -0.032)], r=0.005, segs=1), 0.044,
+    slab(mb, rounded([(0.08, -0.016), (0.162, -0.016), (0.162, -0.032), (0.08, -0.032)], r=0.005, segs=1), 0.044,
          m['body'], bevel=0.003)
     # stock + cheek riser + butt pad
     stock = [(-0.085, 0.126), (-0.2, 0.114), (-0.368, 0.12, 0.012), (-0.378, 0.1), (-0.382, -0.03, 0.01),
@@ -1035,6 +1084,9 @@ def w_sniper(m):
     finish(obj, ao_dist=0.07)
     add_empty(obj, 'W_Sniper_Muzzle', V(0.887, zb))
     add_empty(obj, 'W_Sniper_Hand', V(0.44, 0.062))
+    add_empty(obj, 'W_Sniper_Eject', V(0.05, zb + 0.02, -0.03), rot=(0, -0.9, 0))
+    gun_mover(obj, bolt, 'W_Sniper_Bolt', V(0.0, zb + 0.006))
+    gun_mover(obj, mb, 'W_Sniper_Mag', V(0.12, 0.02))
     return obj
 
 
@@ -1081,7 +1133,8 @@ def w_rocket(m):
         else:
             mats.append(m['body'])
     revolve(b, prof, 'y', (0, 0, zt), segs=16, mats=mats, cap0=True, cap1=True)
-    rocket_warhead(b, m, f1 - 0.075, r=0.058, zc=zt, segs=16)
+    wb = C.MeshBuilder()
+    rocket_warhead(wb, m, f1 - 0.075, r=0.058, zc=zt, segs=16)
     # padded shoulder section
     pad = [(R - 0.004, -0.3), (R + 0.006, -0.3), (R + 0.013, -0.292), (R + 0.013, -0.216), (R + 0.008, -0.21),
            (R + 0.008, -0.19), (R + 0.013, -0.184), (R + 0.013, -0.108), (R + 0.006, -0.1), (R - 0.004, -0.1)]
@@ -1118,6 +1171,7 @@ def w_rocket(m):
     finish(obj, ao_dist=0.1)
     add_empty(obj, 'W_Rocket_Muzzle', V(f1, zt))
     add_empty(obj, 'W_Rocket_Hand', V(0.31, 0.035))
+    gun_mover(obj, wb, 'W_Rocket_Warhead', V(f1, zt))
     return obj
 
 
@@ -1231,7 +1285,9 @@ def build_weapons(preview_dir=None):
         print('%-18s %5d tris' % (o.name, tri_count(o)))
     if preview_dir:
         preview_weapons(objs, preview_dir)
-    C.export_glb('weapons.glb', objs, colors=True)
+    import gun_anims
+    gun_anims.add_clips({o.name: o for o in objs})
+    C.export_glb('weapons.glb', objs, colors=True, anims=True)
     return objs
 
 

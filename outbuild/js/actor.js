@@ -71,6 +71,8 @@ export class Actor {
     this.model = new CharacterModel(game.assets.gltf.character, outfit, skin);
     this.model.root.visible = false;
     this.model.onFootstep = (side, speed) => game.onFootstep && game.onFootstep(this, speed);
+    this.model.onEject = (p, d, kind) => game.effects && game.effects.shell(p, d, kind, this.vel);
+    this.model.onMagDrop = (node) => game.effects && game.effects.dropMag(node);
     game.scene.add(this.model.root);
     this.glider = null;
   }
@@ -585,10 +587,14 @@ export class Actor {
     this.refreshHeld();
     const reload = this.puppet ? this.netReload || 0 : this.reloadT > 0 ? 1 - this.reloadT / this.reloadTotal : 0;
     const use = this.puppet ? this.netUse || 0 : this.useT > 0 ? this.useT / this.useTotal : 0;
+    // how long one shot's bolt/slide/pump cycle may take
+    const sig = this.heldSig;
+    const wdef = sig && sig.startsWith('weapon:') ? WEAPONS[sig.split(':')[1]] : null;
+    const fireDur = wdef ? 0.9 / wdef.rate : 0.2;
     m.update(dt, {
       vel: this.vel, yaw: this.yaw, aimPitch: this.pitch, grounded: this.grounded || this.swimming,
       crouch: this.intent.crouch && this.mode === 'ground', sprint: this.intent.sprint, mode: this.alive ? this.mode : 'dead',
-      fired: this.fired, harvest: this.harvestT, reload, use,
+      fired: this.fired, harvest: this.harvestT, reload, use, fireDur,
       dive: this.dive || 0, dance: this.dancing,
     });
     if (this.glider) {

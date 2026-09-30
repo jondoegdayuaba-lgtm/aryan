@@ -12,6 +12,7 @@ from mathutils import Vector, Matrix, Euler
 from mathutils.kdtree import KDTree
 
 import common as C
+import animations
 
 # ----------------------------------------------------------------------------- skeleton
 # Character faces -Y. `.L` is the character's left (+X).
@@ -636,7 +637,8 @@ def build(preview=None):
                          lens=60)
         for p in parts:
             p.hide_render = False
-    C.export_glb('character.glb', [rig], skins=True)
+    animations.add_clips(rig)
+    C.export_glb('character.glb', [rig], skins=True, anims=True)
     return rig, parts
 
 

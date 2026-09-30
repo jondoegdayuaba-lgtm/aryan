@@ -22,4 +22,8 @@ export const ROADS = [
 // Where the lobby shows your character: the beach at Palm Cove, looking out to sea.
 export const LOBBY = { x: 318, z: 264, yaw: 0.67 };
 
+// Duel Grounds: one flattened arena in the middle of a small island.
+export const DUEL_POIS = [{ name: 'Arena', kind: 'arena', x: 0, z: 0, flat: 34 }];
+export const DUEL_LOBBY = { x: -44, z: 22, yaw: 2.2 };
+
 export const POI_BY_NAME = Object.fromEntries(POIS.map((p) => [p.name, p]));

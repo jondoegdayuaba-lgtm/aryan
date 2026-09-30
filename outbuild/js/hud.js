@@ -109,14 +109,17 @@ export class Hud {
   }
 
   // ------------------------------------------------------------------ map image
-  buildMap(terrain, pieces) {
+  // Map image of the square of `view` metres around the centre (the whole island, or just the duel island).
+  buildMap(terrain, pieces, view = WORLD.size) {
     const N = 512;
+    this.mapSize = view;
     const c = document.createElement('canvas');
     c.width = c.height = N;
     const ctx = c.getContext('2d');
     const img = ctx.createImageData(N, N);
-    const cell = WORLD.size / N;
-    const half = WORLD.size / 2;
+    const cell = view / N;
+    const half = view / 2;
+    const mcell = WORLD.size / 512, mhalf = WORLD.size / 2;
     const nrm = new THREE.Vector3();
     for (let j = 0; j < N; j++) {
       for (let i = 0; i < N; i++) {
@@ -127,7 +130,8 @@ export class Hud {
           const d = clamp(-h / 12, 0, 1);
           col = [60 - d * 30, 170 - d * 70, 200 - d * 40];
         } else {
-          const k = (j * 512 + i);
+          const mi = Math.floor((x + mhalf) / mcell), mj = Math.floor((z + mhalf) / mcell);
+          const k = mj * 512 + mi;
           const road = terrain.roadMask[k] || 0;
           const flat = terrain.flatMask[k] || 0;
           if (h < 1.8) col = [226, 208, 158];
@@ -474,7 +478,7 @@ export class Hud {
     const a = g.player;
     const ctx = this.miniCtx;
     const S = this.mini.width;
-    const scale = 1.25; // pixels per metre
+    const scale = (this.mapSize || WORLD.size) < 500 ? 2.2 : 1.25; // pixels per metre
     const cx = a.mode === 'bus' ? g.airship.pos.x : a.pos.x, cz = a.mode === 'bus' ? g.airship.pos.z : a.pos.z;
     ctx.clearRect(0, 0, S, S);
     ctx.save();
@@ -484,9 +488,10 @@ export class Hud {
     ctx.fillStyle = '#2a6f9a';
     ctx.fillRect(0, 0, S, S);
     if (this.mapImg) {
-      const px = this.mapImg.width / WORLD.size; // map px per metre
+      const M = this.mapSize || WORLD.size;
+      const px = this.mapImg.width / M; // map px per metre
       const sw = S / scale * px;
-      const sx = (cx + WORLD.size / 2) * px - sw / 2, sy = (cz + WORLD.size / 2) * px - sw / 2;
+      const sx = (cx + M / 2) * px - sw / 2, sy = (cz + M / 2) * px - sw / 2;
       ctx.drawImage(this.mapImg, sx, sy, sw, sw, 0, 0, S, S);
     }
     const map = (x, z) => [(x - cx) * scale + S / 2, (z - cz) * scale + S / 2];
@@ -550,8 +555,9 @@ export class Hud {
     if (this.big.width !== S) { this.big.width = S; this.big.height = S; }
     ctx.clearRect(0, 0, S, S);
     if (this.mapImg) ctx.drawImage(this.mapImg, 0, 0, S, S);
-    const scale = S / WORLD.size;
-    const map = (x, z) => [(x + WORLD.size / 2) * scale, (z + WORLD.size / 2) * scale];
+    const M = this.mapSize || WORLD.size;
+    const scale = S / M;
+    const map = (x, z) => [(x + M / 2) * scale, (z + M / 2) * scale];
     map.scale = scale;
     // grid
     ctx.strokeStyle = 'rgba(0,0,0,0.12)';
@@ -565,7 +571,7 @@ export class Hud {
     // place names
     ctx.textAlign = 'center';
     ctx.font = `700 ${Math.max(11, S / 60) | 0}px Chakra Petch, sans-serif`;
-    for (const p of POIS) {
+    for (const p of g.terrain.pois || POIS) {
       const [x, y] = map(p.x, p.z);
       ctx.lineWidth = 4;
       ctx.strokeStyle = 'rgba(0,0,0,0.6)';
