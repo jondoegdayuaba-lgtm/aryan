@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Wheelie Life</title>
+  <meta name="description" content="Solo wheelie riding. Hold the front wheel up on the balance point, weave through traffic and stack the multiplier.">
+  <meta name="theme-color" content="#120d0c">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23120d0c'/%3E%3Ccircle cx='16' cy='46' r='9' fill='none' stroke='%23ff5a1f' stroke-width='4'/%3E%3Ccircle cx='50' cy='30' r='9' fill='none' stroke='%23ff5a1f' stroke-width='4'/%3E%3Cpath d='M16 46L36 40 44 34' stroke='%23f2ede6' stroke-width='4' fill='none'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js" } }</script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+  <div id="loading">Loading bike&hellip;</div>
+
+  <div id="hud" hidden>
+    <div class="hud-top">
+      <div class="score-block">
+        <span class="label">Score</span>
+        <span id="score" class="num">0</span>
+        <span id="mult" class="mult"></span>
+      </div>
+      <div class="hud-right">
+        <span id="hud-best" class="label"></span>
+        <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
+      </div>
+    </div>
+    <div id="balance" class="balance" aria-hidden="true">
+      <span class="label">Balance</span>
+      <div class="track"><div id="zone" class="zone"></div><div id="needle" class="needle"></div></div>
+    </div>
+    <div class="speed"><span id="speed" class="num">0</span><span class="label">km/h</span></div>
+    <div id="popups" aria-live="polite"></div>
+    <div id="hint" class="hint">Hold <b>Space</b> to lift the front wheel, ease off before you go past vertical, <b>S</b> to bring it down</div>
+    <button id="btn-brake" class="hold-btn left" type="button">Brake</button>
+    <button id="btn-kick" class="hold-btn mid" type="button">Kick</button>
+    <button id="btn-gas" class="hold-btn right" type="button">Gas</button>
+  </div>
+
+  <section id="menu" class="screen">
+    <div class="hero"></div>
+    <div class="menu-body">
+      <p class="eyebrow">Solo ride</p>
+      <h1 class="title">Wheelie <span>Life</span></h1>
+      <p class="tagline">Front wheel up. Stay on the balance point. Don't touch the traffic.</p>
+      <button id="btn-start" class="cta" type="button">Ride</button>
+      <p class="best">Best <b id="best-menu">0</b></p>
+      <table class="controls">
+        <tr><th>Space / W / Up</th><td>Gas: lifts the front wheel</td></tr>
+        <tr><th>S / Down</th><td>Brake: drops the front wheel</td></tr>
+        <tr><th>Shift</th><td>Clutch kick: pops the wheel up</td></tr>
+        <tr><th>A D / Left Right</th><td>Steer</td></tr>
+        <tr><th>Phone</th><td>Drag to steer, Gas / Brake / Kick buttons</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section id="over" class="screen over" hidden>
+    <div class="menu-body">
+      <p class="eyebrow">Ride over</p>
+      <h2 id="over-title" class="title small">Wrecked</h2>
+      <p class="big-score"><span id="over-score">0</span> <span id="over-new" class="new" hidden>New best</span></p>
+      <p class="stats">Best <b id="over-best">0</b> &middot; Wheelie <b id="over-wheelie">0 m</b> &middot; Distance <b id="over-dist">0 m</b></p>
+      <button id="btn-again" class="cta" type="button">Ride again</button>
+    </div>
+  </section>
+
+  <section id="pause" class="screen dim" hidden>
+    <div class="menu-body">
+      <h2 class="title small">Paused</h2>
+      <button id="btn-resume" class="cta" type="button">Resume</button>
+      <button id="btn-mute" class="ghost" type="button">Toggle sound (M)</button>
+    </div>
+  </section>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
