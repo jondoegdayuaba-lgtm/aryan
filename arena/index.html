@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blockfire Arena</title>
+  <meta name="description" content="A blocky free-for-all arena shooter in the browser. Fight AI bots with a rifle, pistol, shotgun and sniper.">
+  <meta name="theme-color" content="#101522">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23101522'/%3E%3Crect x='18' y='18' width='28' height='28' rx='4' fill='%23ff7a1a'/%3E%3Cpath d='M32 6v14M32 44v14M6 32h14M44 32h14' stroke='%23fff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Chakra+Petch:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js" } }</script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+
+  <div id="hud" hidden>
+    <div id="vignette"></div>
+    <div id="dmg-layer"></div>
+    <div id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
+    <div id="hitmarker" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div id="announce"></div>
+    <div id="top">
+      <div id="lead"></div>
+      <div id="timer">5:00</div>
+      <div id="you"></div>
+    </div>
+    <div id="feed"></div>
+    <div id="reload-hint" hidden></div>
+    <div id="health">
+      <span class="plus">+</span>
+      <span id="hp-num">100</span>
+      <div class="bar"><div id="hp-fill"></div></div>
+    </div>
+    <div id="ammo">
+      <div id="weapon-name">Assault Rifle</div>
+      <div><span id="ammo-mag">30</span><span class="sep">/</span><span id="ammo-res">150</span></div>
+      <div id="slots"></div>
+    </div>
+  </div>
+
+  <div id="scope" hidden><div class="ring"></div></div>
+
+  <div id="death" class="overlay-lite" hidden>
+    <div class="death-card">
+      <div class="small">Eliminated by</div>
+      <div id="death-by" class="big"></div>
+      <div id="death-weapon" class="small"></div>
+      <div class="small">Respawning in <b id="death-timer">3.0</b></div>
+    </div>
+  </div>
+
+  <div id="board" class="panel" hidden>
+    <table>
+      <thead><tr><th>#</th><th>Player</th><th>Kills</th><th>Deaths</th><th>K/D</th></tr></thead>
+      <tbody id="board-body"></tbody>
+    </table>
+  </div>
+
+  <div id="menu" class="overlay">
+    <div class="card">
+      <h1>Block<span>fire</span></h1>
+      <p class="tag">Free-for-all arena · first to the kill limit wins</p>
+      <label>Name <input id="opt-name" maxlength="16" autocomplete="off" spellcheck="false"></label>
+      <div class="row">
+        <label>Bots
+          <select id="opt-bots"><option>3</option><option>5</option><option selected>7</option><option>9</option><option>11</option></select>
+        </label>
+        <label>Difficulty
+          <select id="opt-diff"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select>
+        </label>
+        <label>Kill limit
+          <select id="opt-kills"><option>10</option><option>15</option><option selected>25</option><option>40</option></select>
+        </label>
+      </div>
+      <label>Mouse sensitivity <b id="sens-val">1.0</b>
+        <input id="opt-sens" type="range" min="0.2" max="3" step="0.1" value="1">
+      </label>
+      <button id="play" class="btn" type="button">Play</button>
+      <div class="controls">
+        <span><kbd>WASD</kbd> move</span><span><kbd>Mouse</kbd> aim</span><span><kbd>Click</kbd> shoot</span>
+        <span><kbd>Right click</kbd> aim down sights</span><span><kbd>Space</kbd> jump</span><span><kbd>Shift</kbd> sprint</span>
+        <span><kbd>C</kbd> crouch</span><span><kbd>R</kbd> reload</span><span><kbd>1-4</kbd> / wheel / <kbd>Q</kbd> weapons</span>
+        <span><kbd>Tab</kbd> scores</span><span><kbd>M</kbd> mute</span><span><kbd>Esc</kbd> pause</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="pause" class="overlay" hidden>
+    <div class="card">
+      <h2>Paused</h2>
+      <label>Mouse sensitivity
+        <input id="pause-sens" type="range" min="0.2" max="3" step="0.1" value="1">
+      </label>
+      <button id="resume" class="btn" type="button">Resume</button>
+      <button id="quit" class="btn ghost" type="button">Leave match</button>
+    </div>
+  </div>
+
+  <div id="results" class="overlay-lite" hidden>
+    <div class="card results-card">
+      <h2 id="result-title"></h2>
+      <p id="result-sub" class="tag"></p>
+      <div class="row">
+        <button id="again" class="btn" type="button">Play again</button>
+        <button id="menu-btn" class="btn ghost" type="button">Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

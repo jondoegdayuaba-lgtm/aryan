@@ -82,3 +82,35 @@ Four extra missile skins unlock as your best score climbs.
 | `js/collision.js` | Simple collision shapes |
 
 three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+---
+
+# Blockfire Arena
+
+`arena/` holds a second game: a blocky free-for-all arena shooter against AI bots, with its own art, map and code. Open `arena/index.html` through a local server (see **Run it locally** above) and go to `http://localhost:8000/arena/`.
+
+- Four weapons: assault rifle, pistol, shotgun and a scoped sniper rifle. Headshots do extra damage.
+- 3 to 11 bots on three difficulty levels. They find their way around the map, pick fights with each other and with you, strafe, and switch weapons to suit the range.
+- First to the kill limit wins, or whoever leads when the 5-minute timer runs out. You respawn 3 seconds after dying, and health regenerates once you stop taking damage.
+- Kill feed, multi-kill and streak call-outs, damage direction indicators, and a scoreboard (hold Tab).
+
+| Key | Action |
+| --- | --- |
+| WASD / arrows | Move |
+| Mouse | Aim (click the game to lock the pointer) |
+| Left click | Shoot |
+| Right click | Aim down sights / scope |
+| Space / Shift / C | Jump / sprint / crouch |
+| R | Reload |
+| 1–4, mouse wheel, Q | Switch weapon (Q = last weapon) |
+| Tab / M / Esc | Scoreboard / mute / pause |
+
+| File | What it does |
+| --- | --- |
+| `arena/js/main.js` | Game loop, player, bot AI, shooting, HUD, match flow |
+| `arena/js/map.js` | Arena layout, textures, ray casting, bot navigation grid (A*) |
+| `arena/js/character.js` | Blocky bot models and their walk animation |
+| `arena/js/weapons.js` | Weapon stats and the first-person gun models |
+| `arena/js/audio.js` | Synthesised gunshots, hit and reload sounds |
+
+Tune weapons in the `WEAPONS` table in `arena/js/weapons.js`, and bot skill in `DIFFS` at the top of `arena/js/main.js`.
