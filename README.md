@@ -87,7 +87,9 @@ three.js is MIT licensed; see `vendor/three/LICENSE`.
 
 # Blockfire Arena
 
-`arena/` holds a second game: a blocky free-for-all arena shooter against AI bots, with its own art, map and code. Open `arena/index.html` through a local server (see **Run it locally** above) and go to `http://localhost:8000/arena/`.
+`arena/` holds a second game: a blocky free-for-all arena shooter against AI bots, with its own art, map and code.
+
+To play from your desktop, save `desktop/blockfire-arena.html` there and double-click it. Like the Missile Run file, it's the whole game in one file and runs without a web server (`npm run build:desktop` rebuilds both). Otherwise, serve the folder (see **Run it locally** above) and open `http://localhost:8000/arena/`.
 
 - Four weapons: assault rifle, pistol, shotgun and a scoped sniper rifle. Headshots do extra damage.
 - 3 to 11 bots on three difficulty levels. They find their way around the map, pick fights with each other and with you, strafe, and switch weapons to suit the range.
