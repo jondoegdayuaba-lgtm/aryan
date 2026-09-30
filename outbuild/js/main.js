@@ -99,6 +99,28 @@ class Game {
 
   async init() {
     const canvas = $('game');
+    // tips while the island is generated
+    const tips = [
+      'Hit the glowing blue spot while harvesting for bonus materials.',
+      'Wood builds fastest; metal is the strongest.',
+      'Press F on your own wall to add a window or a door.',
+      'Look down and hold W while skydiving to dive faster.',
+      'Supply drops float down with epic and legendary loot. Follow the blue beam.',
+      'Shield Flasks stack up to 50 shield. Shield Jugs go all the way to 100.',
+      'Running up ramps while placing more is the fastest way to high ground.',
+      'Headshots deal extra damage, especially with the Bolt Sniper.',
+      'Click the map (M) to place a marker; it shows on your compass.',
+    ];
+    let tipI = Math.floor(Math.random() * tips.length);
+    const showTip = () => { const el = $('load-tip'); if (el) el.textContent = tips[tipI++ % tips.length]; };
+    showTip();
+    this.tipTimer = setInterval(showTip, 2600);
+    if (matchMedia('(hover: none) and (pointer: coarse)').matches) {
+      const el = document.createElement('p');
+      el.className = 'touch-note';
+      el.textContent = 'Outbuild is made for a keyboard and mouse. On a touch screen you can look around the lobby, but you will need a computer to play.';
+      $('loading-screen').appendChild(el);
+    }
     this.renderer = new Renderer(canvas);
     this.scene = this.renderer.scene;
     this.camera = this.renderer.camera;
@@ -160,6 +182,7 @@ class Game {
     // warm up shaders so the first frames don't hitch
     this.renderer.renderer.compile(this.scene, this.camera);
     this.enterLobby();
+    clearInterval(this.tipTimer);
     $('loading-screen').classList.add('done');
     setTimeout(() => $('loading-screen').remove(), 800);
     this.last = performance.now();

@@ -32,7 +32,8 @@ kbd { display: inline-block; min-width: 1.6em; padding: 0.05em 0.45em; border-ra
 .load-logo .t2 { font: 700 clamp(14px, 2vw, 22px) var(--font); letter-spacing: 0.5em; text-transform: uppercase; color: var(--ink-dim); margin-top: 10px; }
 .load-bar { width: min(420px, 70vw); height: 10px; border-radius: 99px; background: rgba(255,255,255,0.12); overflow: hidden; }
 #load-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width 0.3s; }
-.load-tip { margin: 0; color: var(--ink-dim); font-size: 15px; max-width: 80vw; text-align: center; }
+.load-tip { margin: 0; color: var(--ink-dim); font-size: 15px; max-width: 80vw; text-align: center; min-height: 1.4em; }
+.touch-note { margin: 0; max-width: 80vw; text-align: center; color: #ffd98a; font-weight: 600; }
 
 /* ---------------------------------------------------------------- lobby */
 #menu { position: fixed; inset: 0; z-index: 10; display: flex; justify-content: space-between; align-items: stretch; pointer-events: none;
