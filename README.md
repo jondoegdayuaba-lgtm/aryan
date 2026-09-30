@@ -82,3 +82,12 @@ Four extra missile skins unlock as your best score climbs.
 | `js/collision.js` | Simple collision shapes |
 
 three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+## Also in this repo: Flop Shot
+
+`flop-shot/index.html` is a separate game: one-button, two-a-side floppy basketball. It's a single self-contained file (no libraries, no assets), so you can double-click it to play offline or upload it anywhere.
+
+- Each team has one button. Press it to jump; hold it to raise your arms, and if you're holding the ball, shoot at the top of the swing.
+- Players wobble on their own, so the direction you jump depends on how you're leaning when you press. Shots are most accurate when you're upright.
+- 1 player: Red uses W, Space, ↑ or a tap/click, and Blue is the CPU. 2 players: Red uses W or the left half of the screen, and Blue uses ↑ or the right half.
+- First to 5 wins. Every point after the first adds a random twist: moon gravity, beach ball, bowling ball, stilts, short shorts, ice floor or super bounce.

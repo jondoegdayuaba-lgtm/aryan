@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Flop Shot</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #140f24; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+'use strict';
+// Flop Shot: a one-button, two-a-side floppy basketball game.
+// Everything (art, physics, sound) is generated in this file.
+
+const W = 1280, H = 720, GROUND = 640;
+const GRAV = 1800, STEP = 1 / 120, ARM_LEN = 52, BODY_R = 15, WIN_SCORE = 5;
+const TEAM_COLORS = ['#e8433a', '#2f6fe0'], TEAM_DARK = ['#9c2620', '#1c418c'], TEAM_NAMES = ['RED', 'BLUE'];
+
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let scale = 1, dpr = 1;
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  scale = Math.min(innerWidth / W, innerHeight / H);
+  cv.style.width = W * scale + 'px';
+  cv.style.height = H * scale + 'px';
+  cv.width = Math.round(W * scale * dpr);
+  cv.height = Math.round(H * scale * dpr);
+}
+addEventListener('resize', resize);
+resize();
+
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const rand = (a, b) => a + Math.random() * (b - a);
+
+// ---------- sound ----------
+let ac = null;
+function unlockAudio() {
+  if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = null; } }
+  if (ac && ac.state === 'suspended') ac.resume();
+}
+function tone(freq, dur, type = 'sine', vol = 0.2, slide = 0, delay = 0) {
+  if (!ac) return;
+  const t = ac.currentTime + delay, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq * slide), t + dur);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(ac.destination);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+const sfx = {
+  bounce: v => tone(150, 0.12, 'sine', clamp(v / 2500, 0.03, 0.3), 0.5),
+  rim: () => tone(880, 0.18, 'triangle', 0.1, 0.8),
+  grab: () => tone(520, 0.05, 'square', 0.05),
+  steal: () => { tone(700, 0.06, 'square', 0.06); tone(990, 0.08, 'square', 0.06, 1, 0.06); },
+  jump: () => tone(240, 0.1, 'triangle', 0.07, 1.9),
+  shoot: () => tone(400, 0.12, 'triangle', 0.08, 2.2),
+  score: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.2, 'square', 0.07, 1, i * 0.08)),
+  whistle: () => { tone(2300, 0.12, 'square', 0.04); tone(2300, 0.3, 'square', 0.04, 1.01, 0.15); },
+  buzzer: () => tone(170, 0.8, 'sawtooth', 0.12),
+};
+
+// ---------- round modifiers ----------
+const BASE_MOD = { name: 'CLASSIC', g: 1, ballR: 22, ballG: 1, rest: 0.72, legs: 1, fric: 0.82 };
+const MODS = [
+  {},
+  { name: 'MOON GRAVITY', g: 0.55, ballG: 0.9 },
+  { name: 'BEACH BALL', ballR: 34, ballG: 0.5, rest: 0.85 },
+  { name: 'BOWLING BALL', ballR: 17, ballG: 1.3, rest: 0.4 },
+  { name: 'STILTS', legs: 1.4 },
+  { name: 'SHORT SHORTS', legs: 0.75 },
+  { name: 'ICE FLOOR', fric: 0.995 },
+  { name: 'SUPER BOUNCE', rest: 0.95 },
+].map(m => ({ ...BASE_MOD, ...m }));
+let mod = MODS[0];
+
+// ---------- hoops ----------
+// hoops[0] is on the left (Blue attacks it), hoops[1] on the right (Red attacks it).
+function makeHoop(side) {
+  const s = side === 1 ? 1 : -1, boardX = side === 1 ? W - 70 : 70;
+  const back = boardX - s * 10, front = boardX - s * 112;
+  return { side, s, boardX, top: 215, bot: 345, rimY: 335, back, front, cx: (back + front) / 2,
+           lo: Math.min(back, front), hi: Math.max(back, front), netT: 0 };
+}
+const hoops = [makeHoop(0), makeHoop(1)];
+const targetHoop = team => hoops[team === 0 ? 1 : 0];
+
+// ---------- players ----------
+const SKINS = ['#f1c7a0', '#c98b5e', '#8d5a3b', '#e7b58c', '#5f3b28', '#f5d3b3'];
+const HAIR = ['#2b1d14', '#6b3a1e', '#111', '#d9a84a', '#3d2a1a'];
+
+class Player {
+  constructor(team, idx) {
+    this.team = team; this.idx = idx;
+    this.facing = team === 0 ? 1 : -1;
+    this.number = [7, 23, 11, 3][team * 2 + idx];
+    this.skin = SKINS[(team * 2 + idx * 3 + 1) % SKINS.length];
+    this.hair = HAIR[(team * 3 + idx) % HAIR.length];
+    this.phase = rand(0, Math.PI * 2);
+    this.swaySpeed = rand(2.2, 2.8);
+  }
+  place(x) {
+    this.L = 110 * mod.legs;
+    this.F = { x, y: GROUND, px: x, py: GROUND };
+    this.N = { x, y: GROUND - this.L, px: x, py: GROUND - this.L };
+    this.arm = 0.3; this.jumpCd = 0; this.grabCd = 0.4; this.stealCd = 0;
+    this.grounded = true; this.airTime = 0;
+    this.updateHand(); this.hand.vx = 0; this.hand.vy = 0;
+  }
+  lean() { return Math.atan2(this.N.x - this.F.x, this.F.y - this.N.y); } // + means leaning right
+  spin() { // angular velocity estimate, rad/s
+    const a0 = Math.atan2(this.N.px - this.F.px, this.F.py - this.N.py);
+    let d = this.lean() - a0;
+    if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2;
+    return d / STEP;
+  }
+  step(dt, pressed, edge, g) {
+    const F = this.F, N = this.N, L = this.L;
+    this.grounded = F.y >= GROUND - 1.5;
+    this.airTime = this.grounded ? 0 : this.airTime + dt;
+    this.jumpCd -= dt; this.grabCd -= dt; this.stealCd -= dt;
+
+    if (edge && this.grounded && this.jumpCd <= 0) {
+      const ax = (N.x - F.x) / L, ay = (N.y - F.y) / L;
+      const vx = ax * 720, vy = ay * 720 - 400;
+      F.px = F.x - vx * dt; F.py = F.y - vy * dt;
+      N.px = N.x - vx * dt * 1.04; N.py = N.y - vy * dt;
+      this.jumpCd = 0.22; this.grounded = false;
+    }
+
+    // Balance "muscle": pulls the neck toward a slowly swaying target lean.
+    const sway = 0.55 * Math.sin(time * this.swaySpeed + this.phase);
+    const tx = F.x + Math.sin(sway) * L, ty = F.y - Math.cos(sway) * L;
+    const k = this.grounded ? 62 : 10, c = this.grounded ? 7 : 1.2;
+    const vFx = (F.x - F.px) / dt, vFy = (F.y - F.py) / dt, vNx = (N.x - N.px) / dt, vNy = (N.y - N.py) / dt;
+    const aNx = k * (tx - N.x) - c * (vNx - vFx), aNy = k * (ty - N.y) - c * (vNy - vFy);
+    const mRatio = 1 / 1.6;
+    const aFx = this.grounded ? 0 : -aNx * mRatio, aFy = this.grounded ? 0 : -aNy * mRatio;
+    verlet(N, aNx, aNy + g, dt);
+    verlet(F, aFx, aFy + g, dt);
+
+    for (let i = 0; i < 4; i++) {
+      const dx = N.x - F.x, dy = N.y - F.y, d = Math.hypot(dx, dy) || 1, diff = (d - L) / d;
+      const wF = 1 / 1.6 / (1 / 1.6 + 1), wN = 1 - wF;
+      F.x += dx * diff * wF; F.y += dy * diff * wF;
+      N.x -= dx * diff * wN; N.y -= dy * diff * wN;
+      this.collideWorld();
+    }
+
+    const target = pressed ? 3.25 : 0.3;
+    this.arm += clamp(target - this.arm, -15 * dt, 9 * dt);
+    const hx = this.hand ? this.hand.x : 0, hy = this.hand ? this.hand.y : 0;
+    this.updateHand();
+    this.hand.vx = (this.hand.x - hx) / dt; this.hand.vy = (this.hand.y - hy) / dt;
+  }
+  collideWorld() {
+    const F = this.F, N = this.N;
+    if (F.y > GROUND) { F.y = GROUND; F.py = F.y; F.px = F.x - (F.x - F.px) * mod.fric; }
+    const headFloor = GROUND - 16;
+    if (N.y > headFloor) { N.y = headFloor; N.py = N.y; N.px = N.x - (N.x - N.px) * 0.85; }
+    for (const P of [F, N]) {
+      if (P.x < 16) { P.x = 16; P.px = P.x; }
+      if (P.x > W - 16) { P.x = W - 16; P.px = P.x; }
+      if (P.y < -300) { P.y = -300; P.py = P.y; }
+    }
+  }
+  updateHand() {
+    const F = this.F, N = this.N, d = Math.hypot(F.x - N.x, F.y - N.y) || 1;
+    const bx = (F.x - N.x) / d, by = (F.y - N.y) / d; // points from neck down to feet
+    const a = -this.facing * this.arm, c = Math.cos(a), s = Math.sin(a);
+    const dirx = bx * c - by * s, diry = bx * s + by * c;
+    const sx = N.x + bx * 7, sy = N.y + by * 7;
+    this.dir = { x: dirx, y: diry };
+    this.shoulder = { x: sx, y: sy };
+    if (!this.hand) this.hand = {};
+    this.hand.x = sx + dirx * ARM_LEN; this.hand.y = sy + diry * ARM_LEN;
+  }
+}
+function verlet(P, ax, ay, dt) {
+  const vx = (P.x - P.px) * 0.999, vy = (P.y - P.py) * 0.999;
+  P.px = P.x; P.py = P.y;
+  P.x += vx + ax * dt * dt; P.y += vy + ay * dt * dt;
+}
+
+function segSeg(p1, q1, p2, q2) {
+  const d1x = q1.x - p1.x, d1y = q1.y - p1.y, d2x = q2.x - p2.x, d2y = q2.y - p2.y;
+  const rx = p1.x - p2.x, ry = p1.y - p2.y;
+  const a = d1x * d1x + d1y * d1y, e = d2x * d2x + d2y * d2y, f = d2x * rx + d2y * ry;
+  const c = d1x * rx + d1y * ry, b = d1x * d2x + d1y * d2y, den = a * e - b * b;
+  let s = den > 1e-6 ? clamp((b * f - c * e) / den, 0, 1) : 0;
+  let t = (b * s + f) / e;
+  if (t < 0) { t = 0; s = clamp(-c / a, 0, 1); } else if (t > 1) { t = 1; s = clamp((b - c) / a, 0, 1); }
+  return [s, t];
+}
+function collidePlayers(p, q) {
+  const [s, t] = segSeg(p.F, p.N, q.F, q.N);
+  const ax = p.F.x + (p.N.x - p.F.x) * s, ay = p.F.y + (p.N.y - p.F.y) * s;
+  const bx = q.F.x + (q.N.x - q.F.x) * t, by = q.F.y + (q.N.y - q.F.y) * t;
+  let dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy);
+  const min = BODY_R * 2 + 2;
+  if (d >= min) return;
+  if (d < 0.01) { dx = q.F.x >= p.F.x ? 1 : -1; dy = 0; d = 1; }
+  const push = (min - d) / 2, nx = dx / d * push, ny = dy / d * push;
+  p.F.x -= nx * (1 - s); p.F.y -= ny * (1 - s); p.N.x -= nx * s; p.N.y -= ny * s;
+  q.F.x += nx * (1 - t); q.F.y += ny * (1 - t); q.N.x += nx * t; q.N.y += ny * t;
+  p.collideWorld(); q.collideWorld();
+}
+
+// ---------- game state ----------
+const players = [new Player(0, 0), new Player(0, 1), new Player(1, 0), new Player(1, 1)];
+const ball = { x: W / 2, y: 200, vx: 0, vy: 0, r: 22, rot: 0, holder: null, shotBy: -1, stuck: 0, lastBounce: 0 };
+let time = 0, mode = 'menu', twoPlayer = false, score = [0, 0], pause = 0, banner = null, winner = -1;
+let celebrate = 0, lastScorer = 0, round = 0;
+const held = [new Set(), new Set()], wasPressed = [false, false], holdTime = [0, 0];
+const ai = [{ until: 0, next: 0 }, { until: 0, next: 0 }];
+const confetti = [];
+const crowd = [];
+for (let row = 0; row < 5; row++) for (let i = 0; i < 44; i++) {
+  crowd.push({ x: 18 + i * 29 + (row % 2) * 14 + rand(-4, 4), y: 330 + row * 44 + rand(-3, 3), row,
+               c: ['#e8433a', '#2f6fe0', '#f3c94b', '#eee', '#57b36b', '#b061d8', '#ff8a3d'][(Math.random() * 7) | 0],
+               s: SKINS[(Math.random() * SKINS.length) | 0], ph: rand(0, 6.28) });
+}
+
+function isHuman(team) { return mode === 'play' && (team === 0 || twoPlayer); }
+
+function resetRound(first) {
+  if (!first) round++;
+  mod = round === 0 ? MODS[0] : MODS[(Math.random() * MODS.length) | 0];
+  const xs = [330, 520, W - 520, W - 330];
+  players.forEach((p, i) => p.place(xs[i]));
+  ball.r = mod.ballR; ball.x = W / 2; ball.y = 170; ball.vx = rand(-80, 80); ball.vy = 0;
+  ball.holder = null; ball.shotBy = -1; ball.stuck = 0;
+  banner = { text: mod.name, t: 1.6 };
+  if (mode === 'play') sfx.whistle();
+}
+function startGame(two) {
+  twoPlayer = two; mode = 'play'; score = [0, 0]; round = 0; winner = -1; pause = 0;
+  held[0].clear(); held[1].clear();
+  resetRound(true);
+}
+function toMenu() { mode = 'menu'; score = [0, 0]; round = 0; winner = -1; pause = 0; resetRound(true); }
+
+// ---------- AI ----------
+function aiPressed(team) {
+  const st = ai[team];
+  if (time < st.until) return true;
+  if (time < st.next) return false;
+  st.next = time + rand(0.04, 0.12);
+  const mine = players.filter(p => p.team === team);
+  const holder = ball.holder;
+  const tap = d => { st.until = time + d; return true; };
+
+  if (holder && holder.team === team) {
+    const p = holder, h = targetHoop(team), dx = h.cx - p.F.x, dir = Math.sign(dx);
+    if (!p.grounded) return false;
+    if (Math.abs(dx) < 400 && Math.abs(p.lean()) < 0.2 && Math.random() < 0.55) return tap(0.55);
+    if (p.lean() * dir > 0.15 && Math.random() < 0.8) return tap(0.07);
+    return false;
+  }
+  let p = mine[0];
+  for (const q of mine) if (Math.hypot(q.hand.x - ball.x, q.hand.y - ball.y) < Math.hypot(p.hand.x - ball.x, p.hand.y - ball.y)) p = q;
+  if (!p.grounded) return false;
+  const dx = ball.x - p.F.x, dir = Math.sign(dx) || p.facing;
+  if (holder && Math.abs(dx) < 150 && Math.random() < 0.5) return tap(0.25);
+  if (!holder && Math.abs(dx) < 120 && ball.y < p.N.y && ball.vy > -200 && Math.random() < 0.5) return tap(0.3);
+  if (Math.abs(dx) < 70 && Math.random() < 0.25) return tap(0.18);
+  if (Math.abs(dx) >= 70 && p.lean() * dir > 0.16 && Math.random() < 0.7) return tap(0.07);
+  return false;
+}
+
+// ---------- ball ----------
+function hitCircle(cx, cy, cr, vx, vy, rest) {
+  let dx = ball.x - cx, dy = ball.y - cy;
+  const d = Math.hypot(dx, dy), min = ball.r + cr;
+  if (d >= min || d < 0.001) return false;
+  const nx = dx / d, ny = dy / d;
+  ball.x = cx + nx * min; ball.y = cy + ny * min;
+  const rvx = ball.vx - vx, rvy = ball.vy - vy, vn = rvx * nx + rvy * ny;
+  if (vn < 0) { ball.vx -= (1 + rest) * vn * nx; ball.vy -= (1 + rest) * vn * ny; return -vn; }
+  return 0.001;
+}
+function hitSegment(ax, ay, bx, by, cr, avx, avy, bvx, bvy, rest) {
+  const ex = bx - ax, ey = by - ay, l2 = ex * ex + ey * ey || 1;
+  const t = clamp(((ball.x - ax) * ex + (ball.y - ay) * ey) / l2, 0, 1);
+  return hitCircle(ax + ex * t, ay + ey * t, cr, avx + (bvx - avx) * t, avy + (bvy - avy) * t, rest);
+}
+function throwBall(p) {
+  const h = targetHoop(p.team), g = GRAV * mod.g * mod.ballG;
+  const dx = h.cx - ball.x, dy = h.rimY - 12 - ball.y;
+  const T = 0.62 + Math.abs(dx) / 1500;
+  let vx = dx / T, vy = (dy - 0.5 * g * T * T) / T;
+  // Accuracy depends on how upright you are and how fast you're tumbling.
+  const lean = p.lean() * p.facing;
+  const err = lean * 0.5 + p.spin() * p.facing * 0.015 + rand(-1, 1) * (0.03 + Math.abs(dx) / 5000);
+  vx *= 1 + err; vy *= 1 + err * 0.25;
+  ball.vx = vx + p.hand.vx * 0.08; ball.vy = vy;
+  ball.holder = null; ball.shotBy = p.team; ball.shotX = ball.x;
+  p.grabCd = 0.45;
+  sfx.shoot();
+}
+function scored(team, dunk, fromX) {
+  if (pause > 0) return;
+  const h = targetHoop(team);
+  const three = !dunk && fromX !== undefined && Math.abs(fromX - h.cx) > 560;
+  score[team]++;
+  lastScorer = team; celebrate = 1.6; pause = 1.7; h.netT = 1;
+  banner = { text: dunk ? 'DUNK!' : three ? 'FROM DOWNTOWN!' : 'SCORE!', t: 1.5, color: TEAM_COLORS[team] };
+  sfx.score();
+  for (let i = 0; i < 70; i++) confetti.push({ x: h.cx, y: h.rimY, vx: rand(-420, 420), vy: rand(-700, -150),
+    c: ['#f3c94b', TEAM_COLORS[team], '#fff'][i % 3], t: rand(1, 2), a: rand(0, 6) });
+  if (mode === 'play' && score[team] >= WIN_SCORE) { winner = team; pause = 2.2; sfx.buzzer(); }
+}
+
+function stepBall(dt) {
+  const py = ball.y, px = ball.x;
+  const gb = GRAV * mod.g * mod.ballG;
+  if (ball.holder) {
+    const p = ball.holder;
+    ball.x = p.hand.x + p.dir.x * ball.r * 0.6;
+    ball.y = Math.min(p.hand.y + p.dir.y * ball.r * 0.6, GROUND - ball.r);
+    ball.vx = (ball.x - px) / dt; ball.vy = (ball.y - py) / dt;
+    ball.rot += ball.vx * dt / ball.r;
+    // dunk: carrying the ball down through the hoop
+    const h = targetHoop(p.team);
+    if (py < h.rimY && ball.y >= h.rimY && ball.x > h.lo && ball.x < h.hi) {
+      ball.holder = null; ball.vy = 250; ball.vx *= 0.2; p.grabCd = 0.6; scored(p.team, true);
+      return;
+    }
+    if (p.arm > 2.5 && holdTime[p.team] > 0.14) { throwBall(p); return; }
+    // steals
+    for (const q of players) {
+      if (q.team === p.team || q.stealCd > 0) continue;
+      if (Math.hypot(q.hand.x - ball.x, q.hand.y - ball.y) < ball.r + 16) {
+        q.stealCd = 0.5;
+        if (Math.random() < 0.45) { ball.holder = q; p.grabCd = 0.5; sfx.steal(); return; }
+      }
+    }
+    return;
+  }
+
+  ball.vy += gb * dt;
+  ball.vx *= 0.9995;
+  ball.x += ball.vx * dt; ball.y += ball.vy * dt;
+  ball.rot += ball.vx * dt / ball.r;
+  const r = ball.r;
+
+  if (ball.y > GROUND - r) {
+    const v = ball.vy;
+    ball.y = GROUND - r; ball.vy = -ball.vy * mod.rest; ball.vx *= 0.93;
+    if (Math.abs(ball.vy) < 40) ball.vy = 0;
+    if (v > 180) sfx.bounce(v);
+  }
+  if (ball.x < r) { ball.x = r; ball.vx = Math.abs(ball.vx) * mod.rest; }
+  if (ball.x > W - r) { ball.x = W - r; ball.vx = -Math.abs(ball.vx) * mod.rest; }
+  if (ball.y < -400) { ball.y = -400; ball.vy = Math.abs(ball.vy); }
+
+  for (const h of hoops) {
+    hitSegment(h.boardX, h.top, h.boardX, h.bot, 5, 0, 0, 0, 0, 0.6);
+    const i1 = hitCircle(h.front, h.rimY, 4, 0, 0, 0.55), i2 = hitCircle(h.back, h.rimY, 4, 0, 0, 0.55);
+    if ((i1 > 120 || i2 > 120) && time - ball.lastBounce > 0.1) { sfx.rim(); ball.lastBounce = time; }
+    if (ball.x > h.lo && ball.x < h.hi && ball.y > h.rimY && ball.y < h.rimY + 60) { ball.vx *= 0.985; if (ball.vy > 0) h.netT = Math.max(h.netT, 0.5); }
+    if (py < h.rimY && ball.y >= h.rimY && ball.vy > 0 && ball.x > h.lo && ball.x < h.hi) {
+      scored(h.side === 1 ? 0 : 1, false, ball.shotX);
+    }
+  }
+
+  for (const p of players) {
+    const vFx = (p.F.x - p.F.px) / dt, vFy = (p.F.y - p.F.py) / dt, vNx = (p.N.x - p.N.px) / dt, vNy = (p.N.y - p.N.py) / dt;
+    hitSegment(p.F.x, p.F.y, p.N.x, p.N.y, BODY_R, vFx, vFy, vNx, vNy, 0.45);
+    const ux = (p.N.x - p.F.x) / p.L, uy = (p.N.y - p.F.y) / p.L;
+    hitCircle(p.N.x + ux * 20, p.N.y + uy * 20, 17, vNx, vNy, 0.5);
+  }
+
+  if (pause <= 0) {
+    let best = null, bd = 1e9;
+    for (const p of players) {
+      if (p.grabCd > 0) continue;
+      const d = Math.hypot(p.hand.x - ball.x, p.hand.y - ball.y);
+      if (d < ball.r + 20 && d < bd) { bd = d; best = p; }
+    }
+    if (best) { ball.holder = best; ball.shotX = undefined; sfx.grab(); }
+  }
+
+  // Unstick a ball that's come to rest somewhere nobody can reach (like on top of a backboard).
+  if (Math.hypot(ball.vx, ball.vy) < 30 && ball.y < GROUND - 200) {
+    ball.stuck += dt;
+    if (ball.stuck > 1.5) { ball.vx = ball.x < W / 2 ? 260 : -260; ball.vy = -200; ball.stuck = 0; }
+  } else ball.stuck = 0;
+}
+
+// ---------- main step ----------
+function step(dt) {
+  time += dt;
+  const g = GRAV * mod.g;
+  const pressed = [false, false], edge = [false, false];
+  for (let t = 0; t < 2; t++) {
+    pressed[t] = isHuman(t) ? held[t].size > 0 : aiPressed(t);
+    if (pause > 0) pressed[t] = false;
+    edge[t] = pressed[t] && !wasPressed[t];
+    holdTime[t] = pressed[t] ? holdTime[t] + dt : 0;
+    if (edge[t] && isHuman(t)) sfx.jump();
+    wasPressed[t] = pressed[t];
+  }
+  for (const p of players) p.step(dt, pressed[p.team], edge[p.team], g);
+  for (let i = 0; i < players.length; i++) for (let j = i + 1; j < players.length; j++) collidePlayers(players[i], players[j]);
+  for (const p of players) p.updateHand();
+  stepBall(dt);
+
+  for (const h of hoops) h.netT = Math.max(0, h.netT - dt * 1.5);
+  if (celebrate > 0) celebrate -= dt;
+  if (banner && (banner.t -= dt) <= 0) banner = null;
+  if (pause > 0) {
+    pause -= dt;
+    if (pause <= 0) {
+      if (winner >= 0) { mode = 'over'; }
+      else resetRound(false);
+    }
+  }
+  for (let i = confetti.length - 1; i >= 0; i--) {
+    const c = confetti[i];
+    c.vy += 900 * dt; c.vx *= 0.99; c.x += c.vx * dt; c.y += c.vy * dt; c.a += dt * 8; c.t -= dt;
+    if (c.t <= 0 || c.y > H) confetti.splice(i, 1);
+  }
+}
+
+// ---------- drawing ----------
+function line(ax, ay, bx, by) { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); }
+function circle(x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+
+function drawBackground() {
+  const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
+  sky.addColorStop(0, '#24193f'); sky.addColorStop(1, '#4a3670');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, GROUND);
+  // arena lights
+  for (let i = 0; i < 6; i++) {
+    const x = 110 + i * 212;
+    const gl = ctx.createRadialGradient(x, 40, 2, x, 40, 140);
+    gl.addColorStop(0, 'rgba(255,240,200,0.35)'); gl.addColorStop(1, 'rgba(255,240,200,0)');
+    ctx.fillStyle = gl; ctx.fillRect(x - 140, 0, 280, 200);
+    ctx.fillStyle = '#fff6d8'; roundRect(x - 26, 30, 52, 14, 5); ctx.fill();
+  }
+  // banner strip
+  ctx.fillStyle = '#1a1230'; ctx.fillRect(0, 290, W, 22);
+  ctx.fillStyle = '#f3c94b'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let i = 0; i < 8; i++) ctx.fillText('FLOP SHOT  •  ONE BUTTON LEAGUE', 80 + i * 330 - (time * 30) % 330, 301);
+  // stands
+  for (let row = 0; row < 5; row++) {
+    ctx.fillStyle = row % 2 ? '#342551' : '#3b2b5c';
+    ctx.fillRect(0, 348 + row * 44, W, 44);
+  }
+  for (const c of crowd) {
+    const hype = celebrate > 0 ? Math.abs(Math.sin(time * 12 + c.ph)) * 10 * Math.min(1, celebrate) : Math.sin(time * 2 + c.ph) * 1.5;
+    const y = c.y - hype;
+    ctx.fillStyle = c.c; roundRect(c.x - 10, y + 6, 20, 24, 6); ctx.fill();
+    ctx.fillStyle = c.s; circle(c.x, y, 8);
+  }
+  // floor
+  const fl = ctx.createLinearGradient(0, GROUND, 0, H);
+  fl.addColorStop(0, '#e2a868'); fl.addColorStop(1, '#b97a3e');
+  ctx.fillStyle = fl; ctx.fillRect(0, GROUND, W, H - GROUND);
+  ctx.strokeStyle = 'rgba(120,70,30,0.35)'; ctx.lineWidth = 1;
+  for (let i = 0; i < 4; i++) line(0, GROUND + 14 + i * 18, W, GROUND + 14 + i * 18);
+  for (let i = 0; i < 26; i++) line(i * 53 + (i % 2) * 20, GROUND, i * 53 + (i % 2) * 20 - 30, H);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 4;
+  line(0, GROUND + 2, W, GROUND + 2);
+  line(W / 2, GROUND, W / 2, H);
+  ctx.fillStyle = 'rgba(232,67,58,0.35)'; ctx.fillRect(W - 330, GROUND + 4, 330, H - GROUND);
+  ctx.fillStyle = 'rgba(47,111,224,0.35)'; ctx.fillRect(0, GROUND + 4, 330, H - GROUND);
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 3;
+  line(330, GROUND, 310, H); line(W - 330, GROUND, W - 310, H);
+}
+
+function drawHoopBack(h) {
+  const s = h.s;
+  ctx.fillStyle = '#6d6f7a';
+  ctx.fillRect(h.boardX + s * 18 - 7, h.bot - 20, 14, GROUND - h.bot + 20);
+  ctx.fillRect(Math.min(h.boardX, h.boardX + s * 18), h.bot - 50, 18, 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fillRect(h.boardX - 5, h.top, 10, h.bot - h.top);
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.strokeRect(h.boardX - 5, h.top, 10, h.bot - h.top);
+  ctx.fillStyle = '#e8433a'; ctx.fillRect(h.boardX - 5, h.rimY - 40, 10, 36);
+}
+function drawHoopFront(h) {
+  const sw = Math.sin(time * 30) * h.netT * 6;
+  const top = h.rimY, bot = h.rimY + 58, inset = 18;
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 2;
+  const n = 6;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const x0 = h.lo + (h.hi - h.lo) * t, x1 = h.lo + inset + (h.hi - h.lo - inset * 2) * t + sw;
+    line(x0, top, x1, bot + h.netT * 10);
+    if (i < n) {
+      const x2 = h.lo + inset + (h.hi - h.lo - inset * 2) * (t + 1 / n) + sw;
+      line(x0, top, x2, bot + h.netT * 10);
+    }
+  }
+  for (let j = 1; j <= 2; j++) {
+    const y = top + (bot - top) * j / 3, k = inset * j / 3;
+    line(h.lo + k + sw * j / 3, y + h.netT * 3 * j, h.hi - k + sw * j / 3, y + h.netT * 3 * j);
+  }
+  ctx.strokeStyle = '#ff6a1a'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  line(h.front, h.rimY, h.back, h.rimY);
+}
+
+function drawShadow(x, y, w) {
+  const d = clamp((GROUND - y) / 400, 0, 1);
+  ctx.fillStyle = `rgba(40,20,10,${0.3 * (1 - d * 0.7)})`;
+  ctx.beginPath(); ctx.ellipse(x, GROUND + 6, w * (1 - d * 0.5), 6, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawArm(p, back) {
+  const off = back ? -0.35 : 0;
+  const a = -p.facing * (p.arm + off);
+  const d = Math.hypot(p.F.x - p.N.x, p.F.y - p.N.y) || 1;
+  const bx = (p.F.x - p.N.x) / d, by = (p.F.y - p.N.y) / d, c = Math.cos(a), s = Math.sin(a);
+  const dx = bx * c - by * s, dy = bx * s + by * c;
+  const sx = p.shoulder.x, sy = p.shoulder.y, hx = sx + dx * ARM_LEN, hy = sy + dy * ARM_LEN;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = back ? shade(p.skin) : p.skin; ctx.lineWidth = 9; line(sx, sy, hx, hy);
+  ctx.strokeStyle = back ? TEAM_DARK[p.team] : TEAM_COLORS[p.team]; ctx.lineWidth = 12; line(sx, sy, sx + dx * 12, sy + dy * 12);
+  ctx.fillStyle = back ? shade(p.skin) : p.skin; circle(hx, hy, 6.5);
+}
+function shade(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) * 0.75, g = ((n >> 8) & 255) * 0.75, b = (n & 255) * 0.75;
+  return `rgb(${r | 0},${g | 0},${b | 0})`;
+}
+
+function drawPlayer(p) {
+  const F = p.F, N = p.N, L = Math.hypot(N.x - F.x, N.y - F.y) || 1;
+  const ux = (N.x - F.x) / L, uy = (N.y - F.y) / L, px = -uy, py = ux;
+  const fx = px * p.facing, fy = py * p.facing;
+  const hipX = F.x + (N.x - F.x) * 0.45, hipY = F.y + (N.y - F.y) * 0.45;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+  drawArm(p, true);
+  // legs
+  const stride = p.grounded ? 8 : 14 + Math.sin(time * 20) * 4;
+  ctx.strokeStyle = p.skin; ctx.lineWidth = 10;
+  line(hipX - px * 5, hipY - py * 5, F.x - px * stride, F.y - py * stride);
+  line(hipX + px * 5, hipY + py * 5, F.x + px * stride, F.y + py * stride);
+  // socks and shoes
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 10;
+  for (const k of [-1, 1]) {
+    const ex = F.x + px * stride * k, ey = F.y + py * stride * k;
+    line(ex + ux * 16, ey + uy * 16, ex + ux * 5, ey + uy * 5);
+    ctx.fillStyle = '#222';
+    ctx.save(); ctx.translate(ex + fx * 4, ey + fy * 4); ctx.rotate(Math.atan2(fy, fx));
+    roundRect(-10, -6, 22, 11, 5); ctx.fill(); ctx.restore();
+  }
+  // shorts
+  ctx.strokeStyle = TEAM_DARK[p.team]; ctx.lineWidth = 30;
+  line(hipX, hipY, hipX + ux * 12, hipY + uy * 12);
+  // torso
+  ctx.strokeStyle = TEAM_COLORS[p.team]; ctx.lineWidth = 28;
+  line(hipX + ux * 14, hipY + uy * 14, N.x - ux * 2, N.y - uy * 2);
+  ctx.save();
+  const mx = (hipX + N.x) / 2 + ux * 6, my = (hipY + N.y) / 2 + uy * 6;
+  ctx.translate(mx, my); ctx.rotate(Math.atan2(uy, ux) + Math.PI / 2);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 16px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(p.number, 0, 1);
+  ctx.restore();
+  // head
+  const hx = N.x + ux * 20, hy = N.y + uy * 20;
+  ctx.fillStyle = p.skin; circle(hx, hy, 17);
+  ctx.fillStyle = p.hair;
+  ctx.beginPath(); ctx.arc(hx, hy, 17.5, Math.atan2(uy, ux) - 1.7, Math.atan2(uy, ux) + 1.7); ctx.fill();
+  ctx.strokeStyle = TEAM_COLORS[p.team]; ctx.lineWidth = 5; ctx.lineCap = 'butt';
+  ctx.beginPath(); ctx.arc(hx, hy, 15, Math.atan2(uy, ux) - 1.75, Math.atan2(uy, ux) - 0.95); ctx.stroke();
+  ctx.beginPath(); ctx.arc(hx, hy, 15, Math.atan2(uy, ux) + 0.95, Math.atan2(uy, ux) + 1.75); ctx.stroke();
+  ctx.lineCap = 'round';
+  // face
+  const ex = hx + fx * 8 + ux * 2, ey = hy + fy * 8 + uy * 2;
+  ctx.fillStyle = '#fff'; circle(ex, ey, 4.2);
+  ctx.fillStyle = '#111'; circle(ex + fx * 1.5, ey + fy * 1.5, 2.2);
+  ctx.strokeStyle = '#6b2a1a'; ctx.lineWidth = 2;
+  const mX = hx + fx * 9 - ux * 7, mY = hy + fy * 9 - uy * 7;
+  line(mX - fx * 4, mY - fy * 4, mX + fx * 2, mY + fy * 2);
+  drawArm(p, false);
+}
+
+function drawBall() {
+  const r = ball.r;
+  ctx.save(); ctx.translate(ball.x, ball.y); ctx.rotate(ball.rot);
+  const gr = ctx.createRadialGradient(-r * 0.35, -r * 0.35, r * 0.1, 0, 0, r);
+  gr.addColorStop(0, '#ffab5e'); gr.addColorStop(1, '#d9571c');
+  ctx.fillStyle = gr; circle(0, 0, r);
+  ctx.strokeStyle = '#3a1a0a'; ctx.lineWidth = Math.max(1.5, r / 12);
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+  line(-r, 0, r, 0); line(0, -r, 0, r);
+  ctx.beginPath(); ctx.arc(-r * 1.25, 0, r * 0.85, -0.9, 0.9); ctx.stroke();
+  ctx.beginPath(); ctx.arc(r * 1.25, 0, r * 0.85, Math.PI - 0.9, Math.PI + 0.9); ctx.stroke();
+  ctx.restore();
+}
+
+function drawScoreboard() {
+  ctx.fillStyle = '#120c20'; roundRect(W / 2 - 150, 12, 300, 68, 12); ctx.fill();
+  ctx.strokeStyle = '#f3c94b'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = TEAM_COLORS[0]; roundRect(W / 2 - 138, 22, 100, 48, 8); ctx.fill();
+  ctx.fillStyle = TEAM_COLORS[1]; roundRect(W / 2 + 38, 22, 100, 48, 8); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 36px system-ui, sans-serif';
+  ctx.fillText(score[0], W / 2 - 88, 48); ctx.fillText(score[1], W / 2 + 88, 48);
+  ctx.fillStyle = '#f3c94b'; ctx.font = 'bold 13px system-ui, sans-serif';
+  ctx.fillText('FIRST', W / 2, 38); ctx.fillText('TO ' + WIN_SCORE, W / 2, 56);
+  if (mode === 'play') {
+    ctx.font = 'bold 14px system-ui, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.textAlign = 'left'; ctx.fillText(twoPlayer ? 'RED: W / tap left' : 'RED: W, Space, ↑ or tap', 16, 24);
+    ctx.textAlign = 'right'; ctx.fillText(twoPlayer ? 'BLUE: ↑ / tap right' : 'BLUE: CPU', W - 16, 24);
+    ctx.fillText('Esc: menu', W - 16, 44);
+  }
+}
+
+function bigText(text, y, size, color) {
+  ctx.font = `900 ${size}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = size / 6; ctx.strokeStyle = '#140f24'; ctx.lineJoin = 'round';
+  ctx.strokeText(text, W / 2, y); ctx.fillStyle = color; ctx.fillText(text, W / 2, y);
+}
+
+const buttons = [];
+function button(id, label, x, y, w, h, color) {
+  buttons.push({ id, x, y, w, h });
+  const hover = pointer && pointer.x > x && pointer.x < x + w && pointer.y > y && pointer.y < y + h;
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'; roundRect(x + 4, y + 6, w, h, 14); ctx.fill();
+  ctx.fillStyle = color; roundRect(x, y - (hover ? 3 : 0), w, h, 14); ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.font = '900 30px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + w / 2, y + h / 2 - (hover ? 3 : 0));
+}
+
+function draw() {
+  ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  buttons.length = 0;
+  drawBackground();
+  hoops.forEach(drawHoopBack);
+  for (const p of players) drawShadow((p.F.x + p.N.x) / 2, p.F.y, 30);
+  drawShadow(ball.x, ball.y + ball.r, ball.r);
+  for (const p of players) drawPlayer(p);
+  drawBall();
+  hoops.forEach(drawHoopFront);
+  for (const c of confetti) {
+    ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.a); ctx.fillStyle = c.c; ctx.fillRect(-5, -3, 10, 6); ctx.restore();
+  }
+  drawScoreboard();
+
+  if (banner && mode !== 'menu') {
+    const a = Math.min(1, banner.t * 3);
+    ctx.globalAlpha = a;
+    bigText(banner.text, 170, banner.color ? 64 : 40, banner.color || '#f3c94b');
+    ctx.globalAlpha = 1;
+  }
+
+  if (mode === 'menu') {
+    ctx.fillStyle = 'rgba(15,10,30,0.55)'; ctx.fillRect(0, 0, W, H);
+    bigText('FLOP SHOT', 190, 120, '#ff8a3d');
+    bigText('one-button floppy basketball', 270, 30, '#fff');
+    button('1p', '1 PLAYER', W / 2 - 330, 340, 300, 86, TEAM_COLORS[0]);
+    button('2p', '2 PLAYERS', W / 2 + 30, 340, 300, 86, TEAM_COLORS[1]);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 20px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Each team has ONE button. Press it to jump; hold it to raise your arms and shoot.', W / 2, 480);
+    ctx.fillText('Players wobble on their own, so time your jumps. Lean forward to hop ahead.', W / 2, 510);
+    ctx.fillStyle = '#f3c94b';
+    ctx.fillText('Red: W (or Space / ↑ / tap in 1-player)      Blue: ↑ (or tap right half)', W / 2, 550);
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '16px system-ui, sans-serif';
+    ctx.fillText('Every point brings a random twist: moon gravity, beach ball, stilts, ice floor…', W / 2, 586);
+  } else if (mode === 'over') {
+    ctx.fillStyle = 'rgba(15,10,30,0.6)'; ctx.fillRect(0, 0, W, H);
+    const who = twoPlayer ? TEAM_NAMES[winner] + ' WINS!' : winner === 0 ? 'YOU WIN!' : 'CPU WINS!';
+    bigText(who, 230, 110, TEAM_COLORS[winner]);
+    bigText(score[0] + ' – ' + score[1], 330, 60, '#fff');
+    button('again', 'REMATCH', W / 2 - 330, 410, 300, 86, '#3aa55a');
+    button('menu', 'MENU', W / 2 + 30, 410, 300, 86, '#6b4f8f');
+  }
+}
+
+// ---------- input ----------
+let pointer = null;
+const pointerTeam = new Map();
+function toWorld(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale }; }
+cv.addEventListener('pointermove', e => { pointer = toWorld(e); });
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault(); unlockAudio();
+  const pt = pointer = toWorld(e);
+  if (mode !== 'play') {
+    for (const b of buttons) if (pt.x > b.x && pt.x < b.x + b.w && pt.y > b.y && pt.y < b.y + b.h) {
+      if (b.id === '1p') startGame(false);
+      else if (b.id === '2p') startGame(true);
+      else if (b.id === 'again') startGame(twoPlayer);
+      else if (b.id === 'menu') toMenu();
+    }
+    return;
+  }
+  const team = twoPlayer && pt.x > W / 2 ? 1 : 0;
+  pointerTeam.set(e.pointerId, team); held[team].add('p' + e.pointerId);
+  try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+});
+function pointerUp(e) {
+  const team = pointerTeam.get(e.pointerId);
+  if (team !== undefined) { held[team].delete('p' + e.pointerId); pointerTeam.delete(e.pointerId); }
+}
+cv.addEventListener('pointerup', pointerUp);
+cv.addEventListener('pointercancel', pointerUp);
+cv.addEventListener('contextmenu', e => e.preventDefault());
+
+function keyTeam(code) {
+  if (code === 'KeyW') return 0;
+  if (code === 'ArrowUp') return twoPlayer ? 1 : 0;
+  if (code === 'Space' && !twoPlayer) return 0;
+  return -1;
+}
+addEventListener('keydown', e => {
+  unlockAudio();
+  if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+  if (e.repeat) return;
+  if (mode === 'menu') { if (e.code === 'Digit1') startGame(false); if (e.code === 'Digit2') startGame(true); return; }
+  if (mode === 'over') { if (e.code === 'Enter' || e.code === 'Space') startGame(twoPlayer); if (e.code === 'Escape') toMenu(); return; }
+  if (e.code === 'Escape') { toMenu(); return; }
+  const t = keyTeam(e.code);
+  if (t >= 0) held[t].add(e.code);
+});
+addEventListener('keyup', e => { held[0].delete(e.code); held[1].delete(e.code); });
+addEventListener('blur', () => { held[0].clear(); held[1].clear(); });
+
+// ---------- loop ----------
+resetRound(true);
+let last = performance.now(), acc = 0;
+function frame(now) {
+  acc += Math.min(0.1, (now - last) / 1000);
+  last = now;
+  while (acc >= STEP) { step(STEP); acc -= STEP; }
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
