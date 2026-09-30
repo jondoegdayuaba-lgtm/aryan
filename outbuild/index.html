@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Outbuild</title>
+  <meta name="description" content="Outbuild: an original island battle royale in your browser. Drop from the airship, harvest, build, loot and outlast 29 bots as the storm closes in.">
+  <meta name="theme-color" content="#16213a">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2316213a'/%3E%3Cpath d='M12 48h40L40 20z' fill='%23ffcf56'/%3E%3Crect x='14' y='30' width='14' height='18' fill='%233d9bff'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Russo+One&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js", "three/addons/": "../vendor/three/addons/" } }</script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+
+  <!-- ============================================================ loading -->
+  <div id="loading-screen">
+    <div class="load-logo"><span class="t1">OUTBUILD</span><span class="t2">Island Royale</span></div>
+    <div class="load-bar"><div id="load-fill"></div></div>
+    <p id="load-tip" class="load-tip">Building the island…</p>
+  </div>
+
+  <!-- ============================================================ lobby -->
+  <section id="menu" hidden>
+    <div class="menu-left">
+      <h1 class="logo"><span id="title-a"></span><small id="title-b"></small></h1>
+      <div class="locker">
+        <span class="label">Outfit</span>
+        <div class="locker-row">
+          <button id="outfit-prev" class="arrow" type="button" aria-label="Previous outfit">&#8249;</button>
+          <div class="locker-name"><span id="outfit-name"></span><small id="outfit-num"></small></div>
+          <button id="outfit-next" class="arrow" type="button" aria-label="Next outfit">&#8250;</button>
+          <button id="skin-btn" class="skin" type="button" aria-label="Change skin tone" title="Skin tone"></button>
+        </div>
+        <button id="btn-dance" class="chip" type="button">Dance</button>
+      </div>
+      <div class="menu-stats">
+        <div><b id="stat-matches">0</b><span>Matches</span></div>
+        <div><b id="stat-wins">0</b><span>Wins</span></div>
+        <div><b id="stat-kills">0</b><span>Eliminations</span></div>
+      </div>
+    </div>
+    <div class="menu-right">
+      <button id="btn-play" class="play" type="button">Play<small>Solo · Island Royale</small></button>
+      <div class="menu-links">
+        <button id="btn-howto" class="link" type="button">How to play</button>
+        <button id="btn-settings" class="link" type="button">Settings</button>
+      </div>
+      <p class="menu-foot">Models made in Blender · Runs in your browser</p>
+    </div>
+  </section>
+
+  <div id="matchmaking" class="overlay-msg" hidden><div class="spinner"></div><p id="mm-text"></p></div>
+
+  <!-- ============================================================ settings -->
+  <section id="settings" class="panel" hidden>
+    <h2>Settings</h2>
+    <div class="grid">
+      <label>Graphics<select id="set-quality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="epic">Epic</option></select><output id="set-quality-v" hidden></output></label>
+      <label>Time of day<select id="set-time"><option value="random">Random</option><option value="day">Midday</option><option value="golden">Golden hour</option><option value="sunset">Sunset</option></select></label>
+      <label>Mouse sensitivity<input id="set-sens" type="range" min="0.2" max="3" step="0.05"><output id="set-sens-v"></output></label>
+      <label>Field of view<input id="set-fov" type="range" min="60" max="95" step="1"><output id="set-fov-v"></output></label>
+      <label>Volume<input id="set-volume" type="range" min="0" max="1" step="0.05"><output id="set-volume-v"></output></label>
+      <label>Menu music<input id="set-music" type="range" min="0" max="1" step="0.05"><output id="set-music-v"></output></label>
+      <label>Match size<input id="set-bots" type="range" min="4" max="49" step="1"><output id="set-bots-v"></output></label>
+      <label>Bot skill<select id="set-difficulty"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>
+      <label class="check"><input id="set-invert" type="checkbox"> Invert mouse Y</label>
+      <label class="check"><input id="set-fps" type="checkbox"> Show FPS</label>
+    </div>
+    <p class="note">Time of day applies to the next match. Lower the graphics if the game feels slow.</p>
+    <button class="done" type="button" data-close>Done</button>
+  </section>
+
+  <section id="howto" class="panel" hidden>
+    <h2>How to play</h2>
+    <p>Jump out of the airship, land, grab weapons from chests and the floor, and be the last one standing. The storm shrinks the island in phases — stay inside the white circle.</p>
+    <div class="keys">
+      <div><kbd>W A S D</kbd> Move</div>
+      <div><kbd>Mouse</kbd> Look · <kbd>LMB</kbd> Shoot / build · <kbd>RMB</kbd> Aim</div>
+      <div><kbd>Space</kbd> Jump · leave the airship · open the glider</div>
+      <div><kbd>Shift</kbd> Sprint · <kbd>Ctrl</kbd> Crouch</div>
+      <div><kbd>1</kbd> Harvesting tool · <kbd>2</kbd>–<kbd>6</kbd> Items · <kbd>Wheel</kbd> Cycle</div>
+      <div><kbd>E</kbd> Pick up / open · <kbd>G</kbd> Drop · <kbd>R</kbd> Reload</div>
+      <div><kbd>Q</kbd> Build mode · <kbd>Z</kbd> Wall · <kbd>X</kbd> Floor · <kbd>C</kbd> Ramp · <kbd>V</kbd> Roof</div>
+      <div><kbd>R</kbd> in build mode: change material (wood · stone · metal)</div>
+      <div><kbd>M</kbd> Map · <kbd>B</kbd> Dance · <kbd>Esc</kbd> Pause</div>
+    </div>
+    <p>Hit trees, rocks, cars and houses with the harvesting tool to collect wood, stone and metal. Hitting the glowing blue spot gives a bonus. Each piece costs 10 materials. Wood builds fastest, metal is strongest.</p>
+    <button class="done" type="button" data-close>Got it</button>
+  </section>
+
+  <!-- ============================================================ HUD -->
+  <div id="hud" hidden>
+    <div id="speedlines"></div>
+    <div id="dmgdirs"></div>
+    <div id="numbers"></div>
+    <div id="killfeed"></div>
+    <div id="elim"></div>
+
+    <div class="hud-tr">
+      <canvas id="minimap" width="200" height="200"></canvas>
+      <div class="info">
+        <span class="storm"><i></i><span id="storm-label"></span> <b id="storm-time"></b></span>
+        <span class="count"><i class="ico-alive"></i><b id="alive">0</b></span>
+        <span class="count"><i class="ico-kill"></i><b id="kills">0</b></span>
+      </div>
+    </div>
+
+    <div id="announce"><div id="announce-text"></div><div id="announce-sub"></div></div>
+    <div id="jump-hint" class="hint" hidden><kbd>Space</kbd> Jump</div>
+    <div id="glide-hint" class="hint" hidden><kbd>Space</kbd> Open glider</div>
+
+    <div id="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
+    <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+    <div id="prompt" hidden></div>
+    <div id="progress" hidden><div id="progress-ring"></div><span id="progress-label"></span></div>
+    <div id="matgains"></div>
+
+    <div class="hud-bl">
+      <div class="bar sh"><span class="ico">&#9670;</span><div class="track"><div id="sh-fill"></div></div><b id="sh-num">0</b></div>
+      <div class="bar hp" id="hp-bar"><span class="ico">&#10010;</span><div class="track"><div id="hp-fill"></div></div><b id="hp-num">100</b></div>
+    </div>
+
+    <div class="hud-bc">
+      <div class="weapon-info"><span id="weapon-name"></span><span id="weapon-ammo"></span></div>
+      <div id="hotbar">
+        <div class="slot tool"><span class="key">1</span><div class="ico"></div><span class="cnt"></span></div>
+        <div class="slot"><span class="key">2</span><div class="ico"></div><span class="cnt"></span></div>
+        <div class="slot"><span class="key">3</span><div class="ico"></div><span class="cnt"></span></div>
+        <div class="slot"><span class="key">4</span><div class="ico"></div><span class="cnt"></span></div>
+        <div class="slot"><span class="key">5</span><div class="ico"></div><span class="cnt"></span></div>
+        <div class="slot"><span class="key">6</span><div class="ico"></div><span class="cnt"></span></div>
+      </div>
+    </div>
+
+    <div class="hud-br">
+      <div id="buildbar">
+        <div class="piece" data-kind="wall"><span class="key">Z</span><div class="ico"></div></div>
+        <div class="piece" data-kind="floor"><span class="key">X</span><div class="ico"></div></div>
+        <div class="piece" data-kind="ramp"><span class="key">C</span><div class="ico"></div></div>
+        <div class="piece" data-kind="cone"><span class="key">V</span><div class="ico"></div></div>
+      </div>
+      <div class="mats">
+        <div id="mat-wood" class="mat wood"><div class="ico"></div><span class="num">0</span></div>
+        <div id="mat-stone" class="mat stone"><div class="ico"></div><span class="num">0</span></div>
+        <div id="mat-metal" class="mat metal"><div class="ico"></div><span class="num">0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="bigmap-wrap" hidden><canvas id="bigmap"></canvas><p class="map-foot"><kbd>M</kbd> close map</p></div>
+
+  <section id="pause" class="panel small" hidden>
+    <h2>Paused</h2>
+    <button id="btn-resume" class="done" type="button">Resume</button>
+    <button id="btn-pause-settings" class="link" type="button">Settings</button>
+    <button id="btn-quit" class="link danger" type="button">Leave match</button>
+  </section>
+
+  <section id="death" class="endscreen" hidden>
+    <div class="end-card">
+      <div class="place" id="death-place">#2</div>
+      <p class="by" id="death-by"></p>
+      <p class="winner" id="death-winner" hidden></p>
+      <dl class="end-stats" id="death-stats"></dl>
+      <div class="end-btns">
+        <button id="btn-spectate" class="link" type="button">Spectate</button>
+        <button id="btn-death-lobby" class="done" type="button">Back to lobby</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="victory" class="endscreen win" hidden>
+    <div id="confetti"></div>
+    <div class="end-card">
+      <div class="win-title"><span>#1</span>VICTORY</div>
+      <p class="by">Last one standing on the island</p>
+      <dl class="end-stats" id="win-stats"></dl>
+      <div class="end-btns"><button id="btn-win-lobby" class="done" type="button">Back to lobby</button></div>
+    </div>
+  </section>
+
+  <div id="fps" hidden></div>
+  <noscript><p class="nojs">Outbuild needs JavaScript.</p></noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
