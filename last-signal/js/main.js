@@ -52,6 +52,10 @@ function createRenderer() {
     $('loading-text').textContent = 'This game needs WebGL 2, which your browser could not start.';
     throw err;
   }
+  const gl2 = renderer.getContext();
+  if (!gl2.getExtension('EXT_color_buffer_float') && !gl2.getExtension('EXT_color_buffer_half_float')) {
+    $('loading-text').textContent = 'Your graphics driver cannot render in HDR. Try Chrome or Edge, and update your graphics driver.';
+  }
   renderer.toneMapping = THREE.NoToneMapping;   // the post pass tone maps
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -302,6 +306,6 @@ if (DEBUG) {
 boot().catch((err) => {
   console.error(err);
   const t = document.getElementById('loading-text');
-  if (t) t.textContent = 'Something went wrong while loading. Try reloading the page.';
+  if (t) t.textContent = 'Something went wrong while loading (' + String((err && err.message) || err).slice(0, 160) + '). Try reloading, or use Chrome or Edge on a computer with a graphics card.';
   window.__bootError = String(err && err.stack || err);
 });
