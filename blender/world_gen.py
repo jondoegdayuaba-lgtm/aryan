@@ -75,12 +75,14 @@ START_ELEVATION = 2110.0
 FINISH_S = 2800.0      # downhill finish line
 TOTAL_S_HINT = 3000.0
 
-# jumps: (s, height m, ramp length m, lateral half width as fraction of piste width)
+# jumps: (s, height m, ramp length m, half width as a fraction of the piste width, lane centre as a
+# signed fraction of the width: + = right).  They sit in the side lanes: an optional stunt line
+# beside the racing line, so slalom gates and the downhill line stay clear of them.
 JUMPS = [
-    (1610, 1.7, 12.0, 0.30),
-    (1795, 2.6, 14.0, 0.30),
-    (2350, 3.4, 15.0, 0.32),
-    (2585, 2.2, 13.0, 0.36),
+    (1610, 1.7, 12.0, 0.13, 0.30),
+    (1795, 2.6, 14.0, 0.13, -0.30),
+    (2350, 3.4, 15.0, 0.14, 0.30),
+    (2585, 2.2, 13.0, 0.16, -0.28),
 ]
 # rolling bump fields: (s0, s1, amplitude m)
 BUMPS = [
@@ -254,14 +256,14 @@ def build_world():
     lateral_win = 1.0 - smoothstep(0.55, 0.95, np.abs(ts) / np.maximum(half_w, 1.0))
     P += bump_amp * lateral_win * (n_m * 0.5)
     # jumps
-    for s_j, hgt, ramp, lat in JUMPS:
+    for s_j, hgt, ramp, lat, lane in JUMPS:
         sp = sproj - s_j
         up = smoothstep(-ramp, 0.0, sp) * (sp <= 0.0)
         lip = (1.0 - smoothstep(0.0, 3.0, sp)) * (sp > 0.0) * 0.55
         prof = hgt * (up ** 1.15 + lip)
         # a flat-ish landing zone below the lip: carve the slope so flight lands smoothly
         land = -0.5 * hgt * smoothstep(4.0, 10.0, sp) * (1.0 - smoothstep(10.0, 34.0, sp))
-        win = np.exp(-(np.abs(ts) / (lat * 2.0 * half_w)) ** 4)
+        win = np.exp(-(np.abs(ts - lane * 2.0 * half_w) / (lat * 2.0 * half_w)) ** 4)
         P += (prof + land) * win
     blend_w = 26.0 + 44.0 * smoothstep(2700.0, 3000.0, sproj)      # the finish plaza fades out gently
     w_piste = 1.0 - smoothstep(half_w, half_w + blend_w, d)
@@ -431,10 +433,10 @@ def make_courses(path):
     side = 1.0
     k = 0
     while s_ < 2440.0:
-        gs.append(gate_pose(s_, side * 7.5, 3.6))
+        gs.append(gate_pose(s_, side * 6.0, 3.6))
         gs[-1]["colour"] = "red" if k % 2 == 0 else "blue"
         side = -side
-        s_ += 38.0
+        s_ += 42.0
         k += 1
     runs.append(dict(
         id="gs", name="Giant Slalom", level="Red", colour="#e0352b", sStart=1480.0, sEnd=2470.0,
@@ -503,7 +505,7 @@ def save_outputs(path, world, props, trees, rocks, runs, poles, nets):
                   data=[[round(float(v), 4) for v in row] for row in pdata]),
         runs=runs, props=props, nets=[dict(s0=a, s1=b, side=c, off=e) for a, b, c, e in nets],
         counts=dict(trees=int(len(trees)), rocks=int(len(rocks)), poles=int(len(poles))),
-        finishS=FINISH_S, jumps=[dict(s=a, height=b, ramp=c, lat=e) for a, b, c, e in JUMPS],
+        finishS=FINISH_S, jumps=[dict(s=a, height=b, ramp=c, lat=e, lane=l) for a, b, c, e, l in JUMPS],
     )
     with open(os.path.join(OUT_WORLD, "world.json"), "w") as f:
         json.dump(info, f, separators=(",", ":"))

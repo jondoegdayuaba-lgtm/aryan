@@ -5,6 +5,10 @@ Bake the terrain light map with Cycles.
   G  sun visibility incl. trees, rocks, buildings  (far-field forest shadows on the snow)
   B  ambient occlusion incl. trees / rocks       (sky visibility, multiplies the image based light)
 
+Cycles' SHADOW bake type never reports an object shadowing itself (checked on a test ridge), so R is
+ray-marched on the heightfield in numpy (soft sun disc), G = R x the Cycles shadow of the occluders
+(trees, rocks, buildings) and B is the Cycles AO bake, which does include the terrain.
+
 The terrain is rebuilt from ski/assets/world/heightmap.u16 (the exact heights the game uses),
 trees are cone proxies (the same shapes as the LOD 3 meshes), rocks are lumpy ellipsoids and the
 buildings are boxes from world.json.  Output: ski/assets/tex/terrain_light.png (2048 x 4096).
@@ -123,6 +127,49 @@ def make_building_boxes(info):
     return objs
 
 
+
+def terrain_sun_visibility(info, H, width, height, disc_deg=1.0, taps=9):
+    """Exact terrain-only sun visibility on the light-map grid (ray-march on the height field)."""
+    from scipy import ndimage as ndi
+    g = info['grid']
+    x0, z0, dx = g['x0'], g['z0'], g['dx']
+    x1 = x0 + (g['nx'] - 1) * dx
+    z1 = z0 + (g['nz'] - 1) * dx
+    # work at half the light-map resolution, then upsample (terrain shadows are smooth)
+    w2, h2 = width // 2, height // 2
+    xs = x0 + (np.arange(w2) + 0.5) / w2 * (x1 - x0)
+    zs = z0 + (np.arange(h2) + 0.5) / h2 * (z1 - z0)
+    X, Z = np.meshgrid(xs, zs)
+    fx0 = (X - x0) / dx
+    fz0 = (Z - z0) / dx
+    y0 = ndi.map_coordinates(H, [fz0, fx0], order=1, mode='nearest') + 0.4
+    hmax = float(H.max())
+    az0 = math.radians(info['sun']['azimuthDeg'])
+    el0 = math.radians(info['sun']['elevationDeg'])
+    vis = np.zeros_like(y0, dtype=np.float32)
+    dirs = [(0.0, 0.0)] + [(disc_deg * math.cos(2 * math.pi * k / (taps - 1)), disc_deg * math.sin(2 * math.pi * k / (taps - 1)))
+                           for k in range(taps - 1)]
+    for (da, de) in dirs:
+        az = az0 + math.radians(da) / max(math.cos(el0), 0.2)
+        el = el0 + math.radians(de)
+        d = np.array([-math.sin(az) * math.cos(el), math.sin(el), -math.cos(az) * math.cos(el)])
+        blocked = np.zeros(y0.shape, dtype=bool)
+        t = 2.0
+        while t < 5000.0:
+            ray_y = y0 + d[1] * t
+            if ray_y.min() > hmax:
+                break
+            fx = fx0 + d[0] * t / dx
+            fz = fz0 + d[2] * t / dx
+            inside = (fx >= 0) & (fx <= g['nx'] - 1) & (fz >= 0) & (fz <= g['nz'] - 1)
+            hh = ndi.map_coordinates(H, [np.clip(fz, 0, g['nz'] - 1), np.clip(fx, 0, g['nx'] - 1)], order=1, mode='nearest')
+            blocked |= (hh > ray_y) & inside
+            t = t * 1.055 + 0.9
+        vis += (~blocked).astype(np.float32)
+    vis /= len(dirs)
+    return ndi.zoom(vis, 2, order=1)[:height, :width]
+
+
 def bake(terrain, kind, image, samples, margin=6):
     sc = bpy.context.scene
     sc.cycles.samples = samples
@@ -195,13 +242,13 @@ def main():
     img = bpy.data.images.new('lm', width, height, alpha=False, float_buffer=True)
     img.colorspace_settings.name = 'Non-Color'
 
-    show(False)
-    with C.Timer('sun visibility, terrain only'):
-        out[..., 0] = bake(terrain, 'SHADOW', img, samples)
+    with C.Timer('sun visibility of the terrain alone (numpy ray-march)'):
+        out[..., 0] = terrain_sun_visibility(info, H, width, height)
     show(True)
-    with C.Timer('sun visibility, everything'):
-        out[..., 1] = bake(terrain, 'SHADOW', img, samples)
-    with C.Timer('ambient occlusion'):
+    with C.Timer('sun shadows of trees, rocks and buildings (Cycles)'):
+        occ = bake(terrain, 'SHADOW', img, samples)
+        out[..., 1] = out[..., 0] * np.clip(occ, 0, 1)
+    with C.Timer('ambient occlusion (Cycles)'):
         out[..., 2] = bake(terrain, 'AO', img, ao_samples)
 
     from PIL import Image
