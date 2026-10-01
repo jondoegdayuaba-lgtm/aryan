@@ -217,6 +217,25 @@ function buildMap(){
   const e0=OX,e1=OX+GW*CELL,f0=OZ,f1=OZ+GH*CELL;
   if(!open.W)gb.box(-gs,-0.05,f0,e0,0,f1,gopt);if(!open.E)gb.box(e1,-0.05,f0,gs,0,f1,gopt);
   if(!open.N)gb.box(open.W?e0:-gs,-0.05,-gs,open.E?e1:gs,0,f0,gopt);if(!open.S)gb.box(open.W?e0:-gs,-0.05,f1,open.E?e1:gs,0,gs,gopt);
+  // facade detail on the exposed sides of a building block: stone base, floor bands, corner quoins,
+  // sometimes a stepped-back top storey, and rooftop clutter (visual only; collision stays the block)
+  const roofKit=TH.cap==='snowcap'?[['chimney',3],['antenna',1],['roofvent',1]]:D===DECOR_PRESETS.docks?[['roofvent',2],['roofac',2],['rooftank',1],['antenna',1]]:[['roofac',3],['rooftank',1.2],['dish',1.2],['antenna',1],['roofvent',1.5],['chimney',0.6]];
+  const kitPick=()=>{let t=0;for(const k of roofKit)t+=k[1];let r=Math.random()*t;for(const k of roofKit){r-=k[1];if(r<=0)return k[0];}return roofKit[0][0];};
+  const facade=(R,m,col,h,x0,z0,x1,z1,wN,wS,wW,wE)=>{
+    const tone=k=>[col[0]*k,col[1]*k,col[2]*k],out=(d)=>[x0-(wW?0:d),z0-(wN?0:d),x1+(wE?0:d),z1+(wS?0:d)];
+    let [a,b,c,e]=out(0.07);batch(m).box(a,0,b,c,0.72,e,{s:4,col:tone(0.74)});
+    [a,b,c,e]=out(0.045);for(let y=3.3;y<h-1.4;y+=3.2)batch(m).box(a,y,b,c,y+0.17,e,{s:4,col:tone(1.1)});
+    const corners=[[x0,z0,!wW&&!wN,-1,-1],[x1,z0,!wE&&!wN,1,-1],[x0,z1,!wW&&!wS,-1,1],[x1,z1,!wE&&!wS,1,1]];
+    for(const [qx,qz,ok,sx,sz] of corners){if(!ok)continue;
+      for(let y=0.72,k=0;y<h-0.6;y+=0.46,k++){const w1=k%2?0.55:0.32,w2=k%2?0.32:0.55;
+        batch(m).box(Math.min(qx,qx-sx*w1)-(sx<0?0.04:0),y,Math.min(qz,qz-sz*w2)-(sz<0?0.04:0),Math.max(qx,qx-sx*w1)+(sx>0?0.04:0),y+0.42,Math.max(qz,qz-sz*w2)+(sz>0?0.04:0),{s:4,col:tone(1.06)});}}
+    const W=x1-x0,Dp=z1-z0;let topY=h+0.2,tx0=x0,tz0=z0,tx1=x1,tz1=z1;
+    if(W>6&&Dp>6&&Math.random()<0.45){const i=1.4,h2=rand(2.6,3.4);tx0=x0+i;tz0=z0+i;tx1=x1-i;tz1=z1-i;
+      batch(m).box(tx0,h,tz0,tx1,h+h2,tz1,{s:4,col:tone(0.97),skip:8,ao:1.2,aoDark:0.6});
+      batch(TH.cap==='snowcap'?'snow':'trim').box(tx0-0.1,h+h2-0.05,tz0-0.1,tx1+0.1,h+h2+0.2,tz1+0.1,{s:3,col:[1,1,1]});topY=h+h2+0.2;}
+    const n=Math.min(6,Math.floor((tx1-tx0)*(tz1-tz0)/22));
+    for(let i=0;i<n;i++){const px=rand(tx0+0.9,tx1-0.9),pz=rand(tz0+0.9,tz1-0.9);if(tx1-tx0<1.8||tz1-tz0<1.8)break;PropBatch.add(kitPick(),px,topY,pz,Math.floor(Math.random()*4)*Math.PI/2);}
+  };
   // walls
   const wallMats=TH.walls;const pickWall=()=>{let r=Math.random(),acc=0;for(const[m,w]of wallMats){acc+=w;if(r<acc)return m;}return wallMats[0][0];};
   for(const R of mergeRects(g,ch=>ch==='#')){
@@ -234,6 +253,7 @@ function buildMap(){
     else if(TH.cap==='trim')batch('trim').box(tx0,h-0.05,tz0,tx1,h+0.25,tz1,{col:[1,1,1]});
     else if(TH.cap&&TH.cap!=='none')batch(TH.cap).box(tx0,h-0.05,tz0,tx1,h+0.25,tz1,{s:3,col:[1,1,1]});
     World.addBox(x0,-1,z0,x1,h,z1,'stone',0);
+    facade(R,m,col,h,x0,z0,x1,z1,wN,wS,wW,wE);
   }
   // windows, doors, lamps and awnings on wall faces next to open cells
   let awnings=0;
@@ -244,7 +264,7 @@ function buildMap(){
       if(roofAt[(r+dr)*GW+c+dc])continue;
       const fx=cx(c)+dc*1.0,fz=cz(r)+dr*1.0;const rnd=Math.random(),rot=yawTo(dc,dr),hb=World.height[(r+dr)*GW+c+dc];
       let acc=D.winP;
-      if(D.window&&h>5.5&&rnd<acc)PropBatch.add(pickA(D.window),fx,D.winY+hb,fz,rot);
+      if(D.window&&h>5.5&&rnd<acc){const wa=pickA(D.window);PropBatch.add(wa,fx,D.winY+hb,fz,rot);if(h>D.winY+3.2+2)PropBatch.add(wa,fx,D.winY+3.2+hb,fz,rot);}
       else if(D.door&&rnd<(acc+=D.doorP)&&WALKCH.includes(nch)){PropBatch.add(pickA(D.door),fx,hb,fz,rot);if(D.lamp&&Math.random()<D.lampP)PropBatch.add(pickA(D.lamp),fx+(dr?1:0),2.9+hb,fz+(dc?1:0),rot);}
       else if(D.awnings&&rnd<(acc+=D.awnP)&&awnings<30&&h>5){awnings++;PropBatch.add(pickA(D.awnings),fx,3.4+hb,fz,rot);}
       else if(D.streetlamp&&rnd<(acc+=D.slP)&&h>5)PropBatch.add(pickA(D.streetlamp),fx-dc*0.02,0,fz-dr*0.02,rot);

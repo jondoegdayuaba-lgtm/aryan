@@ -18,6 +18,6 @@ for(const [name,m,c,r,yaw,pitch,q] of V){
     if(!G.player||window.__curMap!==m){document.getElementById('menu').classList.add('hidden');document.getElementById('hud').classList.remove('hidden');Lobby.hideModel();G.newMatch('W',m);Input.locked=true;window.__curMap=m;}
     const p=G.player;const cp=cellPos(c,r);p.pos.set(cp.x,World.heightAt(cp.x,cp.z),cp.z);p.vel.set(0,0,0);p.yaw=yaw;p.pitch=pitch;G.phaseT=99;},[m,c,r,yaw,pitch,q]);
   if(process.env.EACH)await pg.evaluate(process.env.EACH); // e.g. 'window.__bp.G.player.slot=3' to hold the knife
-  await pg.waitForTimeout(3500);await pg.screenshot({path:path.join(out,name+'.png')});console.log('shot',name);
+  await pg.waitForTimeout(3500);await pg.screenshot({path:path.join(out,name+'.png'),timeout:180000});console.log('shot',name);
 }
 await b.close();})();
