@@ -87,21 +87,49 @@ three.js is MIT licensed; see `vendor/three/LICENSE`.
 
 # Breach Point
 
-`breach-point.html` is a second game in this repo: a 5v5 tactical bomb-defusal shooter in one self-contained HTML file. You play with four bots against five bots on Sandline, an original desert-town map. It uses three.js r128 from cdnjs. Open the file in a browser (double-click works) and press **Play**.
+`breach-point.html` is a second game in this repo: a 5v5 tactical bomb-defusal shooter in one self-contained HTML file. You play with four bots against five bots. It uses three.js r128 from cdnjs. Open the file in a browser (double-click works) and press **Play**.
 
-- **Teams:** Strikers plant the bomb on site A or B. Wardens defend and defuse. First to 13 rounds wins, and sides swap after round 12.
-- **Rounds:** 12 s freeze time, 20 s buy time, 1:55 round timer. The bomb takes 3 s to plant and goes off after 40 s. Defusing takes 10 s, or 5 s with a kit.
-- **Economy:** you start with $800, money is capped at $16,000, kill rewards depend on the weapon, the loss bonus grows with each round lost, and there is a plant bonus.
-- **Weapons:** G-9 and P-12 pistols, Hawk .50, Vex-9 SMG, Breacher-12 shotgun, AR-K7 and M-4R rifles, Longshot sniper, Talon Knife. Each gun has its own recoil pattern, headshots multiply damage, armor reduces it, and bullets go through wooden walls and crates.
-- **Utility:** smoke, flashbang, HE grenade, and firebomb/incendiary. Left click throws far, right click throws short.
-- **Bots:** Easy, Normal or Hard. They buy, split between sites, hold angles, use utility, rotate, plant, retake and defuse.
+- **Lobby:** a CS2-style home screen with Play, Inventory, Loadout and Store tabs. It shows your equipped agent standing on the selected map, plus your coins, level, career stats and recent matches.
+- **Maps:** three maps. **Sandline** is a desert town. **Harbor** is a container dock at golden hour; site A is inside a warehouse with skylights and site B is a container yard by the sea. **Frostbite** is a snowed-in village; B is a timber lodge and A is the chapel square past a raised bridge.
+- **Coins and cases:** every finished match pays coins for rounds won, kills, assists, MVP stars and the result, scaled by bot difficulty. Spend them in the Store on four cases (Sandline, Frostbite, Neon Nights, Operator).
+  - **Contents:** cases hold weapon finishes, knife finishes and agents across five rarities, from Standard to Relic.
+  - **Opening:** a spinning reel reveals your item, which you can keep, equip right away or sell back for coins.
+- **Agents:** eight characters, four per side. Each side has a default agent and three you unlock from the Operator Case. You pick one per side in Loadout, and bots wear random ones.
+- **Skins:** 29 weapon finishes (camo, tiger, hex, fade, marble, circuit, flames, galaxy, damascus, chrome and more), all drawn in code. Equipped finishes show on your first-person weapon and your third-person model, and stay on guns other players pick up.
+- **Graphics:** Low, Medium, High or Ultra in Settings.
+  - **Materials and sky:** physically based materials with generated normal maps, plus a shader sky with sun and clouds that also lights the scene through reflections.
+  - **Shadows:** up to 4096 px, and they follow the camera.
+  - **Post-processing:** HDR bloom, ACES tone mapping, per-map colour grading and vignette, with MSAA or FXAA.
+  - **Effects:** contact shadows at the base of walls, animated water, snowfall and dust.
+- **Rounds:** 12 s freeze time, 20 s buy time, 1:55 round timer. The bomb takes 3 s to plant and goes off after 40 s. Defusing takes 10 s, or 5 s with a kit. First to 13 rounds wins, and sides swap after round 12.
+- **Weapons:** pistols, Hawk .50, SMG, shotgun, two rifles, sniper and knife. Each gun has its own recoil pattern. Bullets go through wood and containers. Grenades: smoke, flash, HE and fire.
+- **Bots:** Easy, Normal or Hard. They buy, split between routes, hold angles, throw utility, rotate, plant, retake and defuse on every map.
 
 Controls: WASD, mouse, Shift walk, Ctrl or C crouch, Space jump, R reload, 1–5 / wheel / Q weapons, G drop, E use / plant / defuse, B buy, Tab scoreboard, Esc pause.
 
-The characters, weapons and props (crates, barrels, cars, palms, doors, windows, awnings, lamps, plants) were modelled in Blender with the script `breach-point/models.py`. They are embedded in the HTML as a GLB. To change them:
+Coins, items and your loadout are saved in the browser (localStorage).
+
+### Building
+
+The page is built from `breach-point/src` by a small script:
 
 ```sh
-pip install bpy==4.2.0            # Blender as a Python module (Python 3.11)
-python breach-point/models.py breach-point/models.glb
-python breach-point/embed_models.py breach-point/models.glb
+python3 breach-point/build.py          # writes breach-point.html
+node breach-point/tools/check-maps.cjs  # checks every map's bot routes are walkable and connected
+breach-point/tools/syntax.sh            # syntax-checks the joined script
 ```
+
+The characters, weapons and props were modelled in Blender with `breach-point/models.py`:
+- **Characters:** agents with outfits and headgear.
+- **Weapons:** guns, knife, grenades and bomb.
+- **Props:** crates, barrels, cars, palms and pines, doors, windows, awnings, lamps, containers, a dock crane, pallets, sandbags, oil drums, a forklift, fences and lifebuoys.
+
+They are stored in `breach-point/models.glb` and embedded in the page. To change them:
+
+```sh
+pip install bpy==4.2.0                  # Blender as a Python module (Python 3.11)
+python breach-point/models.py breach-point/models.glb
+python3 breach-point/build.py
+```
+
+`breach-point/tools/smoke.cjs` boots the page in headless Chromium (Playwright), clicks through the lobby, opens a case and simulates matches on each map. Set `THREE_JS` to a local copy of three.js r128.

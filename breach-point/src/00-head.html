@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Breach Point</title>
+<meta name="description" content="Breach Point: a 5v5 tactical bomb-defusal shooter in the browser, played against bots on the desert-town map Sandline.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap">
+<style>
+:root{
+  --s:#e0a23a; --s2:#ffcf6b; --w:#5aa7ff; --w2:#a8d2ff;
+  --ink:#f3f1ea; --dim:rgba(243,241,234,.62); --panel:rgba(14,17,22,.78); --panel2:rgba(26,31,40,.9);
+  --line:rgba(255,255,255,.12); --good:#7be07b; --bad:#ff5a4f;
+  --font:'Rajdhani',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#0c0e12;color:var(--ink);font-family:var(--font);user-select:none;-webkit-user-select:none}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+.hidden{display:none!important}
+button{font-family:var(--font);cursor:pointer}
+#loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;letter-spacing:.2em;background:#0c0e12;z-index:100;text-align:center;padding:16px}
+
+/* ---------- HUD ---------- */
+#hud{position:fixed;inset:0;pointer-events:none;z-index:5}
+#radarWrap{position:absolute;left:14px;top:14px;width:200px}
+#radar{width:200px;height:200px;border-radius:50%;background:rgba(0,0,0,.35);box-shadow:0 0 0 2px rgba(255,255,255,.18)}
+#location{font-size:15px;font-weight:600;margin-top:4px;text-align:center;color:var(--dim);text-shadow:0 1px 2px #000}
+#moneyBox{position:absolute;left:14px;top:244px;font-size:24px;font-weight:700;color:#8be38b;text-shadow:0 1px 3px #000}
+#moneyBox small{display:block;font-size:13px;color:var(--dim);font-weight:600}
+#moneyDelta{font-size:16px;margin-left:8px}
+#topbar{position:absolute;left:50%;top:8px;transform:translateX(-50%);display:flex;align-items:stretch;gap:6px}
+.tcol{display:flex;gap:3px;align-items:center;padding:0 6px}
+.pip{width:22px;height:26px;border-radius:3px;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.pip.S{background:linear-gradient(#b8802a,#7b521b)}
+.pip.W{background:linear-gradient(#3a77c4,#244d85)}
+.pip.dead{opacity:.25;filter:grayscale(1)}
+.score{min-width:40px;font-size:28px;font-weight:700;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);border-radius:4px;padding:0 8px}
+.score.S{color:var(--s2)}.score.W{color:var(--w2)}
+#timerBox{min-width:86px;text-align:center;background:rgba(0,0,0,.55);border-radius:4px;padding:2px 8px}
+#timer{font-size:28px;font-weight:700;line-height:1.1}
+#roundLbl{font-size:12px;color:var(--dim);font-weight:600}
+#timer.bomb{color:#ff5050;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.35}}
+#killfeed{position:absolute;right:14px;top:14px;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.kf{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.55);padding:3px 9px;border-radius:3px;font-size:16px;font-weight:700;border:1px solid transparent}
+.kf.me{border-color:#d33;background:rgba(60,0,0,.6)}
+.kf .S{color:var(--s2)}.kf .W{color:var(--w2)}
+.kf img{height:18px;filter:drop-shadow(0 0 1px #000)}
+.kf svg{height:16px;width:16px}
+#crosshairC{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
+#hitmarker{position:absolute;left:50%;top:50%;width:34px;height:34px;transform:translate(-50%,-50%) rotate(45deg);opacity:0}
+#hitmarker:before,#hitmarker:after{content:"";position:absolute;background:#fff;box-shadow:0 0 2px #000}
+#hitmarker:before{left:16px;top:0;width:2px;height:34px;clip-path:polygon(0 0,100% 0,100% 35%,0 35%,0 65%,100% 65%,100% 100%,0 100%)}
+#hitmarker:after{top:16px;left:0;height:2px;width:34px;clip-path:polygon(0 0,35% 0,35% 100%,0 100%,0 0,65% 0,100% 0,100% 100%,65% 100%)}
+#hitmarker.hs:before,#hitmarker.hs:after{background:#ff4040}
+#dmgind{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:420px;height:420px}
+#bl{position:absolute;left:14px;bottom:12px;display:flex;gap:22px;align-items:flex-end}
+.stat{display:flex;align-items:center;gap:6px;font-size:36px;font-weight:700;text-shadow:0 1px 3px #000;background:linear-gradient(90deg,rgba(0,0,0,.55),rgba(0,0,0,0));padding:0 18px 0 10px;border-radius:4px}
+.stat svg{width:24px;height:24px;fill:var(--ink)}
+.stat.low{color:#ff5a4f}
+#br{position:absolute;right:16px;bottom:12px;text-align:right;text-shadow:0 1px 3px #000}
+#nadeRow{display:flex;justify-content:flex-end;gap:6px;margin-bottom:6px}
+#nadeRow img{height:20px;opacity:.55}
+#nadeRow img.sel{opacity:1}
+#wepIcon{height:34px;display:block;margin-left:auto;filter:drop-shadow(0 1px 2px #000)}
+#wepName{font-size:15px;color:var(--dim);font-weight:600}
+#ammo{font-size:40px;font-weight:700;line-height:1}
+#ammo small{font-size:22px;color:var(--dim)}
+#ammo.low{color:#ff5a4f}
+#chat{position:absolute;left:14px;bottom:70px;width:440px;font-size:15px;font-weight:600;display:flex;flex-direction:column;gap:2px;text-shadow:0 1px 2px #000}
+#chat .m{opacity:1;transition:opacity 1s}
+#chat .m.old{opacity:0}
+#chat .S{color:var(--s2)}#chat .W{color:var(--w2)}#chat .sys{color:#ffd56b}
+#progress{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);width:320px;text-align:center}
+#progressLabel{font-size:18px;font-weight:700;margin-bottom:4px;text-shadow:0 1px 2px #000}
+.bar{height:8px;background:rgba(0,0,0,.6);border-radius:4px;overflow:hidden}
+#progressFill{height:100%;width:0;background:linear-gradient(90deg,#ffb84d,#ff7a1a)}
+#hint{position:absolute;left:50%;top:62%;transform:translateX(-50%);font-size:18px;font-weight:700;background:rgba(0,0,0,.5);padding:4px 12px;border-radius:4px}
+#centerMsg{position:absolute;left:50%;top:22%;transform:translateX(-50%);font-size:26px;font-weight:700;text-align:center;text-shadow:0 2px 6px #000;white-space:nowrap}
+#roundBanner{position:absolute;left:50%;top:15%;transform:translateX(-50%);min-width:520px;text-align:center;padding:14px 28px;background:linear-gradient(90deg,transparent,rgba(0,0,0,.75) 20%,rgba(0,0,0,.75) 80%,transparent)}
+#roundBanner h2{margin:0;font-size:44px;letter-spacing:.06em}
+#roundBanner p{margin:4px 0 0;font-size:18px;color:var(--dim);font-weight:600}
+#roundBanner .mvp{color:#ffd56b;margin-top:8px}
+#roundBanner.S h2{color:var(--s2)}#roundBanner.W h2{color:var(--w2)}
+#spec{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);text-align:center;font-size:20px;font-weight:700;text-shadow:0 1px 3px #000}
+#spec small{display:block;font-size:14px;color:var(--dim)}
+#deathInfo{position:absolute;left:50%;bottom:170px;transform:translateX(-50%);background:var(--panel);padding:10px 18px;border-radius:6px;font-size:17px;font-weight:600;text-align:center;border:1px solid var(--line)}
+#deathInfo b{color:#ff8a7a}
+#scope{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,transparent 0,transparent 36vh,#000 36.2vh)}
+#scope:before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:#000}
+#scope:after{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;background:#000}
+#flash{position:absolute;inset:0;background:#fff;opacity:0}
+#smokeOv{position:absolute;inset:0;background:#9a9893;opacity:0}
+#hurt{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 50%,rgba(200,0,0,.55));opacity:0}
+#fps{position:absolute;right:14px;bottom:110px;font-size:13px;color:var(--dim)}
+#buyZone{font-size:13px;color:#8be38b}
+
+/* ---------- panels ---------- */
+.overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center}
+.panel{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:22px 26px;box-shadow:0 20px 60px rgba(0,0,0,.5);max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);overflow:auto}
+.btn{background:rgba(255,255,255,.08);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:10px 18px;font-size:18px;font-weight:700;letter-spacing:.05em}
+.btn:hover{background:rgba(255,255,255,.16)}
+.btn.primary{background:linear-gradient(#e7a43c,#b9741d);border-color:#f2c06e;color:#1b1206}
+.btn.primary:hover{filter:brightness(1.1)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{background:transparent;color:var(--dim);border:0;padding:8px 16px;font-size:16px;font-weight:700}
+.seg button.on{background:rgba(255,255,255,.16);color:var(--ink)}
+
+#buyMenu .panel{width:900px}
+#buyMenu h3{margin:0 0 4px;font-size:30px}
+#buyHead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+#buyMoney{font-size:28px;color:#8be38b;font-weight:700}
+#buyTime{font-size:15px;color:var(--dim)}
+#buyGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.bcol h4{margin:0 0 6px;font-size:15px;color:var(--dim);letter-spacing:.12em;text-transform:uppercase}
+.bitem{display:block;width:100%;text-align:left;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:6px;padding:7px 9px;margin-bottom:7px;color:var(--ink)}
+.bitem:hover:not(:disabled){background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3)}
+.bitem:disabled{opacity:.35;cursor:not-allowed}
+.bitem.owned{border-color:#7be07b}
+.bitem img{height:26px;display:block;margin-bottom:3px}
+.bitem .n{font-size:16px;font-weight:700;display:block}
+.bitem .p{font-size:15px;color:#8be38b;font-weight:600}
+.bitem .k{float:right;font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:3px;padding:0 4px}
+#buyFoot{margin-top:10px;font-size:14px;color:var(--dim)}
+
+#scoreboard .panel{width:820px;padding:16px 20px}
+.sbhead{display:flex;justify-content:space-between;align-items:center;margin:6px 0}
+.sbhead h3{margin:0;font-size:24px}
+.sbhead .big{font-size:34px;font-weight:700}
+table.sb{width:100%;border-collapse:collapse;font-size:16px;font-weight:600}
+table.sb th{font-size:12px;color:var(--dim);text-align:right;padding:3px 8px;letter-spacing:.08em}
+table.sb th:first-child,table.sb td:first-child{text-align:left}
+table.sb td{padding:4px 8px;text-align:right;border-top:1px solid var(--line)}
+table.sb tr.me td{background:rgba(255,255,255,.08)}
+table.sb tr.dead td{opacity:.45}
+table.sb .S{color:var(--s2)}table.sb .W{color:var(--w2)}
+.star{color:#ffd56b}
+
+#menu{position:fixed;inset:0;z-index:30;background:linear-gradient(90deg,rgba(8,10,14,.82),rgba(8,10,14,.25) 42%,rgba(8,10,14,0) 62%,rgba(8,10,14,.55))}
+#topbar2{position:absolute;left:0;right:0;top:0;height:58px;display:flex;align-items:center;padding:0 18px;gap:18px;background:linear-gradient(rgba(10,12,16,.92),rgba(10,12,16,.7));border-bottom:1px solid var(--line);backdrop-filter:blur(6px)}
+#brand{font-weight:700;font-size:20px;letter-spacing:.08em}#brand span{color:var(--s)}
+#menuNav{flex:1;display:flex;justify-content:center;gap:22px}
+#menuNav button{background:none;border:0;color:var(--dim);font-size:16px;font-weight:700;letter-spacing:.12em;padding:18px 4px;border-bottom:2px solid transparent;white-space:nowrap}
+#menuNav button.on{color:var(--ink);border-bottom-color:var(--s)}#menuNav button:hover{color:var(--ink)}
+.chip{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-weight:700;font-size:17px}
+.coin{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#ffe9a0,#e0a020 60%,#9a6a10);box-shadow:0 0 0 1px #7a5410 inset;display:inline-block;flex:none}
+.lvl{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(#5aa7ff,#2a5aa0);font-size:14px;font-weight:700}
+.tab{position:absolute;left:0;right:0;top:58px;bottom:0}
+#homeLeft{position:absolute;left:44px;top:30px;width:min(560px,calc(100vw - 420px));max-height:calc(100% - 40px);overflow:auto}
+#homeLeft h1{margin:0;font-size:76px;line-height:.9;letter-spacing:.04em}#homeLeft h1 span{color:var(--s)}
+#homeLeft .sub{margin:10px 0 22px;font-size:17px;color:var(--dim);font-weight:600;letter-spacing:.1em}
+.mrow{margin-bottom:14px}
+.mrow label{display:block;font-size:13px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;font-weight:700}
+#mapCards{display:flex;gap:10px}
+.mapcard{flex:1;min-width:0;height:118px;border-radius:8px;border:2px solid var(--line);position:relative;overflow:hidden;cursor:pointer;background-size:cover;text-align:left;padding:0;color:var(--ink)}
+.mapcard .mn{position:absolute;left:10px;bottom:8px;font-size:21px;font-weight:700;text-shadow:0 2px 4px #000}
+.mapcard .md{position:absolute;left:10px;top:8px;font-size:12px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.8);text-shadow:0 1px 2px #000}
+.mapcard.on{border-color:var(--s);box-shadow:0 0 0 2px rgba(224,162,58,.35)}
+#mapDesc{font-size:15px;color:var(--dim);margin-top:8px;line-height:1.4;min-height:42px}
+#btnPlay{font-size:26px;padding:12px 56px;margin-top:6px}
+#sidePanel{position:absolute;right:0;top:0;bottom:0;width:330px;background:linear-gradient(90deg,rgba(14,17,22,.6),rgba(14,17,22,.88));border-left:1px solid var(--line);padding:18px;overflow:auto}
+#sidePanel h4{margin:16px 0 8px;font-size:13px;letter-spacing:.14em;color:var(--dim)}
+.pcard{display:flex;gap:12px;align-items:center}
+.pname{font-size:22px;font-weight:700}
+.xpbar{height:6px;background:rgba(255,255,255,.12);border-radius:3px;overflow:hidden;margin-top:6px}.xpbar div{height:100%;background:linear-gradient(90deg,#5aa7ff,#8ad0ff)}
+.stats4{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stats4 div{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.stats4 b{display:block;font-size:22px}.stats4 small{color:var(--dim);font-size:12px;letter-spacing:.08em}
+.hist{display:flex;justify-content:space-between;font-size:14px;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line)}
+.hist .W{color:#7be07b}.hist .L{color:#ff6a5a}.hist .D{color:#ffd56b}
+#featured{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;padding:12px;cursor:pointer;margin-bottom:6px}
+#featured:hover{border-color:rgba(255,255,255,.3)}
+#featured .tag{font-size:11px;letter-spacing:.14em;color:#7be07b;font-weight:700}
+.casepic{height:110px;border-radius:6px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.casepic canvas,.casepic img{max-height:100%;max-width:100%}
+.panelBg{position:absolute;inset:14px 14px 14px 14px;background:rgba(12,14,18,.9);border:1px solid var(--line);border-radius:10px;display:flex;overflow:hidden;backdrop-filter:blur(8px)}
+.filters{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.filters button{background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--dim);border-radius:16px;padding:5px 14px;font-weight:700;font-size:14px}
+.filters button.on{color:var(--ink);background:rgba(255,255,255,.16)}
+#invGrid,#storeGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;align-content:start}
+.icard{background:linear-gradient(rgba(255,255,255,.07),rgba(255,255,255,.02));border:1px solid var(--line);border-radius:6px;cursor:pointer;position:relative;padding:8px 8px 10px;color:var(--ink);text-align:left}
+.icard:hover{border-color:rgba(255,255,255,.35)}.icard.sel{border-color:#fff}
+.icard .pic{height:92px;display:flex;align-items:center;justify-content:center}.icard .pic img{max-width:100%;max-height:100%}
+.icard .bar{position:absolute;left:0;right:0;bottom:0;height:4px;border-radius:0 0 6px 6px}
+.icard .in{font-size:14px;font-weight:700;line-height:1.15;margin-top:4px}.icard .ik{font-size:12px;color:var(--dim)}
+.icard .eq{position:absolute;right:6px;top:6px;display:flex;gap:3px}
+.icard .eq span{font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px}
+.eqS{background:#b8802a}.eqW{background:#3a77c4}
+.detail{width:380px;border-left:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:10px}
+.detail .big{height:200px;display:flex;align-items:center;justify-content:center;border-radius:8px}
+.detail .big img{max-width:100%;max-height:100%}
+.detail h3{margin:0;font-size:24px}
+.rar{font-weight:700;font-size:14px;letter-spacing:.08em}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.btn.small{font-size:15px;padding:8px 12px}
+.loadcol{flex:1;padding:18px;overflow:auto}
+.loadcol h3{margin:0 0 10px;font-size:26px}
+.agentpick{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.agentpick img{height:150px}
+.lrow{display:flex;align-items:center;gap:10px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px;cursor:pointer;background:rgba(255,255,255,.03)}
+.lrow:hover{border-color:rgba(255,255,255,.3)}
+.lrow img{height:36px;width:110px;object-fit:contain}
+.lrow .sn{font-size:14px;font-weight:700}.lrow .sk{font-size:13px;color:var(--dim)}
+#picker{position:fixed;inset:0;z-index:45;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
+#caseOpen{position:fixed;inset:0;z-index:50;background:radial-gradient(ellipse at center,rgba(30,34,44,.97),rgba(6,8,10,.98));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px}
+#reelWrap{position:relative;width:min(1100px,96vw);height:170px;overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(0,0,0,.35)}
+#reel{position:absolute;left:0;top:10px;display:flex;gap:8px;will-change:transform}
+#reel .icard{width:180px;flex:none;cursor:default;height:150px}
+#reelMark{position:absolute;left:50%;top:0;bottom:0;width:3px;margin-left:-1px;background:#ffd56b;box-shadow:0 0 10px #ffd56b;z-index:2}
+#caseResult{text-align:center;min-height:280px}
+#caseResult .big{height:200px}#caseResult .big img{max-height:200px}
+#caseResult h2{margin:6px 0 4px;font-size:32px}
+#rewards{margin:10px auto 0;max-width:420px;text-align:left}
+#rewards .hist b{color:#ffd56b}
+.setgrid{display:grid;grid-template-columns:150px 1fr 54px;gap:10px 14px;align-items:center;font-size:16px;font-weight:600}
+.setgrid input[type=range]{width:100%}
+.setgrid .v{text-align:right;color:var(--dim)}
+#xPreview{width:96px;height:96px;background:linear-gradient(#7d6a4f,#c6aa7e);border-radius:6px}
+.swatches{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sw{width:22px;height:22px;border-radius:4px;border:2px solid transparent;cursor:pointer}
+.sw.on{border-color:#fff}
+#pause .panel,#gameover .panel{text-align:center;min-width:360px}
+#pause h2,#gameover h2{margin:0 0 14px;font-size:40px}
+.col{display:flex;flex-direction:column;gap:10px}
+@media (max-width:900px){#homeLeft{left:16px;width:calc(100vw - 32px)}#sidePanel,#featured{display:none}#controlsList{columns:1}#buyGrid{grid-template-columns:repeat(2,1fr)}.detail{width:260px}#menuNav{gap:12px}#menuNav button{font-size:14px;letter-spacing:.06em}}
+#controlsList{font-size:15px;line-height:1.6;color:var(--dim);columns:2;column-gap:24px}
+#controlsList b{color:var(--ink)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="loading">LOADING BREACH POINT…</div>
+
+<div id="hud" class="hidden">
+  <canvas id="tags" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
+  <div id="radarWrap"><canvas id="radar" width="200" height="200"></canvas><div id="location"></div></div>
+  <div id="moneyBox"><span id="money">$800</span><span id="moneyDelta"></span><small id="buyZone"></small></div>
+  <div id="topbar">
+    <div class="tcol" id="pipsL"></div>
+    <div class="score" id="scoreL">0</div>
+    <div id="timerBox"><div id="timer">0:00</div><div id="roundLbl">Round 1</div></div>
+    <div class="score" id="scoreR">0</div>
+    <div class="tcol" id="pipsR"></div>
+  </div>
+  <div id="killfeed"></div>
+  <canvas id="dmgind" width="420" height="420"></canvas>
+  <canvas id="crosshairC" width="160" height="160"></canvas>
+  <div id="hitmarker"></div>
+  <div id="chat"></div>
+  <div id="bl">
+    <div class="stat" id="hpBox"><svg viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></svg><span id="hp">100</span></div>
+    <div class="stat" id="arBox"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5z"/></svg><span id="ar">0</span><span id="helm" style="font-size:16px"></span></div>
+  </div>
+  <div id="br">
+    <div id="nadeRow"></div>
+    <img id="wepIcon" alt="">
+    <div id="wepName"></div>
+    <div id="ammo"></div>
+  </div>
+  <div id="progress" class="hidden"><div id="progressLabel"></div><div class="bar"><div id="progressFill"></div></div></div>
+  <div id="hint" class="hidden"></div>
+  <div id="centerMsg"></div>
+  <div id="roundBanner" class="hidden"></div>
+  <div id="spec" class="hidden"></div>
+  <div id="deathInfo" class="hidden"></div>
+  <div id="fps" class="hidden"></div>
+</div>
+<div id="scope" class="hidden"></div>
+<div id="smokeOv" style="position:fixed;inset:0;pointer-events:none;z-index:4;background:#9a9893;opacity:0"></div>
+<div id="hurt" style="position:fixed;inset:0;pointer-events:none;z-index:4;opacity:0;background:radial-gradient(ellipse at center,transparent 45%,rgba(190,0,0,.6))"></div>
+<div id="flash" style="position:fixed;inset:0;pointer-events:none;z-index:6;background:#fff;opacity:0"></div>
+
+<div id="buyMenu" class="overlay hidden">
+  <div class="panel">
+    <div id="buyHead"><div><h3>Buy Menu</h3><div id="buyTime"></div></div><div id="buyMoney">$0</div></div>
+    <div id="buyGrid"></div>
+    <div id="buyFoot">Click an item or press its number. B or Esc closes the menu. You can only buy in your spawn during buy time.</div>
+  </div>
+</div>
+
+<div id="scoreboard" class="overlay hidden" style="pointer-events:none"><div class="panel" id="sbPanel"></div></div>
+
+<div id="pause" class="overlay hidden" style="background:rgba(0,0,0,.5)">
+  <div class="panel col">
+    <h2>Paused</h2>
+    <button class="btn primary" id="btnResume">Resume</button>
+    <button class="btn" id="btnPauseSettings">Settings</button>
+    <button class="btn" id="btnQuit">Quit to lobby</button>
+  </div>
+</div>
+
+<div id="settings" class="overlay hidden" style="background:rgba(0,0,0,.55)">
+  <div class="panel" style="width:640px">
+    <h2 style="margin:0 0 14px;font-size:32px">Settings</h2>
+    <div style="display:flex;gap:22px;align-items:flex-start">
+      <div class="setgrid" style="flex:1" id="setGrid"></div>
+      <canvas id="xPreview" width="96" height="96"></canvas>
+    </div>
+    <div style="margin-top:18px;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn" id="btnResetSet">Reset</button>
+      <button class="btn primary" id="btnCloseSet">Done</button>
+    </div>
+  </div>
+</div>
+
+<div id="gameover" class="overlay hidden" style="background:rgba(0,0,0,.6)">
+  <div class="panel" style="width:860px">
+    <h2 id="goTitle">Match over</h2>
+    <div id="goScore" style="font-size:22px;margin-bottom:10px"></div>
+    <div id="rewards"></div>
+    <div id="goBoard" style="margin-top:12px"></div>
+    <div style="display:flex;gap:10px;justify-content:center;margin-top:16px">
+      <button class="btn primary" id="btnAgain">Play again</button>
+      <button class="btn" id="btnMenu">Back to lobby</button>
+    </div>
+  </div>
+</div>
+
+<div id="menu" class="hidden">
+  <div id="topbar2">
+    <div id="brand">BREACH <span>POINT</span></div>
+    <div id="menuNav"><button class="on" data-tab="play">PLAY</button><button data-tab="inventory">INVENTORY</button><button data-tab="loadout">LOADOUT</button><button data-tab="store">STORE</button><button data-tab="howto">HOW TO PLAY</button><button data-tab="settings">SETTINGS</button></div>
+    <div class="chip" title="Coins: earned after every match, spent on cases"><span class="coin"></span><span id="coinVal">0</span></div>
+    <div class="lvl" id="lvlBadge" title="Profile level">1</div>
+  </div>
+  <div class="tab" id="tabPlay">
+    <div id="homeLeft">
+      <h1>BREACH<br><span>POINT</span></h1>
+      <div class="sub">5V5 BOMB DEFUSAL · VS BOTS</div>
+      <div class="mrow"><label>Map</label><div id="mapCards"></div><div id="mapDesc"></div></div>
+      <div class="mrow" style="display:flex;gap:18px;flex-wrap:wrap">
+        <div><label>Difficulty</label><div class="seg" id="segDiff"><button data-v="easy">Easy</button><button data-v="normal">Normal</button><button data-v="hard">Hard</button></div></div>
+        <div><label>Your side</label><div class="seg" id="segSide"><button data-v="S">Strikers</button><button data-v="W">Wardens</button><button data-v="random">Random</button></div></div>
+      </div>
+      <button class="btn primary" id="btnPlay">PLAY</button>
+      <div style="font-size:14px;color:var(--dim);margin-top:10px">Win matches to earn coins, then open cases in the Store for weapon skins, knives and agents.</div>
+    </div>
+    <div id="sidePanel"></div>
+  </div>
+  <div class="tab hidden" id="tabInventory"><div class="panelBg"><div style="flex:1;padding:18px;overflow:auto"><div class="filters" id="invFilters"></div><div id="invGrid"></div></div><div class="detail" id="invDetail"></div></div></div>
+  <div class="tab hidden" id="tabLoadout"><div class="panelBg" id="loadoutPanel"></div></div>
+  <div class="tab hidden" id="tabStore"><div class="panelBg"><div style="flex:1;padding:18px;overflow:auto"><h2 style="margin:0 0 12px">Cases</h2><div id="storeGrid"></div></div><div class="detail" id="storeDetail"></div></div></div>
+  <div class="tab hidden" id="tabHow"><div class="panelBg" style="padding:24px;display:block;max-width:900px;bottom:auto">
+      <h2 style="margin-top:0">How to play</h2>
+      <div id="controlsList">
+        <b>WASD</b> move<br><b>Mouse</b> look, <b>Left</b> fire, <b>Right</b> scope / stab / short throw<br>
+        <b>Shift</b> walk quietly<br><b>Ctrl</b> or <b>C</b> crouch<br><b>Space</b> jump (crouch in the air to crouch-jump)<br>
+        <b>R</b> reload<br><b>1–5</b> or wheel switch weapon<br><b>Q</b> last weapon<br><b>G</b> drop weapon<br>
+        <b>E</b> pick up / defuse / plant<br><b>B</b> buy menu<br><b>Tab</b> scoreboard<br><b>Esc</b> pause<br>
+        Plant: hold <b>5</b> (bomb) + left click, or hold <b>E</b> on site.<br>Defuse: hold <b>E</b> at the bomb (5 s with a kit).<br>
+        Pull the mouse down while spraying to control recoil. Standing still makes the first shot accurate.<br>
+        Coins: every finished match pays out for rounds won, kills, assists, MVPs and the result (more on Hard).
+      </div>
+      <p style="color:var(--dim);font-size:14px">Ctrl+W closes browser tabs, so the game runs fullscreen with the keyboard locked when your browser allows it; C also crouches. Names, maps and art are original to this project.</p>
+  </div></div>
+</div>
+<div id="picker" class="hidden"><div class="panel" id="pickerPanel" style="width:760px"></div></div>
+<div id="caseOpen" class="hidden">
+  <h2 id="caseTitle" style="margin:0;font-size:30px;letter-spacing:.06em"></h2>
+  <div id="reelWrap"><div id="reelMark"></div><div id="reel"></div></div>
+  <div id="caseResult"></div>
+</div>
