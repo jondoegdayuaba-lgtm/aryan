@@ -82,3 +82,13 @@ Four extra missile skins unlock as your best score climbs.
 | `js/collision.js` | Simple collision shapes |
 
 three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+## NOCLIP (Backrooms game)
+
+`backrooms.html` is a separate game in a single file: a found-footage style first-person walk through an endless, procedurally generated yellow office maze. three.js loads from cdnjs. Everything else (wallpaper, carpet and ceiling textures, the baked lighting, and all sound) is generated in code. Open the file in a browser to play. It needs internet only for three.js.
+
+- **WASD** move, **mouse** look (click to lock the pointer), **Shift** run (uses stamina), **Esc** pause.
+- Find the exit door about 200 m from where you start. The **SIG** bars in the corner fill up as you get closer, and near the door you can hear it.
+- Almond water bottles refill stamina.
+- Something sometimes stands far down a corridor. Stare at it too long, or get too close, and it chases you.
+- Graphics **Low** lowers render resolution and view distance for slower machines.
