@@ -82,3 +82,19 @@ Four extra missile skins unlock as your best score climbs.
 | `js/collision.js` | Simple collision shapes |
 
 three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+---
+
+# SKYBOUND
+
+`skybound/index.html` is a separate game: a 3D open-world sky-island adventure in a single self-contained HTML file. It has no fighting or shooting. The action is movement, exploration, races, puzzles and escaping hazards. It loads three.js r128 from cdnjs, so it needs internet the first time. Everything else (models, textures, music and sound effects) is generated in code.
+
+Open the file in a browser (double-click works) and click **Click to Start**.
+
+- **Goal:** find the 10 Sky Cores. 8 break the Sky Temple barrier, and all 10 wake the temple at its altar.
+- **Zones:** Meadow Isles (village, shop and quests), Crystal Canyons, Lava Peaks, Frozen Spires and the Ancient Sky Temple.
+- **Moves:** sprint, jump, double jump (upgrade), hold Space in the air to glide, ride updrafts and wind tunnels, grapple hooks (E), run along glowing walls, climb ledges, bounce mushrooms, speed pads, and a hoverboard (F) that also unlocks fast travel from the map.
+- **Activities:** 4 villager quests, 2 time-trial races, 3 puzzles (block push, mirror beam, tile order), 2 escape sequences (rising lava, crumbling ice), plus gems, feathers, map pieces and hidden chests.
+- **Controls:** WASD, mouse (click to lock the pointer), Shift, Space, E, F, M (map), P/Esc (pause). Phones get a joystick, drag-to-look and on-screen buttons.
+
+Progress auto-saves to `localStorage`. Use **New Game** in the pause menu to reset.
