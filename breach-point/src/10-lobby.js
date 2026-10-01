@@ -36,7 +36,7 @@ const Thumb={cache:{},
   },
   agent(a,w,h){
     const T=AGENT_INFO[a].team,rifle=T==='S'?'ark7':'m4r';
-    const m=buildCharacter(a);setCharGun(m,rifle,T,Profile.skinFor(T,rifle));m.userData.arms.rotation.x=-0.2;m.rotation.y=0.45;
+    const m=buildCharacter(a);setCharGun(m,rifle,T,Profile.skinFor(T,rifle));m.rotation.y=Math.PI-0.5;poseCharacter(m,{aim:-0.3,headYaw:0.15});
     return this.render('a:'+a+':'+(w||170)+(Profile.skinFor(T,rifle)||''),m,w||170,h||250,(cam,ctr,size)=>{
       const d=size.y/2/Math.tan(cam.fov*DEG/2)*1.12;cam.position.set(ctr.x,ctr.y+0.1,ctr.z+d);cam.lookAt(ctr.x,ctr.y,ctr.z);});
   },
@@ -109,9 +109,8 @@ const Lobby={tab:'play',model:null,modelKey:'',t:0,invFilter:'all',invSel:null,s
     camera.position.copy(cam);camera.fov=40;camera.updateProjectionMatrix();
     const fwd=V3(p.x-cam.x,0,p.z-cam.z).normalize(),right=V3(-fwd.z,0,fwd.x);const shift=this.tab==='play'?-0.95:-1.6;
     camera.lookAt(p.x+right.x*shift,p.y+1.08,p.z+right.z*shift);
-    const m=this.model,u=m.userData;m.position.copy(p);m.rotation.set(0,yawTo(cam.x-p.x,cam.z-p.z)+0.35,0);
-    u.upper.position.y=Math.sin(this.t*1.7)*0.006;u.head.rotation.y=Math.sin(this.t*0.5)*0.25;u.head.rotation.x=Math.sin(this.t*0.37)*0.05;
-    u.arms.rotation.x=-0.42+Math.sin(this.t*1.7)*0.012;for(const l of u.legs){l.hip.rotation.x=0;l.knee.rotation.x=0;l.hip.position.y=0.92;}
+    const m=this.model;m.position.copy(p);m.rotation.set(0,yawTo(cam.x-p.x,cam.z-p.z)+0.35,0);
+    poseCharacter(m,{look:Math.sin(this.t*0.37)*0.06,aim:-0.42+Math.sin(this.t*1.7)*0.012,breath:Math.sin(this.t*1.7),headYaw:Math.sin(this.t*0.5)*0.3});
     listener.x=cam.x;listener.y=cam.y;listener.z=cam.z;
   },
   renderMaps(){

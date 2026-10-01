@@ -256,6 +256,41 @@ function buildTextures(){
     speckle(g,w,h,5000,['#9a9a9a','#ffffff','#b0b0b0'],1,2);streaks(g,w,h,10,'rgba(120,120,120,.35)',0.5);
     g.strokeStyle='rgba(255,255,255,.5)';for(let i=0;i<30;i++){g.beginPath();const x=Math.random()*w,y=Math.random()*h;g.moveTo(x,y);g.lineTo(x+rand(-12,12),y+rand(-12,12));g.stroke();}});
   TEX.detailN=normalFrom(TEX.detail,0.35);
+  // woven cloth for the agents' clothes: fine twill plus soft creases (tiles every 25 cm)
+  TEX.fabric=canvasTex(256,256,(g,w,h)=>{g.fillStyle='#ececec';g.fillRect(0,0,w,h);
+    for(let i=-h;i<w+h;i+=4){g.strokeStyle=i%8?'rgba(255,255,255,.55)':'rgba(170,170,170,.45)';g.lineWidth=1.6;g.beginPath();g.moveTo(i,0);g.lineTo(i+h,h);g.stroke();}
+    blotches(g,w,h,26,['#c8c8c8','#ffffff','#d6d6d6'],12,46,0.35);
+    for(let i=0;i<9;i++){const x=Math.random()*w,y=Math.random()*h,a=rand(-0.5,0.5);g.save();g.translate(x,y);g.rotate(a);const gr=g.createLinearGradient(0,-6,0,6);
+      gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(0.5,'rgba(120,120,120,.35)');gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(-60,-6,120,12);g.restore();}
+    speckle(g,w,h,1800,['#b4b4b4','#ffffff'],1,2);},4);
+  TEX.fabricN=normalFrom(TEX.fabric,0.9);TEX.fabricN.repeat.set(4,4);
+}
+// printed cloth for agents: camouflage, digital camouflage, snow camouflage and plaid in shades of the base colour
+const CLOTHCACHE={};
+function clothTex(kind,f){
+  const key=kind+f.slice(0,3).map(x=>x.toFixed(3)).join();if(CLOTHCACHE[key])return CLOTHCACHE[key];
+  const sh=(k,dr,dg,db)=>`rgb(${clamp(f[0]*255*k+(dr||0),0,255)|0},${clamp(f[1]*255*k+(dg||0),0,255)|0},${clamp(f[2]*255*k+(db||0),0,255)|0})`;
+  const blob=(g,w,h,x,y,r,col)=>{g.fillStyle=col;for(const ox of[-w,0,w])for(const oy of[-h,0,h]){g.beginPath();const n=9;
+    for(let i=0;i<=n;i++){const a=i/n*Math.PI*2,rr=r*(0.6+0.5*Math.sin(a*3+x)*Math.cos(a*2+y));const px=x+ox+Math.cos(a)*rr*1.5,py=y+oy+Math.sin(a)*rr;i?g.lineTo(px,py):g.moveTo(px,py);}g.closePath();g.fill();}};
+  const t=canvasTex(256,256,(g,w,h)=>{
+    if(kind==='camo'||kind==='snowcamo'){
+      const cols=kind==='camo'?[sh(0.72),sh(1.18,12,8,-6),sh(0.5,-6,-4,-8)]:[sh(0.86,-8,-2,6),sh(0.74,-14,-6,4),sh(0.97)];
+      g.fillStyle=kind==='camo'?sh(1):sh(1.04);g.fillRect(0,0,w,h);
+      for(const [i,c] of cols.entries())for(let k=0;k<(kind==='camo'?14-i*3:12-i*3);k++)blob(g,w,h,Math.random()*w,Math.random()*h,rand(12,30)-i*3,c);
+    }else if(kind==='digi'){
+      const cols=[sh(1),sh(0.8),sh(1.22,6,6,8),sh(0.62)],c=8;
+      for(let y=0;y<h;y+=c)for(let x=0;x<w;x+=c){g.fillStyle=cols[0];g.fillRect(x,y,c,c);}
+      for(let k=0;k<70;k++){let x=(Math.random()*w/c|0)*c,y=(Math.random()*h/c|0)*c;const col=pick(cols.slice(1));g.fillStyle=col;
+        for(let j=0;j<rand(4,14);j++){g.fillRect((x+w)%w,(y+h)%h,c,c);if(Math.random()<0.5)x+=c*(Math.random()<0.5?-1:1);else y+=c*(Math.random()<0.5?-1:1);}}
+    }else{ // plaid
+      g.fillStyle=sh(1);g.fillRect(0,0,w,h);
+      for(const [o,wd,col,a] of [[0,64,sh(0.55),0.55],[96,40,sh(0.7),0.4],[160,18,sh(1.5,30,30,30),0.4],[210,6,'#e8e0c8',0.6],[40,4,'#1a1a1a',0.5]]){
+        g.globalAlpha=a;g.fillStyle=col;g.fillRect(0,o,w,wd);g.fillRect(o,0,wd,h);}
+      g.globalAlpha=0.18;for(let i=0;i<w;i+=3){g.fillStyle=i%6?'#000':'#fff';g.fillRect(i,0,1,h);}g.globalAlpha=1;
+    }
+    speckle(g,w,h,1600,['rgba(0,0,0,.6)','rgba(255,255,255,.6)'],1,2);
+  },2);
+  return CLOTHCACHE[key]=t;
 }
 function letterTex(letter,color,arrow){
   return canvasTex(256,256,(g,w,h)=>{g.clearRect(0,0,w,h);g.fillStyle=color;g.font='bold 200px Impact, Arial Black, sans-serif';g.textAlign='center';g.textBaseline='middle';

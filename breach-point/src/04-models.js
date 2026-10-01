@@ -57,8 +57,11 @@ function loadGLB(b64){
   while(off<buf.byteLength){const len=dv.getUint32(off,true),type=dv.getUint32(off+4,true);
     if(type===0x4E4F534A)json=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,off+8,len)));else if(type===0x004E4942)binOff=off+8;off+=8+len;}
   const CT={5120:Int8Array,5121:Uint8Array,5122:Int16Array,5123:Uint16Array,5125:Uint32Array,5126:Float32Array};
-  const NC={SCALAR:1,VEC2:2,VEC3:3,VEC4:4};
-  const accessor=i=>{const a=json.accessors[i],bv=json.bufferViews[a.bufferView];const T=CT[a.componentType],n=NC[a.type];
+  const NC={SCALAR:1,VEC2:2,VEC3:3,VEC4:4,MAT2:4,MAT3:9,MAT4:16};
+  // packed accessors (build.py): int16/int8 VEC4 with extras.q = {n, o, s} or {n, norm} decode to float
+  const accessor=i=>{const a=json.accessors[i],q=a.extras&&a.extras.q,r=rawAccessor(i);if(!q)return r;const out=new Float32Array(a.count*q.n);
+    for(let k=0;k<a.count;k++)for(let c=0;c<q.n;c++)out[k*q.n+c]=q.norm?r[k*4+c]/q.norm:r[k*4+c]/32767*q.s[c]+q.o[c];return out;};
+  const rawAccessor=i=>{const a=json.accessors[i],bv=json.bufferViews[a.bufferView];const T=CT[a.componentType],n=NC[a.type];
     const start=binOff+(bv.byteOffset||0)+(a.byteOffset||0);const stride=bv.byteStride||0;
     if(!stride||stride===n*T.BYTES_PER_ELEMENT)return new T(buf.slice(start,start+a.count*n*T.BYTES_PER_ELEMENT));
     const out=new T(a.count*n);const src=new DataView(buf);
@@ -68,28 +71,46 @@ function loadGLB(b64){
   const mats=(json.materials||[]).map(m=>{const p=m.pbrMetallicRoughness||{};const f=p.baseColorFactor||[1,1,1,1];
     const metal=p.metallicFactor!==undefined?p.metallicFactor:1,rough=p.roughnessFactor!==undefined?p.roughnessFactor:1;
     const name=m.name||'';const col=new THREE.Color(f[0],f[1],f[2]).convertSRGBToLinear();
-    const plain=/glass|lens|screen|red|visor|lamp|wrap|bottle|led|snow|patch|clabel|glow|emit|neon/.test(name);
-    const isGun=/^g_/.test(name);
+    const isGun=/^g_/.test(name),isSkin=/_skin$/.test(name),isChar=/^[SW]_[a-z]+_/.test(name)&&!isSkin;
+    const plain=isSkin||/glass|lens|screen|g_red|visor|lamp|wrap|bottle|led|snow$|patch|clabel|glow|emit|neon|^ch_/.test(name);
+    const pat=isChar&&name.match(/_(camo|digi|snowcamo|plaid)$/);
     const mt=new THREE.MeshStandardMaterial({color:col,metalness:isGun?metal:Math.min(metal,0.15),roughness:Math.max(isGun?0.08:0.35,rough),transparent:m.alphaMode==='BLEND'||f[3]<1,opacity:f[3],
-      map:plain?null:TEX.detail,normalMap:plain?null:TEX.detailN,envMapIntensity:isGun?0.9:0.8});
+      map:plain?null:pat?clothTex(pat[1],f):isChar?TEX.fabric:TEX.detail,normalMap:plain?null:isChar?TEX.fabricN:TEX.detailN,envMapIntensity:isGun?0.9:isChar?0.55:0.8});
+    if(pat)mt.color.setRGB(1,1,1);
+    if(isChar)mt.normalScale.set(0.6,0.6);
+    if(isSkin){mt.roughness=0.52;mt.envMapIntensity=0.45;}
     // emissive convention for Blender materials: names with 'emit' or 'neon' glow (and bloom); 'emit2'/'emit4' scale it
     if(/screen|lampglass|g_red|emit|neon/.test(name)){mt.emissive=col.clone();const k=name.match(/emit(\d+)/);mt.emissiveIntensity=k?+k[1]:/neon/.test(name)?4:/lampglass/.test(name)?2.2:1.6;}
     mt.name=name;return mt;});
   const defMat=new THREE.MeshStandardMaterial({color:0xcccccc});
-  const meshes=(json.meshes||[]).map(m=>m.primitives.map(pr=>{const g=new THREE.BufferGeometry();
-    g.setAttribute('position',new THREE.BufferAttribute(accessor(pr.attributes.POSITION),3));
-    if(pr.attributes.NORMAL!==undefined)g.setAttribute('normal',new THREE.BufferAttribute(accessor(pr.attributes.NORMAL),3));else g.computeVertexNormals();
+  const meshes=(json.meshes||[]).map(m=>m.primitives.map(pr=>{const g=new THREE.BufferGeometry();const A=pr.attributes;
+    g.setAttribute('position',new THREE.BufferAttribute(accessor(A.POSITION),3));
+    if(A.NORMAL!==undefined)g.setAttribute('normal',new THREE.BufferAttribute(accessor(A.NORMAL),3));else g.computeVertexNormals();
+    // vertex colours (baked ambient occlusion, face shading) multiply the material colour
+    if(A.COLOR_0!==undefined){const a=json.accessors[A.COLOR_0],src=accessor(A.COLOR_0),n=NC[a.type],sc=a.componentType===5126?1:a.componentType===5123?1/65535:1/255;
+      const c=new Float32Array(a.count*3);for(let k=0;k<a.count;k++)for(let j=0;j<3;j++)c[k*3+j]=src[k*n+j]*sc;g.setAttribute('color',new THREE.BufferAttribute(c,3));}
+    if(A.JOINTS_0!==undefined){const w=json.accessors[A.WEIGHTS_0];
+      g.setAttribute('skinIndex',new THREE.BufferAttribute(accessor(A.JOINTS_0),4));g.setAttribute('skinWeight',new THREE.BufferAttribute(accessor(A.WEIGHTS_0),4,w.componentType!==5126));}
     if(pr.indices!==undefined)g.setIndex(new THREE.BufferAttribute(accessor(pr.indices),1));
     g.computeBoundingSphere();return{g,m:pr.material!==undefined?mats[pr.material]:defMat};}));
-  const nodes=json.nodes.map(n=>{const o=new THREE.Group();o.name=n.name||'';
-    if(n.mesh!==undefined)for(const p of meshes[n.mesh]){const me=new THREE.Mesh(p.g,p.m);me.castShadow=true;me.receiveShadow=true;me.name=o.name+'#mesh';o.add(me);}
+  const joints=new Set();for(const sk of json.skins||[])for(const j of sk.joints)joints.add(j);
+  const nodes=json.nodes.map((n,i)=>{const o=joints.has(i)?new THREE.Bone():new THREE.Group();o.name=n.name||'';
+    if(n.mesh!==undefined)for(const p of meshes[n.mesh]){const sk=n.skin!==undefined&&!!p.g.attributes.skinIndex;
+      const me=sk?new THREE.SkinnedMesh(p.g,matVariant(p.m,!!p.g.attributes.color,true)):new THREE.Mesh(p.g,matVariant(p.m,!!p.g.attributes.color,false));
+      me.castShadow=true;me.receiveShadow=true;me.name=o.name+'#mesh';o.add(me);}
     if(n.matrix){o.matrix.fromArray(n.matrix);o.matrix.decompose(o.position,o.quaternion,o.scale);}
     else{if(n.translation)o.position.fromArray(n.translation);if(n.rotation)o.quaternion.fromArray(n.rotation);if(n.scale)o.scale.fromArray(n.scale);}
     return o;});
   json.nodes.forEach((n,i)=>{if(n.children)for(const c of n.children)nodes[i].add(nodes[c]);});
+  // skins: every skinned primitive of a node shares one skeleton; glTF ignores the mesh node's own transform,
+  // which an identity bind matrix with three's 'attached' bind mode reproduces
+  json.nodes.forEach((n,i)=>{if(n.skin===undefined||n.mesh===undefined)return;const sk=json.skins[n.skin];
+    const ibm=sk.inverseBindMatrices!==undefined?accessor(sk.inverseBindMatrices):null;
+    const skel=new THREE.Skeleton(sk.joints.map(j=>nodes[j]),sk.joints.map((j,k)=>{const m=new THREE.Matrix4();if(ibm)m.fromArray(ibm,k*16);return m;}));
+    for(const me of nodes[i].children)if(me.isSkinnedMesh){me.bind(skel,new THREE.Matrix4());me.frustumCulled=false;}});
   for(const i of json.scenes[json.scene||0].nodes){const o=nodes[i];ASSET[o.name.replace(/_root$/,'')]=o;
     o.position.set(0,0,0);o.updateMatrixWorld(true);const v=new THREE.Vector3(),n=new THREE.Vector3();
-    o.traverse(me=>{if(!me.isMesh||me.geometry.attributes.uv)return;const P=me.geometry.attributes.position,NN=me.geometry.attributes.normal;
+    o.traverse(me=>{if(me.isSkinnedMesh)o.userData.skinned=true;if(!me.isMesh||me.geometry.attributes.uv)return;const P=me.geometry.attributes.position,NN=me.geometry.attributes.normal;
       const NM=new THREE.Matrix3().getNormalMatrix(me.matrixWorld);const uv=new Float32Array(P.count*2);
       for(let k=0;k<P.count;k++){v.fromBufferAttribute(P,k).applyMatrix4(me.matrixWorld);n.fromBufferAttribute(NN,k).applyMatrix3(NM);
         const ax=Math.abs(n.x),ay=Math.abs(n.y),az=Math.abs(n.z);
@@ -97,7 +118,18 @@ function loadGLB(b64){
       me.geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2));});
   }
 }
-function asset(name){const t=ASSET[name];if(!t)throw new Error('missing model '+name);const o=t.clone();o.position.set(0,0,0);return o;}
+// material copies for vertex colours and skinning (three r128 needs both flags on the material)
+const MATVAR=new Map();
+function matVariant(m,vc,sk){
+  if(!vc&&!sk)return m;let v=MATVAR.get(m);if(!v)MATVAR.set(m,v={});const k=(vc?'v':'')+(sk?'s':'');
+  if(!v[k]){const c=m.clone();c.vertexColors=vc;c.skinning=sk;c.name=m.name;v[k]=c;}return v[k];
+}
+function asset(name){const t=ASSET[name];if(!t)throw new Error('missing model '+name);const o=t.clone();o.position.set(0,0,0);
+  if(t.userData.skinned){const bones={},done=new Map();o.traverse(b=>{if(b.isBone)bones[b.name]=b;});
+    o.traverse(me=>{if(!me.isSkinnedMesh)return;let sk=done.get(me.skeleton);
+      if(!sk){sk=new THREE.Skeleton(me.skeleton.bones.map(b=>bones[b.name]),me.skeleton.boneInverses.map(m=>m.clone()));done.set(me.skeleton,sk);}
+      me.bind(sk,me.bindMatrix);});}
+  return o;}
 
 // Static props are baked into one merged mesh per material so a whole town of them costs a handful of draw calls.
 const PropBatch={groups:new Map(),
@@ -159,17 +191,3 @@ function makeIcons(){
 }
 const HS_SVG='<svg viewBox="0 0 24 24"><circle cx="12" cy="11" r="7" fill="none" stroke="#ff5a4f" stroke-width="2.2"/><path d="M12 1v6M12 15v8M1 11h6M17 11h6" stroke="#ff5a4f" stroke-width="2.2"/></svg>';
 const WB_SVG='<svg viewBox="0 0 24 24"><path d="M4 3h5v18H4z" fill="#f4f1e8"/><path d="M1 12h22" stroke="#ff5a4f" stroke-width="2.4" stroke-dasharray="3 2"/></svg>';
-
-function buildCharacter(agentId){
-  const root=asset(agentId+'_char');const f=n=>root.getObjectByName(agentId+'_'+n);
-  root.userData={agentId,upper:f('upper'),head:f('head'),arms:f('arms'),gunHolder:f('gun'),gunId:null,
-    legs:[{hip:f('hipL'),knee:f('kneeL')},{hip:f('hipR'),knee:f('kneeR')}]};
-  return root;
-}
-function setCharGun(model,id,team,skin,variant){
-  const u=model.userData;const key=id?gunAsset(id,team)+(skin||'')+(variant||''):null;if(u.gunId===key)return;u.gunId=key;
-  while(u.gunHolder.children.length)u.gunHolder.remove(u.gunHolder.children[0]);
-  if(!id)return;const g=buildGun(id,team,skin,variant).group;if(id==='bomb'){g.scale.setScalar(0.8);g.rotation.x=-0.6;}
-  if(WEP[id].cls==='nade'){g.position.set(0.02,0,0.02);}
-  u.gunHolder.add(g);
-}

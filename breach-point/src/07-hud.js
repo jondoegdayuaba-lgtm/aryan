@@ -12,9 +12,15 @@ const VM={
     while(this.holder.children.length)this.holder.remove(this.holder.children[0]);
     const g=buildGun(id,a.team,this.skin,this.kmodel);this.gun=g;this.holder.add(g.group);
     const cls=WEP[id].cls;
-    const armR=asset(a.agentId+'_vmarm');armR.position.set(0.005,-0.035,0.04);armR.rotation.set(0.15,0.32,0);g.group.add(armR);
-    if(cls!=='knife'&&cls!=='nade'){const armL=asset(a.agentId+'_vmarm');armL.position.copy(g.fore).add(V3(-0.01,-0.03,0));
-      armL.rotation.set(0.25,cls==='pistol'||cls==='heavy'?-0.25:-0.75,0.5);g.group.add(armL);}
+    const gn=g.group.name.replace(/_root$/,''),gp=g.group.getObjectByName(gn+'_grip')||g.group.getObjectByName(gn+'_handle');
+    const grip=gp?gp.position.clone():V3(0,-0.06,0.03);
+    const armR=asset(a.agentId+'_vmarmR');g.group.add(armR);
+    if(cls==='knife'){g.group.rotation.x=1.1;armR.position.copy(grip);armR.rotation.set(-Math.PI/2,0,0);}
+    else if(cls==='nade'){armR.position.set(0,0.035,0.01);armR.rotation.set(-0.15,0,0);}
+    else if(cls==='bomb'){armR.position.set(0.1,0.02,0.02);armR.rotation.set(0,0,0);}
+    else{armR.position.copy(grip);armR.rotation.set(-0.28,0,0);}
+    if(cls==='pistol'||cls==='heavy'){const armL=asset(a.agentId+'_vmarmL');armL.position.copy(grip).add(V3(-0.036,-0.018,-0.004));armL.rotation.set(1.25,-0.5,0.35);g.group.add(armL);}
+    else if(cls!=='knife'&&cls!=='nade'){const armL=asset(a.agentId+'_vmarmL');armL.position.copy(g.fore).add(V3(0,cls==='bomb'?0:0.024,0));g.group.add(armL);}
     if(cls==='nade')g.group.scale.setScalar(0.9);
     g.group.add(this.flash);this.flash.position.copy(g.muzzle);this.flash.position.z-=0.03;
     this.drawT=0;this.reloadT=-1;this.slashT=-1;

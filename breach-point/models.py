@@ -90,174 +90,6 @@ def empty(name, loc, parent=None):
 Y = lambda v: (0, v, 0)
 RX = math.pi / 2  # cylinder along Y
 
-# ---------------------------------------------------------------- characters
-# Agents: one body plan, many outfits. Every agent gets nodes named <id>_hipL/_kneeL/_upper/_head/_arms/_gun
-# (animated in game) and a first-person forearm <id>_vmarm.
-AGENTS = {
-    'S_raider': dict(team='S', head='balaclava', torso='vest', extras=['pack'],
-        L=dict(shirt=0xa88a5a, vest=0x4a4636, pants=0x5b5a42, head=0x2b2b2b, skin=0xc99d7b, sleeve=0x7a6a48,
-               glove=0x2a2622, boot=0x2a2420, pouch=0x5a5440, belt=0x3a3024, pack=0x6a5a3a)),
-    'S_bandit': dict(team='S', head='balaclava', torso='vest', extras=['plaid', 'bandolier'],
-        L=dict(shirt=0xd9cdb0, vest=0x8a8f72, pants=0x4f5536, head=0x3d4a2c, skin=0xc99d7b, sleeve=0xd9cdb0,
-               glove=0x3a2c20, boot=0x5a3c22, pouch=0x6b6b4c, belt=0x4a3420, pack=0x6a5a3a, plaid=0x9a3a2a)),
-    'S_ghost': dict(team='S', head='hood', torso='jacket', extras=['shemagh', 'pack'],
-        L=dict(shirt=0xcdb48a, vest=0xb39a6e, pants=0x9c8660, head=0xcdb48a, skin=0xb98a66, sleeve=0xc2a87c,
-               glove=0x5a4a36, boot=0x6b5236, pouch=0x8f7a54, belt=0x5a4630, pack=0x9c8660, scarf=0x8a6a4a)),
-    'S_brute': dict(team='S', head='gasmask', torso='heavy', extras=['pads', 'pack'],
-        L=dict(shirt=0x3a3a36, vest=0x23241f, pants=0x35352f, head=0x1e1f1c, skin=0xa87a5a, sleeve=0x3a3a36,
-               glove=0x161616, boot=0x141414, pouch=0x2f302a, belt=0x1a1a18, pack=0x2c2d28, accent=0xc8502a)),
-    'W_officer': dict(team='W', head='helmet', torso='vest', extras=['pack', 'patch'],
-        L=dict(shirt=0x34465e, vest=0x252c38, pants=0x3b4250, head=0xc99d7b, skin=0xc99d7b, sleeve=0x2f3d52,
-               glove=0x1f2226, boot=0x1c1d20, pouch=0x30394a, belt=0x22262c, pack=0x39424f, helmet=0x39424f)),
-    'W_diver': dict(team='W', head='diver', torso='wetsuit', extras=['tank'],
-        L=dict(shirt=0x1a1d22, vest=0x22262c, pants=0x1a1d22, head=0x15171a, skin=0xc99d7b, sleeve=0x1a1d22,
-               glove=0x111214, boot=0x111214, pouch=0x2a2f36, belt=0x2a2f36, pack=0x3a4652, accent=0xe0b020, helmet=0x15171a)),
-    'W_riot': dict(team='W', head='visor', torso='heavy', extras=['pads', 'patch'],
-        L=dict(shirt=0x4a5560, vest=0x2a323a, pants=0x404a54, head=0xc99d7b, skin=0xc99d7b, sleeve=0x4a5560,
-               glove=0x1a1c1f, boot=0x15171a, pouch=0x343c44, belt=0x22262c, pack=0x39424f, helmet=0x2e363e, accent=0x5aa7ff)),
-    'W_ranger': dict(team='W', head='cap', torso='jacket', extras=['shemagh', 'pack'],
-        L=dict(shirt=0xd8dde2, vest=0x9aa4ae, pants=0xc4cbd2, head=0x6b7480, skin=0xd2a684, sleeve=0xd0d6dc,
-               glove=0x3a3f46, boot=0x3a3530, pouch=0x8a949e, belt=0x4a4f56, pack=0x7a848e, scarf=0x5a6a7a, helmet=0x6b7480)),
-}
-
-def character(cid):
-    A = AGENTS[cid]
-    L, t, hg, torso, ex = A['L'], A['team'], A['head'], A['torso'], A['extras']
-    M = {k: mat(f'{cid}_{k}', v, rough=0.85) for k, v in L.items()}
-    lens = mat('lens', 0x14181c, metal=0.4, rough=0.2)
-    root = empty(f'{cid}_char', (0, 0, 0))
-    n = lambda s: f'{cid}_{s}'
-    bulk = 1.12 if torso == 'heavy' else 0.92 if torso == 'wetsuit' else 1.0
-    for s, side in ((-1, 'L'), (1, 'R')):
-        x = s * 0.11
-        hip = empty(n(f'hip{side}'), (x, 0, 0.92), root)
-        limb(n(f'thigh{side}'), (x, 0, 0.92), (x, 0.02, 0.48), 0.095 * bulk, M['pants'], hip, r2=0.08 * bulk)
-        knee = empty(n(f'knee{side}'), (x, 0.02, 0.48), hip)
-        limb(n(f'shin{side}'), (x, 0.02, 0.48), (x, 0, 0.1), 0.078 * bulk, M['pants'], knee, r2=0.065 * bulk)
-        if torso != 'wetsuit':
-            box(n(f'kneepad{side}'), (0.13, 0.06, 0.12), (x, 0.09, 0.48), M['pouch'], knee, bevel=0.015)
-        else:
-            box(n(f'fin{side}'), (0.12, 0.42, 0.03), (x, 0.2, 0.02), M['pouch'], knee, bevel=0.01)
-        box(n(f'boot{side}'), (0.13, 0.27, 0.11), (x, 0.045, 0.055), M['boot'], knee, bevel=0.02)
-        if torso == 'heavy':
-            box(n(f'shinguard{side}'), (0.12, 0.05, 0.26), (x, 0.08, 0.3), M['vest'], knee, bevel=0.015)
-            box(n(f'thighplate{side}'), (0.13, 0.05, 0.2), (x, 0.1, 0.72), M['vest'], hip, bevel=0.015)
-        if 'tank' not in ex and side == 'R':
-            box(n('holster'), (0.06, 0.1, 0.16), (x + 0.1, 0.0, 0.78), M['belt'], hip, bevel=0.01)
-    upper = empty(n('upper'), (0, 0, 0), root)
-    box(n('pelvis'), (0.34, 0.21, 0.17), (0, 0, 0.95), M['pants'], upper, bevel=0.03)
-    box(n('belt'), (0.36, 0.23, 0.05), (0, 0, 1.03), M['belt'], upper, bevel=0.01)
-    box(n('torso'), (0.38 * bulk, 0.22 * bulk, 0.42), (0, 0, 1.24), M['shirt'], upper, bevel=0.05)
-    if torso == 'vest':
-        box(n('vest'), (0.43, 0.29, 0.34), (0, 0, 1.25), M['vest'], upper, bevel=0.035)
-        for i, px in enumerate((-0.12, 0, 0.12)):
-            box(n(f'pouch{i}'), (0.1, 0.06, 0.12), (px, 0.17, 1.15), M['pouch'], upper, bevel=0.012)
-    elif torso == 'heavy':
-        box(n('vest'), (0.5, 0.36, 0.42), (0, 0, 1.24), M['vest'], upper, bevel=0.05)
-        box(n('plate'), (0.36, 0.05, 0.3), (0, 0.19, 1.27), M['pouch'], upper, bevel=0.02)
-        box(n('collar'), (0.36, 0.3, 0.08), (0, -0.01, 1.47), M['vest'], upper, bevel=0.03)
-        box(n('groin'), (0.22, 0.05, 0.16), (0, 0.13, 0.95), M['vest'], upper, bevel=0.015)
-        if 'accent' in L:
-            box(n('stripe'), (0.37, 0.055, 0.03), (0, 0.19, 1.36), mat(f'{cid}_acc', L['accent'], rough=0.5), upper)
-    elif torso == 'wetsuit':
-        limb(n('strapL'), (-0.12, 0.12, 1.42), (0.1, 0.12, 1.06), 0.02, M['belt'], upper)
-        limb(n('strapR'), (0.12, 0.12, 1.42), (-0.1, 0.12, 1.06), 0.02, M['belt'], upper)
-        box(n('chestrig'), (0.18, 0.06, 0.12), (0, 0.13, 1.24), M['pouch'], upper, bevel=0.015)
-        box(n('knifeSheath'), (0.04, 0.03, 0.18), (-0.15, 0.12, 1.2), M['belt'], upper)
-    else:  # jacket
-        box(n('jacket'), (0.44, 0.28, 0.46), (0, 0, 1.22), M['vest'], upper, bevel=0.05)
-        for s in (-1, 1):
-            box(n(f'flap{s}'), (0.2, 0.05, 0.22), (s * 0.11, 0.0, 0.92), M['vest'], upper, bevel=0.02)
-            box(n(f'pocket{s}'), (0.1, 0.05, 0.1), (s * 0.11, 0.15, 1.12), M['pouch'], upper, bevel=0.012)
-        box(n('zip'), (0.02, 0.02, 0.4), (0, 0.145, 1.22), M['belt'], upper)
-    if 'plaid' in ex:
-        for i in range(4):
-            box(n(f'plaidH{i}'), (0.385, 0.225, 0.018), (0, 0, 1.06 + i * 0.06), mat(f'{cid}_plaid', L['plaid'], rough=0.9), upper)
-    if 'bandolier' in ex:
-        limb(n('bandolier'), (-0.2, 0.16, 1.44), (0.18, 0.16, 1.0), 0.03, M['belt'], upper)
-        for i in range(5):
-            k = i / 4
-            box(n(f'shell{i}'), (0.03, 0.04, 0.05), (-0.18 + 0.36 * k, 0.19, 1.42 - 0.4 * k), M['pouch'], upper)
-    box(n('radio'), (0.06, 0.05, 0.12), (0.17, 0.12, 1.36), M['belt'], upper, bevel=0.01)
-    if 'pack' in ex:
-        if t == 'S':
-            box(n('pack'), (0.32, 0.14, 0.36), (0, -0.21, 1.25), M['pack'], upper, bevel=0.04)
-            cyl(n('roll'), 0.06, 0.34, (0, -0.2, 1.47), M['pouch'], upper, rot=(0, RX, 0))
-        else:
-            box(n('pack'), (0.3, 0.1, 0.3), (0, -0.19, 1.27), M['pack'], upper, bevel=0.03)
-    if 'tank' in ex:
-        for s in (-1, 1):
-            cyl(n(f'tank{s}'), 0.07, 0.48, (s * 0.08, -0.2, 1.22), M['pack'], upper, verts=12)
-            sphere(n(f'tankcap{s}'), 0.07, (s * 0.08, -0.2, 1.46), M['pack'], upper, scale=(1, 1, 0.6))
-        limb(n('hose'), (0.08, -0.2, 1.5), (0.06, 0.13, 1.62), 0.015, mat(f'{cid}_acc', L['accent'], rough=0.5), upper)
-    if 'patch' in ex:
-        box(n('patch'), (0.1, 0.01, 0.06), (0.1, 0.152 if torso == 'vest' else 0.19, 1.36), mat('patch', 0x5aa7ff, rough=0.5), upper)
-    for s in (-1, 1):
-        sphere(n(f'shoulder{"LR"[s > 0]}'), 0.085 * bulk, (s * 0.21 * bulk, 0, 1.4), M['sleeve'], upper)
-        if 'pads' in ex:
-            sphere(n(f'pad{"LR"[s > 0]}'), 0.11, (s * 0.24, 0, 1.43), M['vest'], upper, scale=(1, 1.1, 0.75))
-    cyl(n('neck'), 0.06, 0.1, (0, 0, 1.48), M['skin'] if hg in ('helmet', 'cap', 'visor') else M['head'], upper)
-    head = empty(n('head'), (0, 0, 1.5), upper)
-    box(n('skull'), (0.2, 0.22, 0.25), (0, 0.01, 1.63), M['head'], head, bevel=0.05)
-    if hg == 'balaclava':
-        box(n('eyes'), (0.17, 0.05, 0.05), (0, 0.115, 1.66), M['skin'], head, bevel=0.01)
-        box(n('brow'), (0.205, 0.03, 0.02), (0, 0.121, 1.695), M['head'], head)
-        for s in (-1, 1):
-            box(n(f'eye{"LR"[s > 0]}'), (0.03, 0.01, 0.02), (s * 0.045, 0.142, 1.66), lens, head)
-    elif hg == 'helmet':
-        sphere(n('helmet'), 0.15, (0, 0, 1.68), M['helmet'], head, scale=(0.95, 1.05, 0.72))
-        box(n('goggles'), (0.19, 0.04, 0.06), (0, 0.12, 1.65), lens, head, bevel=0.01)
-        box(n('strap'), (0.215, 0.2, 0.03), (0, 0.0, 1.66), M['belt'], head)
-        box(n('nvg'), (0.06, 0.05, 0.05), (0, 0.13, 1.75), M['belt'], head, bevel=0.01)
-    elif hg == 'hood':
-        sphere(n('hood'), 0.16, (0, -0.015, 1.66), M['vest'], head, scale=(0.92, 1.0, 1.0))
-        box(n('face'), (0.15, 0.03, 0.12), (0, 0.13, 1.63), M['skin'], head)
-        box(n('goggles'), (0.17, 0.04, 0.05), (0, 0.145, 1.67), lens, head, bevel=0.01)
-    elif hg == 'gasmask':
-        sphere(n('mask'), 0.12, (0, 0.06, 1.62), M['vest'], head, scale=(0.95, 0.9, 1.05))
-        for s in (-1, 1):
-            cyl(n(f'lens{s}'), 0.035, 0.03, (s * 0.05, 0.155, 1.66), lens, head, rot=(RX, 0, 0), verts=10)
-        cyl(n('filter'), 0.04, 0.07, (0, 0.18, 1.57), mat('g_filter', 0x2a2b2c, 0.3, 0.6), head, rot=(RX, 0, 0), verts=10)
-        sphere(n('cap'), 0.13, (0, -0.01, 1.69), M['head'], head, scale=(1, 1.05, 0.7))
-    elif hg == 'diver':
-        sphere(n('hoodie'), 0.15, (0, 0, 1.65), M['helmet'], head, scale=(0.9, 1.0, 1.05))
-        box(n('mask'), (0.18, 0.07, 0.08), (0, 0.13, 1.67), lens, head, bevel=0.02)
-        box(n('maskframe'), (0.2, 0.05, 0.1), (0, 0.11, 1.67), mat(f'{cid}_acc', L['accent'], rough=0.5), head, bevel=0.02)
-        box(n('mouth'), (0.06, 0.05, 0.05), (0, 0.13, 1.56), M['pouch'], head, bevel=0.01)
-    elif hg == 'visor':
-        sphere(n('helmet'), 0.16, (0, 0, 1.67), M['helmet'], head, scale=(0.98, 1.08, 0.82))
-        box(n('visor'), (0.22, 0.04, 0.14), (0, 0.15, 1.63), mat('g_visor', 0x1a2a3a, 0.5, 0.05, 0.7), head, rot=(0.15, 0, 0))
-        if 'accent' in L:
-            box(n('hstripe'), (0.03, 0.26, 0.02), (0, 0.0, 1.81), mat(f'{cid}_acc', L['accent'], rough=0.5), head)
-    elif hg == 'cap':
-        box(n('face'), (0.17, 0.03, 0.16), (0, 0.125, 1.62), M['skin'], head)
-        box(n('glasses'), (0.18, 0.02, 0.035), (0, 0.142, 1.67), lens, head)
-        sphere(n('cap'), 0.13, (0, 0, 1.72), M['helmet'], head, scale=(1, 1.05, 0.55))
-        box(n('brim'), (0.16, 0.1, 0.015), (0, 0.15, 1.73), M['helmet'], head)
-    if 'shemagh' in ex:
-        cyl(n('scarf'), 0.1, 0.09, (0, 0.01, 1.5), M['scarf'], upper, verts=10)
-        box(n('scarftail'), (0.1, 0.03, 0.2), (0.06, -0.12, 1.4), M['scarf'], upper, rot=(0.3, 0, 0))
-    arms = empty(n('arms'), (0, 0, 1.4), upper)
-    ab = 1.1 if torso == 'heavy' else 1.0
-    limb(n('uarmR'), (0.21, 0, 1.4), (0.2, 0.18, 1.2), 0.065 * ab, M['sleeve'], arms, r2=0.058 * ab)
-    limb(n('farmR'), (0.2, 0.18, 1.2), (0.06, 0.38, 1.27), 0.055 * ab, M['sleeve'], arms, r2=0.048 * ab)
-    sphere(n('handR'), 0.05, (0.05, 0.4, 1.28), M['glove'], arms)
-    limb(n('uarmL'), (-0.21, 0, 1.4), (-0.19, 0.24, 1.22), 0.065 * ab, M['sleeve'], arms, r2=0.058 * ab)
-    limb(n('farmL'), (-0.19, 0.24, 1.22), (0.03, 0.62, 1.3), 0.055 * ab, M['sleeve'], arms, r2=0.048 * ab)
-    sphere(n('handL'), 0.05, (0.04, 0.64, 1.3), M['glove'], arms)
-    if torso == 'heavy':
-        for s in (-1, 1):
-            limb(n(f'bracer{s}'), (s * 0.19 if s > 0 else -0.17, 0.22 if s > 0 else 0.3, 1.22), (0.1 if s > 0 else -0.06, 0.34 if s > 0 else 0.5, 1.26), 0.065, M['vest'], arms)
-    empty(n('gun'), (0.05, 0.42, 1.32), arms)
-    # first-person forearm: hand at the origin, sleeve running back toward the camera (-Y)
-    vm = empty(n('vmarm'), (20, 0, 0))
-    sphere(n('vmglove'), 0.045, (20, 0, 0), M['glove'], vm, scale=(1, 1.3, 0.9))
-    limb(n('vmwrist'), (20, -0.03, 0), (20, -0.1, -0.02), 0.042, M['glove'], vm)
-    limb(n('vmsleeve'), (20, -0.09, -0.02), (20, -0.42, -0.1), 0.05 * ab, M['sleeve'], vm, r2=0.06 * ab)
-    box(n('vmcuff'), (0.11, 0.03, 0.1), (20, -0.1, -0.02), M['pouch'] if 'plaid' not in ex else mat(f'{cid}_plaid', L['plaid']), vm, bevel=0.01)
-    if torso == 'heavy':
-        box(n('vmbracer'), (0.12, 0.16, 0.11), (20, -0.2, -0.05), M['vest'], vm, bevel=0.02)
-
 # ---------------------------------------------------------------- weapons
 G = dict(
     metal=mat('g_metal', 0x2c2f33, 0.8, 0.45), black=mat('g_black', 0x18191b, 0.3, 0.6),
@@ -733,8 +565,6 @@ def lifebuoy():
     box('lifebuoy_board', (0.9, 0.05, 1.0), (0, 0, 1.3), mat('p_fence', 0x6b4a2e, 0, 0.9), r)
     cyl('lifebuoy_post', 0.05, 1.8, (0, -0.05, 0.9), mat('p_iron', 0x2e2a26, 0.6, 0.5), r, verts=8)
 
-for cid in AGENTS:
-    character(cid)
 gun('ark7', ark7); gun('m4r', m4r); gun('vex', vex); gun('breacher', breacher); gun('longshot', longshot)
 gun('g9', pistol(G['black'], G['black'], 0.18)); gun('p12', pistol(G['metal'], G['tan'], 0.21))
 gun('hawk', pistol(G['steel'], G['black'], 0.25, 1.2)); gun('knife', knife)
@@ -747,8 +577,13 @@ container('contR', 0xa8382d); container('contB', 0x2e5f8f); container('contG', 0
 pine('pine', False); pine('pineSnow', True); pallets(); crane(); bollard(); streetlamp(); sandbags()
 drum('drumB', 0x2e5f8f); drum('drumR', 0xa8382d); forklift(); fence(); lifebuoy()
 
-# plug-ins: each breach-point/blender/*.py adds more models using the helpers above (exec'd in this namespace)
+# base models (characters etc.) live in breach-point/blender_base/*.py and use the helpers above
 import glob, os
+for _base in sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'blender_base', '*.py'))):
+    print('base', os.path.basename(_base))
+    exec(compile(open(_base).read(), _base, 'exec'), globals())
+
+# plug-ins: each breach-point/blender/*.py adds more models using the helpers above (exec'd in this namespace)
 _dirs = [os.path.join(os.path.dirname(os.path.abspath(__file__)), 'blender')] + [d for d in os.environ.get('BP_PLUGINS', '').split(os.pathsep) if d]
 for _plugin in sorted(p for d in _dirs for p in glob.glob(os.path.join(d, '*.py'))):
     print('plug-in', os.path.basename(_plugin))
@@ -756,5 +591,5 @@ for _plugin in sorted(p for d in _dirs for p in glob.glob(os.path.join(d, '*.py'
 
 out = sys.argv[-1] if sys.argv[-1].endswith('.glb') else 'models.glb'
 bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_apply=True, export_yup=True,
-                          export_texcoords=False, export_materials='EXPORT', export_animations=False)
+                          export_texcoords=False, export_materials='EXPORT', export_animations=False, export_skins=True, export_vertex_color='ACTIVE')
 print('wrote', out)

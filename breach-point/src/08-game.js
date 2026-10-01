@@ -178,15 +178,20 @@ const Game={paused:false,last:0,fpsAcc:0,fpsN:0,menuT:0,menuModel:null,
   animModels(dt){
     const vt=viewTarget();
     for(const a of G.agents){const m=a.model;if(!m)continue;const u=m.userData;
-      if(!a.alive){m.visible=true;if(u.dying===undefined)u.dying=0;u.dying+=dt;const k=Math.min(1,u.dying/0.45);m.rotation.x=-k*1.52;m.position.y=a.pos.y+k*0.12;continue;}
+      if(!a.alive){m.visible=true;if(u.dying===undefined){u.dying=0;u.fall=Math.random()<0.65?1:-1;}u.dying+=dt;
+        const k1=Math.min(1,u.dying/0.35),k2=clamp((u.dying-0.1)/0.55,0,1),e=k2*k2*(3-2*k2);
+        if(u.dying<1.2||!u.settled){m.rotation.set(u.fall*e*1.46,a.yaw,0);m.position.set(a.pos.x,a.pos.y+e*0.12,a.pos.z);u.gunHolder.visible=false;
+          poseCharacter(m,{dead:k1,phase:u.ph});u.settled=u.dying>=1.2;}
+        continue;}
+      u.dying=undefined;u.settled=false;u.gunHolder.visible=true;
       m.visible=!(a===vt&&Spectate.mode!=='death');
       m.position.copy(a.pos);m.rotation.set(0,a.yaw,0);
-      const sp=Math.hypot(a.vel.x,a.vel.z);u.ph=(u.ph||0)+dt*sp*2.4;const sw=Math.min(1,sp/4)*(a.onGround?1:0.3);
-      const c=a.crouchAmt;
-      u.legs.forEach((l,i)=>{const s=i?-1:1;l.hip.position.y=0.92-0.42*c;l.hip.rotation.x=Math.sin(u.ph)*0.55*sw*s+c*1.15;l.knee.rotation.x=-Math.max(0,-Math.sin(u.ph)*s)*0.8*sw-c*2.1;});
-      u.upper.position.y=-0.42*c;u.upper.rotation.x=c*0.15;
-      u.head.rotation.x=a.pitch*0.5;u.arms.rotation.x=a.pitch*0.85;
-      setCharGun(m,a.curId(),a.team,skinOf(a,a.curId()),knifeModelOf(a,a.curId()));
+      if(!m.visible)continue;
+      const sp=Math.hypot(a.vel.x,a.vel.z);u.ph=(u.ph||0)+dt*sp*2.4;u.air=lerp(u.air||0,a.onGround?0:1,Math.min(1,dt*10));
+      const cy=Math.cos(a.yaw),sy=Math.sin(a.yaw);let lx=a.vel.x*cy-a.vel.z*sy,lz=a.vel.x*sy+a.vel.z*cy;const ll=Math.hypot(lx,lz);if(ll>0.2){lx/=ll;lz/=ll;}else{lx=0;lz=-1;}
+      const id=a.curId();
+      setCharGun(m,id,a.team,skinOf(a,id),knifeModelOf(a,id));
+      poseCharacter(m,{speed:sp,phase:u.ph,dirX:lx,dirZ:lz,crouch:a.crouchAmt,look:a.pitch,aim:a.pitch,air:u.air,arm:armMode(u.cls),breath:Math.sin(NOW*1.7)});
     }
   },
   render(dt){
