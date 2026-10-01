@@ -38,7 +38,7 @@ const out=process.argv[2]||'.';const mode=process.argv[3]||'quick';
     await shot('game_'+m);
     const res=await E((mode)=>{const {G,Game}=window.__bp;const log=[];let lastR=0;const steps=mode==='full'?60*60*30:60*60*2.2;
       for(let i=0;i<steps;i++){Game.sim(1/60);if(G.round!==lastR){lastR=G.round;log.push('R'+G.round+' '+G.score.join(':'));}
-        if(G.phase==='end'&&!G._l){G._l=1;log.push('  '+document.getElementById('roundBanner').textContent.replace(/\s+/g,' ').slice(0,70));}if(G.phase!=='end')G._l=0;
+        if(G.phase==='end'&&!G._l){G._l=1;log.push('  '+document.getElementById('roundBanner').textContent.replace(/\s+/g,' ').slice(0,70)+(G.bomb?' [planted '+G.bomb.site+']':''));}if(G.phase!=='end')G._l=0;
         if(G.phase==='over'){log.push('OVER '+G.score.join(':')+' | '+document.getElementById('rewards').textContent.slice(0,80));break;}}
       return log.join('\n');},mode);
     console.log('== '+m+'\n'+res);
