@@ -82,3 +82,27 @@ Four extra missile skins unlock as your best score climbs.
 | `js/collision.js` | Simple collision shapes |
 
 three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+---
+
+# Sky Islands
+
+`sky-islands/index.html` is a second, separate game: a blocky voxel sky battle for 8 players (you and 7 bots). Everyone spawns in a glass cage on their own floating island. Loot your chest, bridge to the center island for better gear, and be the last one alive. Falling into the void kills you instantly.
+
+The whole game is that one HTML file. Open it in a browser (double-clicking works, no server needed). It loads three.js r128 from cdnjs, so it needs an internet connection; everything else is generated in code: textures, item icons, the pixel font and the sound effects.
+
+- **Match flow:** 5-second countdown in glass cages, chests refill at 3:00, and at 6:00 Sudden Death starts and the islands crumble inward from their edges.
+- **Loot:** wooden/stone/iron/crystal swords, leather/iron/crystal armor, bow and arrows, snowballs (knockback), golden apples (heal), warp orbs (throw to teleport) and building blocks. Center chests hold the better tiers.
+- **Combat:** 10 hearts, armor reduces damage, sprint hits knock further, and hits while falling are critical. Hold the bow to charge it, release to fire. Killed players drop their items.
+- **Bots:** Easy, Normal and Hard bots differ in aim, reaction time, speed, bridging speed and tactics (Hard bots also pillar up and catch falls with blocks).
+
+| Key | Action |
+| --- | --- |
+| WASD / mouse | Move / look |
+| Space / Shift / C | Jump / sprint / crouch (crouching stops you falling off edges) |
+| Left click | Attack; hold to break a block |
+| Right click | Place block, throw, eat, equip armor. Hold it while looking down to bridge |
+| Hold left or right click with a bow | Charge; release to shoot |
+| 1-9, mouse wheel | Hotbar |
+| E | Open the chest you're looking at, or your inventory (Shift+click moves items quickly) |
+| Q / Esc | Drop item / pause |
