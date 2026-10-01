@@ -1,5 +1,7 @@
 # Missile Run
 
+> This repo also holds **[Pitch Kings](pitch-kings/README.md)**, a 3D football game in a single HTML file (`pitch-kings/index.html`).
+
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.
 
 ## How the flying works
