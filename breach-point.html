@@ -537,7 +537,10 @@ function canvasTex(w,h,draw,repeat,linear){
 let MAX_ANISO=8;
 function normalFrom(tex,strength,invert){
   const src=tex.userData.canvas,w=src.width,h=src.height;const d=src.getContext('2d').getImageData(0,0,w,h).data;
-  const H=new Float32Array(w*h);for(let i=0;i<w*h;i++)H[i]=(d[i*4]*0.3+d[i*4+1]*0.59+d[i*4+2]*0.11)/255*(invert?-1:1);
+  let H=new Float32Array(w*h);for(let i=0;i<w*h;i++)H[i]=(d[i*4]*0.3+d[i*4+1]*0.59+d[i*4+2]*0.11)/255*(invert?-1:1);
+  // two passes of a wrapping 3x3 blur so single-pixel speckle does not turn into glittering normals
+  for(let pass=0;pass<2;pass++){const B=new Float32Array(w*h);
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)s+=H[((y+dy+h)%h)*w+((x+dx+w)%w)];B[y*w+x]=s/9;}H=B;}
   const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');const out=g.createImageData(w,h);const o=out.data;
   const at=(x,y)=>H[((y+h)%h)*w+((x+w)%w)];
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
@@ -606,7 +609,7 @@ const TEXCACHE={};
 function getTex(name){
   if(TEXCACHE[name])return TEXCACHE[name];
   const S_=SURFACES[name]||SURFACES.stone;const map=canvasTex(512,512,S_[0]);
-  return TEXCACHE[name]={map,normal:normalFrom(map,S_[1]*0.18),ns:1,rough:S_[2],metal:S_[3]||0};
+  return TEXCACHE[name]={map,normal:normalFrom(map,S_[1]*0.3),ns:1,rough:S_[2],metal:S_[3]||0};
 }
 function buildTextures(){
   TEX.soft=canvasTex(64,64,(g)=>{const gr=g.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(0.4,'rgba(255,255,255,.6)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(0,0,64,64);});
@@ -1072,9 +1075,13 @@ function buildMap(){
     for(let r=R.r0;r<=R.r1;r++)for(let c=R.c0;c<=R.c1;c++)World.wallH[r*GW+c]=h;
     const m=pickWall();const col=pick(TH.tints);
     batch(m).box(x0,0,z0,x1,h,z1,{s:4,col,skip:8,ao:1.6,aoDark:0.5});
-    if(TH.cap==='snowcap')batch('snow').box(x0-0.1,h,z0-0.1,x1+0.1,h+0.28,z1+0.1,{s:3,col:[1,1,1]});
-    else if(TH.cap==='trim')batch('trim').box(x0-0.12,h-0.05,z0-0.12,x1+0.12,h+0.25,z1+0.12,{col:[1,1,1]});
-    else if(TH.cap&&TH.cap!=='none')batch(TH.cap).box(x0-0.12,h-0.05,z0-0.12,x1+0.12,h+0.25,z1+0.12,{s:3,col:[1,1,1]});
+    const isW=(c,r)=>c<0||r<0||c>=GW||r>=GH||g[r][c]==='#';let wN=false,wS=false,wW=false,wE=false;
+    for(let c=R.c0;c<=R.c1;c++){if(isW(c,R.r0-1))wN=true;if(isW(c,R.r1+1))wS=true;}
+    for(let r=R.r0;r<=R.r1;r++){if(isW(R.c0-1,r))wW=true;if(isW(R.c1+1,r))wE=true;}
+    const ov=TH.cap==='snowcap'?0.1:0.12,tx0=x0-(wW?0:ov),tx1=x1+(wE?0:ov),tz0=z0-(wN?0:ov),tz1=z1+(wS?0:ov);
+    if(TH.cap==='snowcap')batch('snow').box(tx0,h,tz0,tx1,h+0.28,tz1,{s:3,col:[1,1,1]});
+    else if(TH.cap==='trim')batch('trim').box(tx0,h-0.05,tz0,tx1,h+0.25,tz1,{col:[1,1,1]});
+    else if(TH.cap&&TH.cap!=='none')batch(TH.cap).box(tx0,h-0.05,tz0,tx1,h+0.25,tz1,{s:3,col:[1,1,1]});
     World.addBox(x0,-1,z0,x1,h,z1,'stone',0);
   }
   // windows, doors, lamps and awnings on wall faces next to open cells
@@ -1099,7 +1106,7 @@ function buildMap(){
     batch(TH.stairs||TH.paving).box(x0,0,z0,x1,h,z1,{s:3,col:[1,0.97,0.93],skip:8,ao:Math.min(h,0.6),aoDark:0.6});
     World.addBox(x0,-1,z0,x1,h,z1,'stone',0);
   }
-  for(const p of MAP.paved)batch(p[4]||TH.paving).box(OX+p[0]*CELL,0,OZ+p[1]*CELL,OX+(p[2]+1)*CELL,0.02,OZ+(p[3]+1)*CELL,{s:3,col:[0.95,0.93,0.9],skip:63-4});
+  MAP.paved.forEach((p,i)=>batch(p[4]||TH.paving).box(OX+p[0]*CELL,0,OZ+p[1]*CELL,OX+(p[2]+1)*CELL,0.02+i*0.004,OZ+(p[3]+1)*CELL,{s:3,col:[0.95,0.93,0.9],skip:63-4}));
   // low walls
   for(const R of mergeRects(g,ch=>ch==='w')){const[x0,z0,x1,z1]=rectXZ(R);const i0=0.15;
     batch(TH.lowWall||'stone').box(x0+i0,0,z0+i0,x1-i0,1.1,z1-i0,{s:3,col:[0.92,0.9,0.88],ao:0.5,aoDark:0.6});
@@ -1558,7 +1565,7 @@ function initRenderer(){
   renderer.outputEncoding=THREE.sRGBEncoding;
   scene=new THREE.Scene();scene.fog=new THREE.Fog(0xdcd5c4,80,260);
   skyMat=makeSkyMaterial();skyMesh=new THREE.Mesh(new THREE.SphereGeometry(600,32,16),skyMat);skyMesh.renderOrder=-1;skyMesh.frustumCulled=false;scene.add(skyMesh);
-  camera=new THREE.PerspectiveCamera(60,1,0.05,1300);camera.rotation.order='YXZ';
+  camera=new THREE.PerspectiveCamera(60,1,0.1,900);camera.rotation.order='YXZ';
   hemiMain=new THREE.HemisphereLight(0xd8e8ff,0xb59a70,0.7);scene.add(hemiMain);hemi=hemiMain;
   sun=new THREE.DirectionalLight(0xfff0d8,2.4);sun.castShadow=true;scene.add(sun);scene.add(sun.target);
   fxLight=new THREE.PointLight(0xffaa55,0,16,2);scene.add(fxLight);
@@ -1603,9 +1610,13 @@ function applyGraphics(){
   onResize();
 }
 function updateSun(){
-  const d=skyMat.uniforms.sunDir.value,q=Q();let cxw=0,czw=0;
-  if(q.follow&&q.shadow){const tex=2*q.ext/q.shadow;cxw=Math.round(camera.position.x/tex)*tex;czw=Math.round(camera.position.z/tex)*tex;}
-  sun.target.position.set(cxw,0,czw);sun.position.set(cxw+d.x*200,d.y*200,czw+d.z*200);sun.target.updateMatrixWorld();
+  const d=skyMat.uniforms.sunDir.value,q=Q();let ctr=V3(0,0,0);
+  if(q.follow&&q.shadow){
+    // snap the shadow centre to the shadow-map texel grid in light space (snapping in world space makes edges crawl)
+    const tex=2*q.ext/q.shadow,f=d.clone().negate(),r=new THREE.Vector3().crossVectors(f,V3(0,1,0)).normalize(),u=new THREE.Vector3().crossVectors(r,f);
+    const c=V3(camera.position.x,0,camera.position.z);const a=Math.round(c.dot(r)/tex)*tex,b=Math.round(c.dot(u)/tex)*tex,k=c.dot(f);
+    ctr=r.multiplyScalar(a).add(u.multiplyScalar(b)).add(f.multiplyScalar(k));}
+  sun.target.position.copy(ctr);sun.position.copy(ctr).addScaledVector(d,200);sun.target.updateMatrixWorld();
   skyMesh.position.copy(camera.position);skyMat.uniforms.time.value=NOW;
   if(waterMesh)waterMesh.material.uniforms.time.value=NOW;
 }

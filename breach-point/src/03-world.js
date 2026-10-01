@@ -226,9 +226,13 @@ function buildMap(){
     for(let r=R.r0;r<=R.r1;r++)for(let c=R.c0;c<=R.c1;c++)World.wallH[r*GW+c]=h;
     const m=pickWall();const col=pick(TH.tints);
     batch(m).box(x0,0,z0,x1,h,z1,{s:4,col,skip:8,ao:1.6,aoDark:0.5});
-    if(TH.cap==='snowcap')batch('snow').box(x0-0.1,h,z0-0.1,x1+0.1,h+0.28,z1+0.1,{s:3,col:[1,1,1]});
-    else if(TH.cap==='trim')batch('trim').box(x0-0.12,h-0.05,z0-0.12,x1+0.12,h+0.25,z1+0.12,{col:[1,1,1]});
-    else if(TH.cap&&TH.cap!=='none')batch(TH.cap).box(x0-0.12,h-0.05,z0-0.12,x1+0.12,h+0.25,z1+0.12,{s:3,col:[1,1,1]});
+    const isW=(c,r)=>c<0||r<0||c>=GW||r>=GH||g[r][c]==='#';let wN=false,wS=false,wW=false,wE=false;
+    for(let c=R.c0;c<=R.c1;c++){if(isW(c,R.r0-1))wN=true;if(isW(c,R.r1+1))wS=true;}
+    for(let r=R.r0;r<=R.r1;r++){if(isW(R.c0-1,r))wW=true;if(isW(R.c1+1,r))wE=true;}
+    const ov=TH.cap==='snowcap'?0.1:0.12,tx0=x0-(wW?0:ov),tx1=x1+(wE?0:ov),tz0=z0-(wN?0:ov),tz1=z1+(wS?0:ov);
+    if(TH.cap==='snowcap')batch('snow').box(tx0,h,tz0,tx1,h+0.28,tz1,{s:3,col:[1,1,1]});
+    else if(TH.cap==='trim')batch('trim').box(tx0,h-0.05,tz0,tx1,h+0.25,tz1,{col:[1,1,1]});
+    else if(TH.cap&&TH.cap!=='none')batch(TH.cap).box(tx0,h-0.05,tz0,tx1,h+0.25,tz1,{s:3,col:[1,1,1]});
     World.addBox(x0,-1,z0,x1,h,z1,'stone',0);
   }
   // windows, doors, lamps and awnings on wall faces next to open cells
@@ -253,7 +257,7 @@ function buildMap(){
     batch(TH.stairs||TH.paving).box(x0,0,z0,x1,h,z1,{s:3,col:[1,0.97,0.93],skip:8,ao:Math.min(h,0.6),aoDark:0.6});
     World.addBox(x0,-1,z0,x1,h,z1,'stone',0);
   }
-  for(const p of MAP.paved)batch(p[4]||TH.paving).box(OX+p[0]*CELL,0,OZ+p[1]*CELL,OX+(p[2]+1)*CELL,0.02,OZ+(p[3]+1)*CELL,{s:3,col:[0.95,0.93,0.9],skip:63-4});
+  MAP.paved.forEach((p,i)=>batch(p[4]||TH.paving).box(OX+p[0]*CELL,0,OZ+p[1]*CELL,OX+(p[2]+1)*CELL,0.02+i*0.004,OZ+(p[3]+1)*CELL,{s:3,col:[0.95,0.93,0.9],skip:63-4}));
   // low walls
   for(const R of mergeRects(g,ch=>ch==='w')){const[x0,z0,x1,z1]=rectXZ(R);const i0=0.15;
     batch(TH.lowWall||'stone').box(x0+i0,0,z0+i0,x1-i0,1.1,z1-i0,{s:3,col:[0.92,0.9,0.88],ao:0.5,aoDark:0.6});

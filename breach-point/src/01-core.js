@@ -167,7 +167,10 @@ function canvasTex(w,h,draw,repeat,linear){
 let MAX_ANISO=8;
 function normalFrom(tex,strength,invert){
   const src=tex.userData.canvas,w=src.width,h=src.height;const d=src.getContext('2d').getImageData(0,0,w,h).data;
-  const H=new Float32Array(w*h);for(let i=0;i<w*h;i++)H[i]=(d[i*4]*0.3+d[i*4+1]*0.59+d[i*4+2]*0.11)/255*(invert?-1:1);
+  let H=new Float32Array(w*h);for(let i=0;i<w*h;i++)H[i]=(d[i*4]*0.3+d[i*4+1]*0.59+d[i*4+2]*0.11)/255*(invert?-1:1);
+  // two passes of a wrapping 3x3 blur so single-pixel speckle does not turn into glittering normals
+  for(let pass=0;pass<2;pass++){const B=new Float32Array(w*h);
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){let s=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)s+=H[((y+dy+h)%h)*w+((x+dx+w)%w)];B[y*w+x]=s/9;}H=B;}
   const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');const out=g.createImageData(w,h);const o=out.data;
   const at=(x,y)=>H[((y+h)%h)*w+((x+w)%w)];
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
@@ -236,7 +239,7 @@ const TEXCACHE={};
 function getTex(name){
   if(TEXCACHE[name])return TEXCACHE[name];
   const S_=SURFACES[name]||SURFACES.stone;const map=canvasTex(512,512,S_[0]);
-  return TEXCACHE[name]={map,normal:normalFrom(map,S_[1]*0.18),ns:1,rough:S_[2],metal:S_[3]||0};
+  return TEXCACHE[name]={map,normal:normalFrom(map,S_[1]*0.3),ns:1,rough:S_[2],metal:S_[3]||0};
 }
 function buildTextures(){
   TEX.soft=canvasTex(64,64,(g)=>{const gr=g.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(0.4,'rgba(255,255,255,.6)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(0,0,64,64);});

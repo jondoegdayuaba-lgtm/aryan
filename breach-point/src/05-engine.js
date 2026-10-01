@@ -184,7 +184,7 @@ function initRenderer(){
   renderer.outputEncoding=THREE.sRGBEncoding;
   scene=new THREE.Scene();scene.fog=new THREE.Fog(0xdcd5c4,80,260);
   skyMat=makeSkyMaterial();skyMesh=new THREE.Mesh(new THREE.SphereGeometry(600,32,16),skyMat);skyMesh.renderOrder=-1;skyMesh.frustumCulled=false;scene.add(skyMesh);
-  camera=new THREE.PerspectiveCamera(60,1,0.05,1300);camera.rotation.order='YXZ';
+  camera=new THREE.PerspectiveCamera(60,1,0.1,900);camera.rotation.order='YXZ';
   hemiMain=new THREE.HemisphereLight(0xd8e8ff,0xb59a70,0.7);scene.add(hemiMain);hemi=hemiMain;
   sun=new THREE.DirectionalLight(0xfff0d8,2.4);sun.castShadow=true;scene.add(sun);scene.add(sun.target);
   fxLight=new THREE.PointLight(0xffaa55,0,16,2);scene.add(fxLight);
@@ -229,9 +229,13 @@ function applyGraphics(){
   onResize();
 }
 function updateSun(){
-  const d=skyMat.uniforms.sunDir.value,q=Q();let cxw=0,czw=0;
-  if(q.follow&&q.shadow){const tex=2*q.ext/q.shadow;cxw=Math.round(camera.position.x/tex)*tex;czw=Math.round(camera.position.z/tex)*tex;}
-  sun.target.position.set(cxw,0,czw);sun.position.set(cxw+d.x*200,d.y*200,czw+d.z*200);sun.target.updateMatrixWorld();
+  const d=skyMat.uniforms.sunDir.value,q=Q();let ctr=V3(0,0,0);
+  if(q.follow&&q.shadow){
+    // snap the shadow centre to the shadow-map texel grid in light space (snapping in world space makes edges crawl)
+    const tex=2*q.ext/q.shadow,f=d.clone().negate(),r=new THREE.Vector3().crossVectors(f,V3(0,1,0)).normalize(),u=new THREE.Vector3().crossVectors(r,f);
+    const c=V3(camera.position.x,0,camera.position.z);const a=Math.round(c.dot(r)/tex)*tex,b=Math.round(c.dot(u)/tex)*tex,k=c.dot(f);
+    ctr=r.multiplyScalar(a).add(u.multiplyScalar(b)).add(f.multiplyScalar(k));}
+  sun.target.position.copy(ctr);sun.position.copy(ctr).addScaledVector(d,200);sun.target.updateMatrixWorld();
   skyMesh.position.copy(camera.position);skyMat.uniforms.time.value=NOW;
   if(waterMesh)waterMesh.material.uniforms.time.value=NOW;
 }
