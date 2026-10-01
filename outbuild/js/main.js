@@ -324,6 +324,7 @@ class Game {
     this.matchXp = null;
     this.lobbyT = 0;
     this.lobbySnap = true;
+    this.renderer.setFocusBlur(true);
     this.ui.showLobby();
     this.audio.startMusic();
   }
@@ -531,6 +532,7 @@ class Game {
 
   // Shared by the host and online clients.
   prepareMatch() {
+    this.renderer.setFocusBlur(false);
     this.lobbyChar.root.visible = false;
     for (const e of (this.lobbyMates || new Map()).values()) e.model.root.visible = false;
     for (const p of this.lobbyPads || []) p.visible = false;

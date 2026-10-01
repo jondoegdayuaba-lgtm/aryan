@@ -44,7 +44,11 @@ CHAR_MATERIAL.onBeforeCompile = (sh) => {
     .replace('#include <common>', '#include <common>\nvarying vec3 vRM;')
     .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vRM.x;')
     .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vRM.y;')
-    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vRM.z;');
+    .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+totalEmissiveRadiance += diffuseColor.rgb * vRM.z;
+// soft sky-coloured rim so characters stand out from the scenery
+float rimF = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);
+totalEmissiveRadiance += (diffuseColor.rgb * 0.35 + vec3(0.16, 0.2, 0.28)) * rimF * 0.55;`);
 };
 CHAR_MATERIAL.customProgramCacheKey = () => 'character-merged';
 

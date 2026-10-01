@@ -137,9 +137,9 @@ export const MAPS = {
 
 export const QUALITY = {
   low: { pixelRatio: 0.75, shadows: false, shadowSize: 1024, ao: false, bloom: false, aa: 'fxaa', grass: 0, drawDist: 420 },
-  medium: { pixelRatio: 1, shadows: true, shadowSize: 2048, ao: false, bloom: true, aa: 'fxaa', grass: 0.5, drawDist: 600 },
-  high: { pixelRatio: 1, shadows: true, shadowSize: 2048, ao: false, bloom: true, aa: 'smaa', grass: 1, drawDist: 800 },
-  epic: { pixelRatio: 1.25, shadows: true, shadowSize: 4096, ao: true, bloom: true, aa: 'smaa', grass: 1.4, drawDist: 1000 },
+  medium: { pixelRatio: 1, shadows: true, shadowSize: 2048, ao: false, bloom: true, aa: 'fxaa', grass: 0.6, drawDist: 650, rays: true },
+  high: { pixelRatio: 1, shadows: true, shadowSize: 3072, ao: false, bloom: true, aa: 'smaa', grass: 1.15, drawDist: 850, rays: true },
+  epic: { pixelRatio: 1.25, shadows: true, shadowSize: 4096, ao: true, bloom: true, aa: 'smaa', grass: 1.5, drawDist: 1100, rays: true },
 };
 
 export const DEFAULT_SETTINGS = {

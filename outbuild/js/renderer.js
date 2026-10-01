@@ -30,6 +30,41 @@ export const TIMES = {
 
 const lin = (hex) => new THREE.Color(hex);
 
+// ----------------------------------------------------------------------------- height fog
+// Exponential fog that thins with altitude (integrated along the view ray): hazy valleys and a soft horizon,
+// while the island stays clear when you look down at it from the airship. Replaces three's FogExp2 maths.
+THREE.ShaderChunk.fog_pars_vertex = `#ifdef USE_FOG
+  varying float vFogDepth;
+  varying vec3 vFogOffset;
+#endif`;
+THREE.ShaderChunk.fog_vertex = `#ifdef USE_FOG
+  vFogDepth = - mvPosition.z;
+  vFogOffset = transpose(mat3(viewMatrix)) * mvPosition.xyz;
+#endif`;
+THREE.ShaderChunk.fog_pars_fragment = `#ifdef USE_FOG
+  uniform vec3 fogColor;
+  varying float vFogDepth;
+  varying vec3 vFogOffset;
+  #ifdef FOG_EXP2
+    uniform float fogDensity;
+  #else
+    uniform float fogNear;
+    uniform float fogFar;
+  #endif
+#endif`;
+THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float fogDist = length(vFogOffset);
+    float fogK = (vFogOffset.y / max(fogDist, 1e-3)) * 0.0105;
+    float fogAmt = fogDensity * 0.75 * exp(-max(cameraPosition.y, 0.0) * 0.0105)
+      * (abs(fogK) > 1e-5 ? (1.0 - exp(-fogDist * fogK)) / fogK : fogDist);
+    float fogFactor = 1.0 - exp(-max(fogAmt, 0.0));
+  #else
+    float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+  #endif
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);
+#endif`;
+
 // ----------------------------------------------------------------------------- sky dome
 const SKY_VS = /* glsl */`
 varying vec3 vDir;
@@ -64,7 +99,7 @@ void main() {
   // warm glow toward the sun near the horizon
   float sd = max(dot(d, uSunDir), 0.0);
   col += uSunColor * pow(sd, 6.0) * 0.18 * (1.0 - clamp(h * 2.0, 0.0, 1.0));
-  col = mix(col, uGround, smoothstep(0.0, -0.08, h));
+  col = mix(col, uGround, smoothstep(0.02, -0.05, h));
 
   // clouds on a virtual plane
   if (h > 0.0) {
@@ -111,7 +146,8 @@ export class Sky {
     const u = this.uniforms;
     u.uZenith.value.set(t.zenith);
     u.uHorizon.value.set(t.horizon);
-    u.uGround.value.set(t.ground);
+    // below the horizon the dome shows the fog colour, so the far sea melts into the sky
+    u.uGround.value.set(t.fog);
     u.uSunColor.value.set(t.sun);
     u.uCloud.value = t.cloud;
     const el = THREE.MathUtils.degToRad(t.elevation);
@@ -128,8 +164,10 @@ const GradeShader = {
     uStorm: { value: 0 },
     uDamage: { value: 0 },
     uHeal: { value: 0 },
-    uSaturation: { value: 1.2 },
-    uContrast: { value: 1.04 },
+    uSaturation: { value: 1.08 },
+    uVibrance: { value: 0.35 },
+    uTone: { value: 1 },
+    uContrast: { value: 1.06 },
     uTime: { value: 0 },
     uScope: { value: 0 },
     uAspect: { value: 1 },
@@ -139,7 +177,7 @@ const GradeShader = {
     void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */`
     uniform sampler2D tDiffuse;
-    uniform float uVignette, uStorm, uDamage, uHeal, uSaturation, uContrast, uTime, uScope, uAspect;
+    uniform float uVignette, uStorm, uDamage, uHeal, uSaturation, uVibrance, uTone, uContrast, uTime, uScope, uAspect;
     varying vec2 vUv;
     void main() {
       vec2 uv = vUv;
@@ -150,7 +188,16 @@ const GradeShader = {
       vec4 c = texture2D(tDiffuse, uv);
       float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
       c.rgb = mix(vec3(l), c.rgb, uSaturation);
+      // vibrance: boost dull colours more than already-saturated ones (bright, toy-like palette)
+      float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b));
+      c.rgb = mix(vec3(l), c.rgb, 1.0 + uVibrance * (1.0 - clamp((mx - mn) * 2.0, 0.0, 1.0)));
+      // split toning: cool shadows, warm highlights
+      float lum = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+      c.rgb += mix(vec3(-0.01, 0.006, 0.028), vec3(0.026, 0.012, -0.018), smoothstep(0.15, 0.85, lum)) * uTone;
+      // gentle S-curve
       c.rgb = (c.rgb - 0.5) * uContrast + 0.5;
+      c.rgb = clamp(c.rgb, 0.0, 1.0);
+      c.rgb = mix(c.rgb, c.rgb * c.rgb * (3.0 - 2.0 * c.rgb), 0.18);
       vec2 q = vUv - 0.5;
       float r = length(q * vec2(uAspect, 1.0));
       float vig = smoothstep(0.35, 1.05, r);
@@ -174,6 +221,80 @@ const GradeShader = {
         c.rgb = mix(c.rgb, sc, uScope);
       }
       gl_FragColor = c;
+    }`,
+};
+
+// ----------------------------------------------------------------------------- sun shafts
+// Screen-space light shafts: bright pixels (sun, lit clouds and sky between leaves) are smeared away from the
+// sun's screen position, so light streams past trees, buildings and players standing against the sky.
+const RaysShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uSun: { value: new THREE.Vector2(0.5, 0.5) },
+    uOn: { value: 0 },
+    uColor: { value: new THREE.Color(1, 0.9, 0.75) },
+    uStrength: { value: 0.32 },
+    uThreshold: { value: 1.25 },
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform vec2 uSun;
+    uniform float uOn, uStrength, uThreshold;
+    uniform vec3 uColor;
+    varying vec2 vUv;
+    const int N = 36;
+    void main() {
+      vec3 base = texture2D(tDiffuse, vUv).rgb;
+      if (uOn < 0.002) { gl_FragColor = vec4(base, 1.0); return; }
+      vec2 delta = (vUv - uSun) * (0.85 / float(N));
+      vec2 uv = vUv;
+      float decay = 1.0;
+      vec3 acc = vec3(0.0);
+      float jitter = fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453);
+      uv -= delta * jitter;
+      for (int i = 0; i < N; i++) {
+        uv -= delta;
+        vec3 sm = texture2D(tDiffuse, clamp(uv, 0.001, 0.999)).rgb;
+        float l = max(sm.r, max(sm.g, sm.b));
+        acc += sm * smoothstep(uThreshold, uThreshold * 2.2, l) * decay;
+        decay *= 0.955;
+      }
+      acc /= float(N);
+      float fall = 1.0 - smoothstep(0.0, 1.1, length((vUv - uSun) * vec2(1.6, 1.0)));
+      gl_FragColor = vec4(base + acc * uColor * uStrength * uOn * (0.35 + 0.65 * fall), 1.0);
+    }`,
+};
+
+// ----------------------------------------------------------------------------- lobby focus blur
+// The lobby camera always frames the squad in the middle, so a soft blur toward the edges reads as depth of field.
+const FocusShader = {
+  uniforms: { tDiffuse: { value: null }, uRes: { value: new THREE.Vector2(1, 1) }, uAmount: { value: 0 } },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform vec2 uRes;
+    uniform float uAmount;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec2 q = (vUv - vec2(0.5, 0.5)) / vec2(0.26, 0.5);
+      float k = smoothstep(0.75, 1.6, length(q)) * uAmount;
+      if (k < 0.01) { gl_FragColor = c; return; }
+      vec3 acc = vec3(0.0);
+      float tw = 0.0;
+      for (int i = 0; i < 16; i++) {
+        float a = float(i) * 2.39996;
+        float r = sqrt(float(i) + 0.5) / 4.0;
+        vec2 o = vec2(cos(a), sin(a)) * r * 9.0 * k / uRes;
+        acc += texture2D(tDiffuse, vUv + o).rgb;
+        tw += 1.0;
+      }
+      gl_FragColor = vec4(mix(c.rgb, acc / tw, clamp(k * 1.4, 0.0, 1.0)), c.a);
     }`,
 };
 
@@ -291,15 +412,23 @@ export class Renderer {
       composer.addPass(ao);
       this.aoPass = ao;
     }
+    this.rays = null;
+    if (q.rays) {
+      this.rays = new ShaderPass(RaysShader);
+      composer.addPass(this.rays);
+    }
     this.bloomPass = null;
     if (q.bloom) {
-      const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.32, 0.45, 0.92);
+      const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.32, 0.5, 1.05);
       composer.addPass(bloom);
       this.bloomPass = bloom;
     }
     composer.addPass(new OutputPass());
     this.grade = new ShaderPass(GradeShader);
     composer.addPass(this.grade);
+    this.focus = new ShaderPass(FocusShader);
+    this.focus.enabled = false;
+    composer.addPass(this.focus);
     if (q.aa === 'smaa') composer.addPass(new SMAAPass());
     else composer.addPass(new FXAAPass());
     this.composer = composer;
@@ -316,7 +445,11 @@ export class Renderer {
       this.composer.setSize(w, h);
     }
     if (this.grade) this.grade.uniforms.uAspect.value = w / h;
+    if (this.focus) this.focus.uniforms.uRes.value.set(w, h);
   }
+
+  // Lobby depth of field on/off (fades).
+  setFocusBlur(on) { this.focusTarget = on ? 1 : 0; }
 
   // Keep the sun's shadow box centred on the action, snapped to shadow texels so edges don't crawl.
   updateShadow(focus) {
@@ -344,6 +477,23 @@ export class Renderer {
     this.sky.uniforms.uTime.value = t;
     this.sky.mesh.position.copy(this.camera.position);
     if (this.grade) this.grade.uniforms.uTime.value = t;
+    if (this.focus) {
+      const u = this.focus.uniforms.uAmount;
+      u.value += ((this.focusTarget || 0) - u.value) * Math.min(1, dt * 4);
+      this.focus.enabled = u.value > 0.01;
+    }
+    if (this.rays) {
+      // where the sun is on screen, and how much it faces the camera
+      const cam = this.camera;
+      const fwd = cam.getWorldDirection(this._tmp);
+      const facing = fwd.dot(this.sunDir);
+      const p = this.sunDir.clone().multiplyScalar(1000).add(cam.position).project(cam);
+      const u = this.rays.uniforms;
+      u.uSun.value.set(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5);
+      u.uOn.value = facing > 0 && p.z < 1 ? Math.min(1, Math.max(0, (facing - 0.15) / 0.5)) * Math.min(1, Math.max(0, this.sunDir.y * 6)) : 0;
+      u.uColor.value.copy(this.sun.color);
+      this.rays.enabled = u.uOn.value > 0.002;
+    }
     if (this.composer) this.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);
   }

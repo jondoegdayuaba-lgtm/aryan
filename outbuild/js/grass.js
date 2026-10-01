@@ -124,12 +124,21 @@ export function createGrass(terrain, density = 1) {
       .replace('#include <map_fragment>', `
         vec3 gc = mix(uBase, uTip, pow(vT, 1.3));
         gc *= 0.85 + vShade * 0.3;
+        // big soft patches: lush dark green here, sun-dried yellow-green there
+        float pn = sin(vWorldXZ.x * 0.045) * sin(vWorldXZ.y * 0.039) + 0.5 * sin(vWorldXZ.x * 0.11 + vWorldXZ.y * 0.083);
+        gc = mix(gc, gc * vec3(0.72, 0.95, 0.7), smoothstep(0.2, 0.9, pn));
+        gc = mix(gc, gc * vec3(1.3, 1.15, 0.62), smoothstep(-0.25, -0.95, pn));
+        // a few wildflowers
+        if (vShade > 0.972 && vT > 0.72) {
+          float k = fract(vShade * 917.3);
+          gc = k < 0.4 ? vec3(1.0, 0.95, 0.9) : k < 0.7 ? vec3(1.0, 0.82, 0.2) : vec3(0.72, 0.45, 1.0);
+        }
         diffuseColor.rgb *= gc;`)
       .replace('#include <aomap_fragment>', `#include <aomap_fragment>
         reflectedLight.indirectDiffuse *= mix(0.45, 1.0, vT);
         reflectedLight.directDiffuse *= mix(0.6, 1.0, vT);`);
   };
-  mat.customProgramCacheKey = () => 'grass-v1';
+  mat.customProgramCacheKey = () => 'grass-v2';
   const mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false;
   mesh.receiveShadow = true;
