@@ -1,5 +1,5 @@
 // Headless smoke test: boots breach-point.html, screenshots the lobby, opens a case, then simulates matches.
-// Usage: THREE_JS=/path/to/three.min.js node breach-point/tools/smoke.cjs [outDir] [mode]
+// Usage: THREE_JS=/path/to/three.min.js [HTML=page.html] [MAPS=a,b] node breach-point/tools/smoke.cjs [outDir] [quick|ui|maps|full]
 // (three.min.js r128 is served locally so the test does not need the CDN.)
 let pw;try{pw=require('playwright');}catch(e){pw=require('/opt/node-tools/node_modules/playwright');}
 const fs=require('fs'),path=require('path');
@@ -11,7 +11,7 @@ const out=process.argv[2]||'.';const mode=process.argv[3]||'quick';
   pg.on('console',m=>{if(m.type()==='error'&&!/ERR_CERT|fonts\.g/.test(m.text()))errs.push('console: '+m.text());});
   await pg.route('**/three.min.js',r=>r.fulfill({body:fs.readFileSync(process.env.THREE_JS),contentType:'application/javascript'}));
   await pg.route('https://fonts.**',r=>r.abort());
-  await pg.goto('file://'+path.resolve(__dirname,'../../breach-point.html'));
+  await pg.goto('file://'+path.resolve(process.env.HTML||path.join(__dirname,'../../breach-point.html')));
   await pg.waitForFunction(()=>window.__bp||document.getElementById('loading').textContent.startsWith('Failed'),null,{timeout:60000});
   const shot=async n=>{await pg.waitForTimeout(2500);await pg.screenshot({path:path.join(out,n+'.png')});};
   await shot('lobby');
@@ -31,7 +31,7 @@ const out=process.argv[2]||'.';const mode=process.argv[3]||'quick';
     await E(()=>{const {G,Game}=window.__bp;G.score=[13,7];G.player.stats.k=17;G.player.stats.a=4;G.player.stats.mvp=3;Game.gameOver();});await shot('gameover');
     await pg.click('#btnMenu');await shot('lobby2');
   }
-  const maps=mode==='full'?(process.env.MAPS||'sandline,harbor,frostbite').split(','):mode==='ui'?[]:['sandline','harbor','frostbite'];
+  const maps=mode==='ui'?[]:(process.env.MAPS?process.env.MAPS.split(','):await pg.evaluate(()=>window.__bp.MAP_ORDER.slice()));
   for(const m of maps){
     const log=await E(async(m)=>{const {G,Game,Input,S,Lobby}=window.__bp;S.map=m;document.getElementById('menu').classList.add('hidden');document.getElementById('hud').classList.remove('hidden');Lobby.hideModel();
       G.newMatch('S',m);Input.locked=true;return 'started '+m;},m);

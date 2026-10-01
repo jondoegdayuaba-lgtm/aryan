@@ -153,9 +153,9 @@ table.sb .S{color:var(--s2)}table.sb .W{color:var(--w2)}
 #homeLeft .sub{margin:10px 0 22px;font-size:17px;color:var(--dim);font-weight:600;letter-spacing:.1em}
 .mrow{margin-bottom:14px}
 .mrow label{display:block;font-size:13px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;font-weight:700}
-#mapCards{display:flex;gap:10px}
-.mapcard{flex:1;min-width:0;height:118px;border-radius:8px;border:2px solid var(--line);position:relative;overflow:hidden;cursor:pointer;background-size:cover;text-align:left;padding:0;color:var(--ink)}
-.mapcard .mn{position:absolute;left:10px;bottom:8px;font-size:21px;font-weight:700;text-shadow:0 2px 4px #000}
+#mapCards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.mapcard{min-width:0;height:92px;border-radius:8px;border:2px solid var(--line);position:relative;overflow:hidden;cursor:pointer;background-size:cover;text-align:left;padding:0;color:var(--ink)}
+.mapcard .mn{position:absolute;left:10px;bottom:6px;font-size:19px;font-weight:700;text-shadow:0 2px 4px #000}
 .mapcard .md{position:absolute;left:10px;top:8px;font-size:12px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.8);text-shadow:0 1px 2px #000}
 .mapcard.on{border-color:var(--s);box-shadow:0 0 0 2px rgba(224,162,58,.35)}
 #mapDesc{font-size:15px;color:var(--dim);margin-top:8px;line-height:1.4;min-height:42px}

@@ -187,22 +187,36 @@ function mapMaterial(name){
 }
 const rectXZ=R=>[OX+R.c0*CELL,OZ+R.r0*CELL,OX+(R.c1+1)*CELL,OZ+(R.r1+1)*CELL];
 function disposeGroup(gr){gr.traverse(o=>{if(o.geometry&&!o.userData.sharedGeo)o.geometry.dispose();});}
+// What gets hung on wall faces and parked in 'v' cells. A theme names a preset or gives its own object
+// (any field left out falls back to the town preset). Asset fields may be a name or a list to pick from.
+const DECOR_PRESETS={
+  town:{window:'window',winY:3.7,winP:0.2,door:'door',doorP:0.06,lamp:'lamp',lampP:0.5,awnings:['awnR','awnB','awnG'],awnP:0.1,streetlamp:null,slP:0,extras:[],vehicles:['van','sedan','sedan2'],vehicleH:{}},
+  docks:{window:'window',winY:3.7,winP:0.13,door:'door',doorP:0.06,lamp:'lamp',lampP:0.5,awnings:null,awnP:0,streetlamp:'streetlamp',slP:0.075,extras:[],vehicles:['forklift','van'],vehicleH:{forklift:2.2}},
+  village:{window:'window',winY:3.2,winP:0.22,door:'door',doorP:0.06,lamp:'lamp',lampP:0.5,awnings:null,awnP:0,streetlamp:'streetlamp',slP:0.075,extras:[],vehicles:['van','sedan','sedan2'],vehicleH:{}}
+};
+const pickA=a=>Array.isArray(a)?pick(a):a;
 function buildMap(){
   if(mapGroup){scene.remove(mapGroup);disposeGroup(mapGroup);}
   mapGroup=new THREE.Group();scene.add(mapGroup);
   World.reset();
   const g=buildGrid();World.grid=g;const TH=MAP.theme;
+  const D=typeof TH.decor==='string'?DECOR_PRESETS[TH.decor]:Object.assign({},DECOR_PRESETS.town,TH.decor||{});
+  const CP=MAP.props||{};
   for(let r=0;r<GH;r++)for(let c=0;c<GW;c++){const ch=g[r][c];const i=r*GW+c;
-    World.walk[i]=WALKCH.includes(ch)?1:0;World.height[i]='12345'.includes(ch)?(+ch)*0.5:0;}
+    World.walk[i]=WALKCH.includes(ch)&&!CP[ch]?1:0;World.height[i]='12345'.includes(ch)?(+ch)*0.5:0;}
   for(let r=0;r<GH;r++)for(let c=0;c<GW;c++){let n=0;for(const[dc,dr]of[[1,0],[-1,0],[0,1],[0,-1]])if(!World.walkable(c+dc,r+dr))n=1;World.nearWall[r*GW+c]=n;}
   const roofAt=new Float32Array(GW*GH);
   for(const[c0,r0,c1,r1,h]of MAP.roofs)for(let r=r0;r<=r1;r++)for(let c=c0;c<=c1;c++)roofAt[r*GW+c]=h;
   const nearRoof=(R)=>{let m=0;for(let r=R.r0-1;r<=R.r1+1;r++)for(let c=R.c0-1;c<=R.c1+1;c++)if(r>=0&&c>=0&&r<GH&&c<GW)m=Math.max(m,roofAt[r*GW+c]);return m;};
   const B={};const batch=k=>B[k]||(B[k]=new GeoBatch());
   // ground
-  const gs=GW*CELL/2+90,gc=TH.groundTint||[0.8,0.8,0.8];
-  let wx1=gs;for(let r=0;r<GH;r++)for(let c=0;c<GW;c++)if(g[r][c]==='~')wx1=Math.min(wx1,OX+c*CELL);
-  batch(TH.ground).box(-gs,-0.05,-gs,wx1,0,gs,{s:6,skip:63-4,col:gc});
+  const gs=GW*CELL/2+160,gc=TH.groundTint||[0.8,0.8,0.8],gb=batch(TH.ground),gopt={s:6,skip:63-4,col:gc};
+  const open={W:false,E:false,N:false,S:false};
+  for(let i=0;i<GW;i++){if(g[i][0]==='~')open.W=true;if(g[i][GW-1]==='~')open.E=true;if(g[0][i]==='~')open.N=true;if(g[GH-1][i]==='~')open.S=true;}
+  for(const R of mergeRects(g,ch=>ch!=='~')){const[x0,z0,x1,z1]=rectXZ(R);gb.box(x0,-0.05,z0,x1,0,z1,gopt);}
+  const e0=OX,e1=OX+GW*CELL,f0=OZ,f1=OZ+GH*CELL;
+  if(!open.W)gb.box(-gs,-0.05,f0,e0,0,f1,gopt);if(!open.E)gb.box(e1,-0.05,f0,gs,0,f1,gopt);
+  if(!open.N)gb.box(open.W?e0:-gs,-0.05,-gs,open.E?e1:gs,0,f0,gopt);if(!open.S)gb.box(open.W?e0:-gs,-0.05,f1,open.E?e1:gs,0,gs,gopt);
   // walls
   const wallMats=TH.walls;const pickWall=()=>{let r=Math.random(),acc=0;for(const[m,w]of wallMats){acc+=w;if(r<acc)return m;}return wallMats[0][0];};
   for(const R of mergeRects(g,ch=>ch==='#')){
@@ -213,7 +227,8 @@ function buildMap(){
     const m=pickWall();const col=pick(TH.tints);
     batch(m).box(x0,0,z0,x1,h,z1,{s:4,col,skip:8,ao:1.6,aoDark:0.5});
     if(TH.cap==='snowcap')batch('snow').box(x0-0.1,h,z0-0.1,x1+0.1,h+0.28,z1+0.1,{s:3,col:[1,1,1]});
-    else batch('trim').box(x0-0.12,h-0.05,z0-0.12,x1+0.12,h+0.25,z1+0.12,{col:[1,1,1]});
+    else if(TH.cap==='trim')batch('trim').box(x0-0.12,h-0.05,z0-0.12,x1+0.12,h+0.25,z1+0.12,{col:[1,1,1]});
+    else if(TH.cap&&TH.cap!=='none')batch(TH.cap).box(x0-0.12,h-0.05,z0-0.12,x1+0.12,h+0.25,z1+0.12,{s:3,col:[1,1,1]});
     World.addBox(x0,-1,z0,x1,h,z1,'stone',0);
   }
   // windows, doors, lamps and awnings on wall faces next to open cells
@@ -224,29 +239,34 @@ function buildMap(){
       const nch=g[r+dr][c+dc];if(nch==='#'||nch==='='||nch==='d'||nch==='~')continue;
       if(roofAt[(r+dr)*GW+c+dc])continue;
       const fx=cx(c)+dc*1.0,fz=cz(r)+dr*1.0;const rnd=Math.random(),rot=yawTo(dc,dr),hb=World.height[(r+dr)*GW+c+dc];
-      const winP=TH.decor==='docks'?0.13:TH.decor==='village'?0.22:0.2;
-      if(h>5.5&&rnd<winP)PropBatch.add('window',fx,(TH.decor==='village'?3.2:3.7)+hb,fz,rot);
-      else if(rnd<winP+0.06&&WALKCH.includes(nch)){PropBatch.add('door',fx,hb,fz,rot);if(Math.random()<0.5)PropBatch.add('lamp',fx+(dr?1:0),2.9+hb,fz+(dc?1:0),rot);}
-      else if(TH.decor==='town'&&rnd<winP+0.1&&awnings<30&&h>5){awnings++;PropBatch.add(pick(['awnR','awnB','awnG']),fx,3.4+hb,fz,rot);}
-      else if(TH.decor!=='town'&&rnd<winP+0.075&&h>5)PropBatch.add('streetlamp',fx-dc*0.02,0,fz-dr*0.02,rot);
+      let acc=D.winP;
+      if(D.window&&h>5.5&&rnd<acc)PropBatch.add(pickA(D.window),fx,D.winY+hb,fz,rot);
+      else if(D.door&&rnd<(acc+=D.doorP)&&WALKCH.includes(nch)){PropBatch.add(pickA(D.door),fx,hb,fz,rot);if(D.lamp&&Math.random()<D.lampP)PropBatch.add(pickA(D.lamp),fx+(dr?1:0),2.9+hb,fz+(dc?1:0),rot);}
+      else if(D.awnings&&rnd<(acc+=D.awnP)&&awnings<30&&h>5){awnings++;PropBatch.add(pickA(D.awnings),fx,3.4+hb,fz,rot);}
+      else if(D.streetlamp&&rnd<(acc+=D.slP)&&h>5)PropBatch.add(pickA(D.streetlamp),fx-dc*0.02,0,fz-dr*0.02,rot);
+      else for(const e of D.extras){if(rnd<(acc+=e.p)){if(h>=(e.minH||0))PropBatch.add(pickA(e.asset),fx+dc*(e.out||0),(e.y||0)+hb,fz+dr*(e.out||0),rot,e.scale);break;}}
     }
   }
   // raised floors / stairs
   for(const R of mergeRects(g,ch=>'12345'.includes(ch))){
     const h=(+R.ch)*0.5;const[x0,z0,x1,z1]=rectXZ(R);
-    batch(TH.paving).box(x0,0,z0,x1,h,z1,{s:3,col:[1,0.97,0.93],skip:8,ao:Math.min(h,0.6),aoDark:0.6});
+    batch(TH.stairs||TH.paving).box(x0,0,z0,x1,h,z1,{s:3,col:[1,0.97,0.93],skip:8,ao:Math.min(h,0.6),aoDark:0.6});
     World.addBox(x0,-1,z0,x1,h,z1,'stone',0);
   }
   for(const p of MAP.paved)batch(p[4]||TH.paving).box(OX+p[0]*CELL,0,OZ+p[1]*CELL,OX+(p[2]+1)*CELL,0.02,OZ+(p[3]+1)*CELL,{s:3,col:[0.95,0.93,0.9],skip:63-4});
   // low walls
   for(const R of mergeRects(g,ch=>ch==='w')){const[x0,z0,x1,z1]=rectXZ(R);const i0=0.15;
-    batch('stone').box(x0+i0,0,z0+i0,x1-i0,1.1,z1-i0,{s:3,col:[0.92,0.9,0.88],ao:0.5,aoDark:0.6});
-    batch(TH.cap==='snowcap'?'snow':'trim').box(x0+0.05,1.1,z0+0.05,x1-0.05,1.22,z1-0.05,{s:3,col:[1,1,1]});
+    batch(TH.lowWall||'stone').box(x0+i0,0,z0+i0,x1-i0,1.1,z1-i0,{s:3,col:[0.92,0.9,0.88],ao:0.5,aoDark:0.6});
+    batch(TH.cap==='snowcap'?'snow':TH.lowWallCap||'trim').box(x0+0.05,1.1,z0+0.05,x1-0.05,1.22,z1-0.05,{s:3,col:[1,1,1]});
     World.addBox(x0+0.05,0,z0+0.05,x1-0.05,1.22,z1-0.05,'stone',0);}
   // single-cell props
   for(let r=0;r<GH;r++)for(let c=0;c<GW;c++){
     const ch=g[r][c];const x=cx(c),z=cz(r);
-    if(ch==='c'||ch==='m'||ch==='C'){
+    if(CP[ch]){ // map-specific single-cell prop: {asset, h, w, mat, pen, rot, scale, y}
+      const p=CP[ch];const rot=p.rot==='random'?rand(0,6.283):p.rot==='grid'||p.rot===undefined?pick([0,Math.PI/2,Math.PI,-Math.PI/2]):p.rot;
+      PropBatch.add(pickA(p.asset),x,p.y||0,z,rot,p.scale);const w=p.w===undefined?0.95:p.w;
+      if(p.h)World.addBox(x-w,0,z-w,x+w,p.h,z+w,p.mat||'stone',p.pen||0);
+    }else if(ch==='c'||ch==='m'||ch==='C'){
       const h=ch==='c'?1.1:ch==='m'?1.6:2.3;
       PropBatch.add(ch==='c'?'crateS':ch==='m'?'crateM':'crateC',x,0,z,pick([0,Math.PI/2,Math.PI,-Math.PI/2]));
       World.addBox(x-0.95,0,z-0.95,x+0.95,h,z+0.95,'wood',1);
@@ -258,7 +278,7 @@ function buildMap(){
     }else if(ch==='y'){
       PropBatch.add('pallets',x,0,z,pick([0,Math.PI/2]),[1.55,1.03,1.82]);World.addBox(x-0.93,0,z-0.93,x+0.93,1.2,z+0.93,'wood',1);
     }else if(ch==='z'){
-      PropBatch.add(MAP.trees.type==='palm'?'palm':MAP.trees.type==='pineSnow'?'pineSnow':'pine',x,0,z,rand(0,6),rand(5.5,7));
+      PropBatch.add(pickA(MAP.trees.cell||(MAP.trees.type==='palm'?'palm':MAP.trees.type==='pineSnow'?'pineSnow':'pine')),x,0,z,rand(0,6),MAP.trees.cellScale?rand(...MAP.trees.cellScale):rand(5.5,7));
       World.addBox(x-0.45,0,z-0.45,x+0.45,6,z+0.45,'wood',1.5);
     }else if(ch==='d'){
       let top=7;for(const[dc,dr]of[[1,0],[-1,0],[0,1],[0,-1]]){const nr=r+dr,nc=c+dc;if(nr>=0&&nc>=0&&nr<GH&&nc<GW)top=Math.max(top,World.wallH[nr*GW+nc]);}
@@ -282,9 +302,9 @@ function buildMap(){
     World.addBox(x0+0.02,0,z0+0.02,x1-0.02,2.6*stack,z1-0.02,'metal',0.6);}
   for(const R of mergeRects(g,ch=>ch==='v')){
     const[x0,z0,x1,z1]=rectXZ(R);const alongX=(x1-x0)>(z1-z0);
-    const kind=TH.decor==='docks'?pick(['forklift','van']):pick(['van','sedan','sedan2']);
+    const kind=pickA(D.vehicles);
     PropBatch.add(kind,(x0+x1)/2,0,(z0+z1)/2,(alongX?Math.PI/2:0)+(Math.random()<0.5?Math.PI:0));
-    World.addBox(x0+0.15,0,z0+0.15,x1-0.15,kind==='forklift'?2.2:1.5,z1-0.15,'metal',2.5);
+    World.addBox(x0+0.15,0,z0+0.15,x1-0.15,(D.vehicleH&&D.vehicleH[kind])||1.5,z1-0.15,'metal',2.5);
   }
   // low tunnel roofs
   const roofMat=TH.roof||'stone';
@@ -303,18 +323,26 @@ function buildMap(){
   const waterRects=mergeRects(g,ch=>ch==='~');
   for(const R of waterRects){const[x0,z0,x1,z1]=rectXZ(R);World.addBox(x0,-3,z0,x1,4,z1,'stone',-1);}
   if(waterRects.length)makeWater(waterRects.map(rectXZ));
-  // quay details next to the water
-  if(MAP.water)for(let r=2;r<GH-2;r++)for(let c=1;c<GW-1;c++){
-    if(!World.walkable(c,r)||g[r][c+1]!=='~')continue;const ex=OX+(c+1)*CELL;
-    if(r%4===0)PropBatch.add('bollard',ex-0.35,0,cz(r),0);if(r%12===6)PropBatch.add('lifebuoy',ex-0.12,0,cz(r),-Math.PI/2);}
-  // trees and cranes outside the playable area
+  // quay walls and details along every edge between land and water
+  const quay=new GeoBatch();let qn=0;
+  for(let r=0;r<GH;r++)for(let c=0;c<GW;c++){if(g[r][c]==='~')continue;
+    for(const[dc,dr]of[[1,0],[-1,0],[0,1],[0,-1]]){const nc=c+dc,nr=r+dr;if(nc<0||nr<0||nc>=GW||nr>=GH||g[nr][nc]!=='~')continue;
+      const ex=cx(c)+dc,ez=cz(r)+dr;qn++;
+      if(dc)quay.box(ex-(dc>0?0:0.3),-1.6,ez-1,ex+(dc>0?0.3:0),0.02,ez+1,{s:3,col:[0.8,0.8,0.8]});else quay.box(ex-1,-1.6,ez-(dr>0?0:0.3),ex+1,0.02,ez+(dr>0?0.3:0),{s:3,col:[0.8,0.8,0.8]});
+      if(World.walkable(c,r)&&MAP.water!=='plain'){const k=dc?r:c;if(k%4===0)PropBatch.add('bollard',ex-dc*0.35,0,ez-dr*0.35,0);
+        if(k%12===6)PropBatch.add('lifebuoy',ex-dc*0.12,0,ez-dr*0.12,yawTo(-dc,-dr)+Math.PI);}}}
+  if(qn)mapGroup.add(quay.mesh(mapMaterial(TH.quay||'concretewall')));
+  // trees, cranes and other scenery outside the playable area
   for(const[c,r]of MAP.trees.at){
-    const t=MAP.trees.type;
+    const t=pickA(MAP.trees.type);
     if(t==='crane')PropBatch.add('crane',cx(c),0,cz(r),Math.PI/2);
     else PropBatch.add(t,cx(c)+rand(-0.5,0.5),0,cz(r)+rand(-0.5,0.5),rand(0,6),rand(MAP.trees.min,MAP.trees.max));
   }
+  // hand-placed hero props: {asset, at:[col,row] (fractions allowed), y, rot, scale, collide:{w,d,h,mat,pen}}
+  for(const e of MAP.extras||[]){const x=OX+e.at[0]*CELL,z=OZ+e.at[1]*CELL;PropBatch.add(pickA(e.asset),x,e.y||0,z,e.rot||0,e.scale);
+    if(e.collide){const k=e.collide;World.addBox(x-k.w,(e.y||0),z-(k.d||k.w),x+k.w,(e.y||0)+k.h,z+(k.d||k.w),k.mat||'stone',k.pen||0);}}
   PropBatch.build(mapGroup);
-  for(const k in B){if(!B[k].v)continue;mapGroup.add(B[k].mesh(mapMaterial(k),k!==TH.ground&&k!=='snow'||k==='snow'&&TH.ground!=='snow'));}
+  for(const k in B){if(!B[k].v)continue;mapGroup.add(B[k].mesh(mapMaterial(k),k!==TH.ground));}
   for(const s of MAP.signs)addDecal(letterTex(s.t,s.c,s.a),OX+s.x*CELL+s.nx*0.03,s.y||2.8,OZ+s.z*CELL+s.nz*0.03,s.nx,s.nz,s.s);
 }
 function addDecal(tex,x,y,z,nx,nz,size){

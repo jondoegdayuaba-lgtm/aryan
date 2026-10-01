@@ -20,7 +20,7 @@ const G={phase:'menu',agents:[],player:null,round:0,score:[0,0],lossStreak:[0,0]
     for(let i=0;i<4;i++)this.agents.push(new Agent(bn[i],0,false));
     for(let i=0;i<5;i++)this.agents.push(new Agent(en[i],1,false));
     for(const a of this.agents){a.team=this.sideOf(a.squad);
-      if(!a.isPlayer){a.bot=new Bot(a);a.botSkins=rollBotSkins();a.botKnife=Math.random()<0.2?pick(knifeFinishes()):null;
+      if(!a.isPlayer){a.bot=new Bot(a);a.botSkins=rollBotSkins();a.botKnife=Math.random()<0.25?pick(knifeItems()):null;
         a.botAgent={S:pick(Object.keys(AGENT_INFO).filter(k=>AGENT_INFO[k].team==='S')),W:pick(Object.keys(AGENT_INFO).filter(k=>AGENT_INFO[k].team==='W'))};}
       this.dress(a);}
     this.score=[0,0];this.lossStreak=[0,0];this.round=0;this.roundsPlayed=0;
@@ -29,7 +29,8 @@ const G={phase:'menu',agents:[],player:null,round:0,score:[0,0],lossStreak:[0,0]
   },
   // gives an agent its character model, arms and knife for its current side
   dress(a){
-    a.agentId=a.isPlayer?Profile.agentFor(a.team):a.botAgent[a.team];a.knifeSkin=a.isPlayer?Profile.skinFor(a.team,'knife'):a.botKnife;
+    a.agentId=a.isPlayer?Profile.agentFor(a.team):a.botAgent[a.team];
+    const kn=a.isPlayer?Profile.knifeFor(a.team):{k:a.botKnife&&a.botKnife.k||'knife',f:a.botKnife&&a.botKnife.f||null};a.knifeModel=kn.k;a.knifeSkin=kn.f;
     if(a.model)scene.remove(a.model);a.model=buildCharacter(a.agentId);scene.add(a.model);
   },
   swapSides(){
@@ -185,7 +186,7 @@ const Game={paused:false,last:0,fpsAcc:0,fpsN:0,menuT:0,menuModel:null,
       u.legs.forEach((l,i)=>{const s=i?-1:1;l.hip.position.y=0.92-0.42*c;l.hip.rotation.x=Math.sin(u.ph)*0.55*sw*s+c*1.15;l.knee.rotation.x=-Math.max(0,-Math.sin(u.ph)*s)*0.8*sw-c*2.1;});
       u.upper.position.y=-0.42*c;u.upper.rotation.x=c*0.15;
       u.head.rotation.x=a.pitch*0.5;u.arms.rotation.x=a.pitch*0.85;
-      setCharGun(m,a.curId(),a.team,skinOf(a,a.curId()));
+      setCharGun(m,a.curId(),a.team,skinOf(a,a.curId()),knifeModelOf(a,a.curId()));
     }
   },
   render(dt){
@@ -250,7 +251,7 @@ function loadMap(id){
   useMap(id);waterMesh=null;buildMap();applyTheme();HUD.buildRadarBase();
 }
 function rollBotSkins(){const out={};for(const w of SKIN_WEAPONS){if(w==='knife'||Math.random()>0.3)continue;const opts=CASES.flatMap(c=>c.items).filter(i=>i.w===w);if(opts.length)out[w]=pick(opts).f;}return out;}
-function knifeFinishes(){return CASES.flatMap(c=>c.items).filter(i=>i.w==='knife').map(i=>i.f);}
+function knifeItems(){return CASES.flatMap(c=>c.items).filter(i=>i.w==='knife');}
 function boot(){
   buildTextures();
   initRenderer();
@@ -260,6 +261,6 @@ function boot(){
   makeIcons();
   FX.init();VM.init();Input.init();setupMenus();Lobby.init();
   $('loading').classList.add('hidden');Lobby.show();
-  window.__bp={G,Game,World,Input,FX,cellPos,applyDamage,S,WEP,VM,ASSET,THREE,Profile,Lobby,loadMap,CASES,MAPS,applyGraphics,gfx:()=>({renderer,sun,scene,camera,Post})}; // handle for debugging and automated tests
+  window.__bp={G,Game,World,Input,FX,cellPos,applyDamage,S,WEP,VM,ASSET,THREE,Profile,Lobby,loadMap,CASES,MAPS,MAP_ORDER,FINISHES,KNIVES,PATTERNS,Thumb,applyGraphics,gfx:()=>({renderer,sun,scene,camera,Post})}; // handle for debugging and automated tests
   requestAnimationFrame(t=>Game.frame(t));
 }

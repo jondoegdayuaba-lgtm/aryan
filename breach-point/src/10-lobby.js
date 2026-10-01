@@ -29,8 +29,8 @@ const Thumb={cache:{},
     g.putImageData(img,0,0);const c2=document.createElement('canvas');c2.width=w;c2.height=h;const g2=c2.getContext('2d');g2.imageSmoothingQuality='high';g2.drawImage(c,0,0,w,h);
     return this.cache[key]=c2.toDataURL();
   },
-  weapon(w,f){
-    return this.render('w:'+w+':'+(f||''),buildGun(w,'S',f).group,320,160,(cam,ctr,size)=>{
+  weapon(w,f,k){
+    return this.render('w:'+w+':'+(f||'')+':'+(k||''),buildGun(w,'S',f,k).group,320,160,(cam,ctr,size)=>{
       const len=Math.max(size.z,size.y*2);const d=len/2/Math.tan(cam.fov*DEG/2)/cam.aspect*1.15+0.05;
       cam.position.set(ctr.x+d,ctr.y+d*0.18,ctr.z+d*0.22);cam.lookAt(ctr);});
   },
@@ -40,7 +40,7 @@ const Thumb={cache:{},
     return this.render('a:'+a+':'+(w||170)+(Profile.skinFor(T,rifle)||''),m,w||170,h||250,(cam,ctr,size)=>{
       const d=size.y/2/Math.tan(cam.fov*DEG/2)*1.12;cam.position.set(ctr.x,ctr.y+0.1,ctr.z+d);cam.lookAt(ctr.x,ctr.y,ctr.z);});
   },
-  item(it){return it.a?this.agent(it.a):this.weapon(it.w,it.f);}
+  item(it){return it.a?this.agent(it.a):this.weapon(it.w,it.f,it.k);}
 };
 function caseArt(cs,w,h){
   const key='case:'+cs.id+w;if(Thumb.cache[key])return Thumb.cache[key];
@@ -61,14 +61,17 @@ function mapArt(M,w,h){
   const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');const K=M.theme.sky;const hx=n=>'#'+n.toString(16).padStart(6,'0');
   const gr=g.createLinearGradient(0,0,0,h);gr.addColorStop(0,hx(K.top));gr.addColorStop(0.55,hx(K.mid));gr.addColorStop(0.75,hx(K.horizon));g.fillStyle=gr;g.fillRect(0,0,w,h);
   const sx=w*(0.5+K.sunDir[0]*0.4),sy=h*(0.62-K.sunDir[1]*0.5);const sg=g.createRadialGradient(sx,sy,0,sx,sy,h*0.5);sg.addColorStop(0,'rgba(255,240,210,.95)');sg.addColorStop(0.08,'rgba(255,230,180,.6)');sg.addColorStop(1,'rgba(255,220,160,0)');g.fillStyle=sg;g.fillRect(0,0,w,h);
-  const wall=M.id==='harbor'?'#5a4038':M.id==='frostbite'?'#4a3a30':'#a8875a',wall2=M.id==='harbor'?'#3a4a58':M.id==='frostbite'?'#d8dde2':'#c8a878';
+  // a map can describe its own card art with art:{wall,wall2,ground,snowTop,draw(g,w,h)}
+  const A=M.art||{};
+  const wall=A.wall||(M.id==='harbor'?'#5a4038':M.id==='frostbite'?'#4a3a30':'#a8875a'),wall2=A.wall2||(M.id==='harbor'?'#3a4a58':M.id==='frostbite'?'#d8dde2':'#c8a878');
   let x=0;while(x<w){const bw=rand(18,46),bh=rand(h*0.18,h*0.42);g.fillStyle=Math.random()<0.5?wall:wall2;g.fillRect(x,h*0.78-bh,bw,bh);
-    if(M.id==='frostbite'){g.fillStyle='#f4f8fc';g.fillRect(x-2,h*0.78-bh-3,bw+4,5);}g.fillStyle='rgba(20,20,20,.45)';for(let k=0;k<3;k++)g.fillRect(x+4+k*12,h*0.78-bh+8,6,8);x+=bw+rand(0,6);}
+    if(M.id==='frostbite'||A.snowTop){g.fillStyle='#f4f8fc';g.fillRect(x-2,h*0.78-bh-3,bw+4,5);}g.fillStyle='rgba(20,20,20,.45)';for(let k=0;k<3;k++)g.fillRect(x+4+k*12,h*0.78-bh+8,6,8);x+=bw+rand(0,6);}
   if(M.id==='harbor'){g.fillStyle='#d8a028';g.fillRect(w*0.74,h*0.15,5,h*0.6);g.fillRect(w*0.62,h*0.15,w*0.3,5);for(const[cx_,col]of[[0.15,'#a8382d'],[0.32,'#2e5f8f'],[0.5,'#d8762a']]){g.fillStyle=col;g.fillRect(w*cx_,h*0.66,w*0.14,h*0.12);}}
   if(M.id==='sandline'){g.fillStyle='#3e6a2c';for(const px of[0.2,0.7]){g.fillRect(w*px,h*0.38,3,h*0.4);g.beginPath();g.ellipse(w*px+1,h*0.38,14,5,0.3,0,7);g.fill();g.beginPath();g.ellipse(w*px+1,h*0.38,14,5,-0.3,0,7);g.fill();}}
   if(M.id==='frostbite'){g.fillStyle='#2c4a2e';for(const px of[0.12,0.85,0.55]){g.beginPath();g.moveTo(w*px,h*0.3);g.lineTo(w*px-14,h*0.78);g.lineTo(w*px+14,h*0.78);g.fill();}
     g.fillStyle='rgba(255,255,255,.8)';for(let i=0;i<80;i++)g.fillRect(Math.random()*w,Math.random()*h,1.5,1.5);}
-  const gg=g.createLinearGradient(0,h*0.78,0,h);gg.addColorStop(0,hx(M.id==='frostbite'?0xe8eef4:M.id==='harbor'?0x8f8b84:0xd8b887));gg.addColorStop(1,'#111');g.fillStyle=gg;g.fillRect(0,h*0.78,w,h*0.22);
+  if(A.draw)A.draw(g,w,h);
+  const gg=g.createLinearGradient(0,h*0.78,0,h);gg.addColorStop(0,A.ground||hx(M.id==='frostbite'?0xe8eef4:M.id==='harbor'?0x8f8b84:0xd8b887));gg.addColorStop(1,'#111');g.fillStyle=gg;g.fillRect(0,h*0.78,w,h*0.22);
   return Thumb.cache[key]=c.toDataURL();
 }
 
@@ -114,7 +117,7 @@ const Lobby={tab:'play',model:null,modelKey:'',t:0,invFilter:'all',invSel:null,s
   renderMaps(){
     const box=$('mapCards');box.innerHTML='';
     for(const id of MAP_ORDER){const M=MAPS[id];const b=document.createElement('button');b.className='mapcard'+(S.map===id?' on':'');
-      b.style.backgroundImage=`url(${mapArt(M,300,140)})`;b.innerHTML=`<span class="md">${id==='sandline'?'DESERT':id==='harbor'?'DOCKS':'SNOW'}</span><span class="mn">${esc(M.name)}</span>`;
+      b.style.backgroundImage=`url(${mapArt(M,300,140)})`;b.innerHTML=`<span class="md">${esc(M.tag||(id==='sandline'?'DESERT':id==='harbor'?'DOCKS':'SNOW'))}</span><span class="mn">${esc(M.name)}</span>`;
       b.onclick=()=>{S.map=id;saveSettings();SFX.ui();this.renderMaps();loadMap(id);this.modelKey='';this.refreshModel();};box.appendChild(b);}
     $('mapDesc').textContent=MAPS[S.map].desc;
   },
@@ -174,7 +177,8 @@ const Lobby={tab:'play',model:null,modelKey:'',t:0,invFilter:'all',invSel:null,s
       html+=`<div class="loadcol" data-side="${T}" style="${this.loadSide===T?'background:rgba(255,255,255,.03)':''}"><h3 style="color:${T==='S'?'var(--s2)':'var(--w2)'}">${T==='S'?'STRIKERS':'WARDENS'}</h3>
         <div class="agentpick"><button class="btn small" data-ag="${T}" data-d="-1">◀</button><img src="${Thumb.agent(cur)}" alt=""><div><div style="font-size:20px;font-weight:700">${esc(AGENT_INFO[cur].name)}</div>
         <div class="rar" style="color:${RARITY[AGENT_INFO[cur].r].color}">${RARITY[AGENT_INFO[cur].r].name}</div><div style="color:var(--dim);font-size:13px">${agents.length} of 4 agents owned</div></div><button class="btn small" data-ag="${T}" data-d="1">▶</button></div>
-        ${weps.map(w=>{const f=Profile.skinFor(T,w);return `<div class="lrow" data-w="${w}" data-t="${T}"><img src="${f?Thumb.weapon(w,f):ICON[w]}" alt=""><div><div class="sn">${esc(WEP[w].name)}</div><div class="sk">${f?esc(FINISHES[f].name):'Default finish'}</div></div></div>`;}).join('')}
+        ${weps.map(w=>{const f=Profile.skinFor(T,w);const kn=w==='knife'?Profile.knifeFor(T):null;const custom=f||(kn&&kn.k!=='knife');
+          return `<div class="lrow" data-w="${w}" data-t="${T}"><img src="${custom?Thumb.weapon(w,f,kn&&kn.k):ICON[w]}" alt=""><div><div class="sn">${esc(kn?KNIVES[kn.k].name:WEP[w].name)}</div><div class="sk">${f?esc(FINISHES[f].name):kn&&kn.k!=='knife'?'Vanilla':'Default finish'}</div></div></div>`;}).join('')}
       </div>`;
     }
     P.innerHTML=html;

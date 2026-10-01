@@ -21,16 +21,17 @@ let skyMat=null,skyMesh=null,envRT=null,pmrem=null,isWebGL2=false;
 function makeSkyMaterial(){
   return new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,fog:false,
     uniforms:{top:{value:new THREE.Color()},mid:{value:new THREE.Color()},horizon:{value:new THREE.Color()},ground:{value:new THREE.Color()},
-      sunCol:{value:new THREE.Color()},sunDir:{value:new THREE.Vector3(0,1,0)},clouds:{value:0.4},time:{value:0}},
+      sunCol:{value:new THREE.Color()},sunDir:{value:new THREE.Vector3(0,1,0)},clouds:{value:0.4},time:{value:0},stars:{value:0},cloudCol:{value:new THREE.Color(1,1,1)}},
     vertexShader:`varying vec3 vDir;void main(){vDir=normalize((modelMatrix*vec4(position,0.0)).xyz);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
-    fragmentShader:`uniform vec3 top,mid,horizon,ground,sunCol,sunDir;uniform float clouds,time;varying vec3 vDir;${GLSL_NOISE}
+    fragmentShader:`uniform vec3 top,mid,horizon,ground,sunCol,sunDir,cloudCol;uniform float clouds,time,stars;varying vec3 vDir;${GLSL_NOISE}
 void main(){vec3 d=normalize(vDir);float y=d.y;vec3 col;
   if(y>0.){col=mix(horizon,mid,smoothstep(0.,0.22,y));col=mix(col,top,smoothstep(0.18,0.85,y));}else col=mix(horizon,ground,smoothstep(0.,-0.12,y));
   float sd=max(dot(d,normalize(sunDir)),0.);
   col+=sunCol*(pow(sd,900.)*40.+pow(sd,60.)*0.5+pow(sd,7.)*0.18);
+  if(stars>0.&&y>0.){vec2 sp=floor(vec2(atan(d.z,d.x)*180.,asin(y)*180.));float h=hash(sp);col+=vec3(0.9,0.95,1.)*step(0.9965,h)*stars*smoothstep(0.05,0.35,y)*(0.5+0.5*sin(time*2.+h*60.));}
   if(y>0.){vec2 uv=d.xz/(y+0.12)*1.4+vec2(time*0.006,time*0.003);
     float c=fbm(uv*1.2)+fbm(uv*3.1+7.)*0.25;c=smoothstep(1.05-clouds*0.6,1.35-clouds*0.45,c+clouds*0.2);
-    vec3 cc=mix(vec3(1.0),horizon,0.35)*(0.9+0.6*pow(sd,5.))+sunCol*pow(sd,12.)*0.3;
+    vec3 cc=mix(cloudCol,horizon,0.35)*(0.9+0.6*pow(sd,5.))+sunCol*pow(sd,12.)*0.3;
     col=mix(col,cc,c*smoothstep(0.,0.12,y)*0.92);}
   gl_FragColor=vec4(col,1.0);
   #include <tonemapping_fragment>
@@ -111,32 +112,50 @@ gl_FragColor=vec4((lb<mn||lb>mx)?A:B,1.);}`,{t:{value:null},res:{value:new THREE
     else this.run(this.final,null);
   }
 };
-const Weather={pts:null,type:null,
+// Ambient particles around the camera. A theme picks one or more presets by name.
+const WEATHER={
+  snow:{n:2600,size:0.09,color:0xffffff,opacity:0.9,fall:1.3,sway:0.35},
+  dust:{n:700,size:0.045,color:0xfff0d0,hdr:1.6,opacity:0.5,fall:0.05,sway:0.12},
+  rain:{n:2400,streak:0.55,color:0xc8d8ec,opacity:0.32,fall:16,sway:0.6},
+  embers:{n:500,size:0.06,color:0xff7a2a,hdr:4,opacity:0.95,fall:-0.7,sway:0.5,add:true},
+  ash:{n:900,size:0.07,color:0x8a8580,opacity:0.7,fall:0.35,sway:0.4},
+  leaves:{n:260,size:0.16,color:0x6a8a3a,opacity:0.9,fall:0.6,sway:0.9},
+  fireflies:{n:220,size:0.08,color:0xd8ff70,hdr:5,opacity:1,fall:0,sway:0.6,add:true,blink:true,low:true},
+  spores:{n:600,size:0.05,color:0xe8f0c8,hdr:1.5,opacity:0.55,fall:-0.05,sway:0.25}
+};
+const Weather={sets:[],type:null,
   set(type){
-    if(this.pts){scene.remove(this.pts);this.pts.geometry.dispose();this.pts=null;}this.type=type;if(!type)return;
-    const n=Math.round((type==='snow'?2600:700)*Q().particles);const p=new Float32Array(n*3);for(let i=0;i<n*3;i++)p[i]=rand(-22,22);
-    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(p,3));
-    const m=new THREE.PointsMaterial({map:TEX.soft,size:type==='snow'?0.09:0.045,transparent:true,depthWrite:false,opacity:type==='snow'?0.9:0.5,
-      color:type==='snow'?lin(0xffffff):lin(0xfff0d0).multiplyScalar(1.6),sizeAttenuation:true});
-    this.pts=new THREE.Points(g,m);this.pts.frustumCulled=false;scene.add(this.pts);this.seed=Math.random()*100;
+    for(const w of this.sets){scene.remove(w.obj);w.obj.geometry.dispose();}this.sets=[];this.type=type;if(!type)return;
+    for(const name of[].concat(type)){const P=WEATHER[name];if(!P)continue;
+      const n=Math.round(P.n*Q().particles);const per=P.streak?2:1;const p=new Float32Array(n*3*per);
+      for(let i=0;i<n;i++){const x=rand(-22,22),y=P.low?rand(-1.5,3):rand(-6,16),z=rand(-22,22);
+        for(let k=0;k<per;k++){p[(i*per+k)*3]=x;p[(i*per+k)*3+1]=y+k*(P.streak||0);p[(i*per+k)*3+2]=z;}}
+      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(p,3));
+      const col=lin(P.color).multiplyScalar(P.hdr||1);let obj;
+      if(P.streak)obj=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:col,transparent:true,opacity:P.opacity,depthWrite:false}));
+      else obj=new THREE.Points(g,new THREE.PointsMaterial({map:TEX.soft,size:P.size,transparent:true,depthWrite:false,opacity:P.opacity,color:col,sizeAttenuation:true,blending:P.add?THREE.AdditiveBlending:THREE.NormalBlending}));
+      obj.frustumCulled=false;scene.add(obj);this.sets.push({obj,P,n,per,seed:Math.random()*100});}
   },
   update(dt){
-    if(!this.pts)return;const P=this.pts.geometry.attributes.position,a=P.array,c=camera.position;
-    const snow=this.type==='snow',fall=snow?1.3:0.05,t=NOW+this.seed;
-    for(let i=0;i<a.length;i+=3){
-      a[i+1]-=fall*dt*(0.7+(i%7)*0.08);a[i]+=Math.sin(t*0.6+i)*dt*(snow?0.35:0.12);a[i+2]+=Math.cos(t*0.4+i)*dt*0.15;
-      // particles live in a box around the camera and wrap around its edges
-      const dx=a[i]-c.x,dy=a[i+1]-c.y,dz=a[i+2]-c.z;
-      if(dx<-22)a[i]+=44;else if(dx>22)a[i]-=44;if(dz<-22)a[i+2]+=44;else if(dz>22)a[i+2]-=44;
-      if(dy<-6)a[i+1]+=22;else if(dy>16)a[i+1]-=22;
+    const c=camera.position;
+    for(const w of this.sets){const P=w.P,a=w.obj.geometry.attributes.position.array,t=NOW+w.seed,per=w.per;
+      for(let i=0;i<w.n;i++){const o=i*per*3;
+        let dx=Math.sin(t*0.6+i)*dt*P.sway,dy=-P.fall*dt*(0.7+(i%7)*0.08),dz=Math.cos(t*0.4+i*1.3)*dt*P.sway*0.6;
+        if(P.blink)dy=Math.sin(t*0.9+i*2.1)*dt*0.3;
+        const x=a[o]+dx-c.x,y=a[o+1]+dy-c.y,z=a[o+2]+dz-c.z;
+        let wx=x<-22?44:x>22?-44:0,wz=z<-22?44:z>22?-44:0,wy=0;
+        if(y<(P.low?-2:-6))wy=P.low?4.5:22;else if(y>(P.low?3:16))wy=P.low?-4.5:-22;
+        for(let k=0;k<per;k++){const q=o+k*3;a[q]+=dx+wx;a[q+1]+=dy+wy;a[q+2]+=dz+wz;}
+      }
+      w.obj.geometry.attributes.position.needsUpdate=true;
+      if(P.blink)w.obj.material.opacity=0.6+0.4*Math.sin(NOW*3);
     }
-    P.needsUpdate=true;
   }
 };
 let waterMesh=null;
 function makeWater(rects){
-  let x0=1e9;for(const r of rects)x0=Math.min(x0,r[0]);
-  const geo=new THREE.PlaneGeometry(500,600,1,1);geo.rotateX(-Math.PI/2);geo.translate(x0+250,-0.7,0);
+  // one big sheet under the whole map; the ground has holes where the water cells are
+  const geo=new THREE.PlaneGeometry(1000,1000,1,1);geo.rotateX(-Math.PI/2);geo.translate(0,-0.7,0);
   const mat=new THREE.ShaderMaterial({uniforms:{time:{value:0},sunDir:{value:new THREE.Vector3()},sunCol:{value:new THREE.Color()},sky:{value:new THREE.Color()},
       horizon:{value:new THREE.Color()},deep:{value:lin(0x0c3a48)},fogCol:{value:new THREE.Color()},fogNear:{value:60},fogFar:{value:300}},
     vertexShader:`varying vec3 vW;void main(){vec4 w=modelMatrix*vec4(position,1.0);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`,
@@ -153,9 +172,8 @@ void main(){vec2 p=vW.xz;float t=time;
   #include <tonemapping_fragment>
   #include <encodings_fragment>
 }`});
+  if(MAP.theme.waterColor)mat.uniforms.deep.value.copy(lin(MAP.theme.waterColor));
   waterMesh=new THREE.Mesh(geo,mat);mapGroup.add(waterMesh);
-  // the quay wall facing the water
-  const wall=new GeoBatch();wall.box(x0-0.3,-1.6,-300,x0,0.02,300,{s:3,col:[0.8,0.8,0.8]});mapGroup.add(wall.mesh(mapMaterial('concretewall')));
   return waterMesh;
 }
 let hemiMain=null,vmHemi=null,vmSun=null;
@@ -179,7 +197,7 @@ function initRenderer(){
 function applyTheme(){
   const TH=MAP.theme,K=TH.sky,u=skyMat.uniforms;
   u.top.value.copy(lin(K.top));u.mid.value.copy(lin(K.mid));u.horizon.value.copy(lin(K.horizon));u.ground.value.copy(lin(K.ground));
-  u.sunCol.value.copy(lin(K.sun));u.sunDir.value.set(...K.sunDir).normalize();u.clouds.value=K.clouds;
+  u.sunCol.value.copy(lin(K.sun));u.sunDir.value.set(...K.sunDir).normalize();u.clouds.value=K.clouds;u.stars.value=K.stars||0;u.cloudCol.value.copy(lin(K.cloudColor||0xffffff));
   scene.fog.color.copy(lin(TH.fog));scene.fog.near=TH.fogNear;scene.fog.far=TH.fogFar;
   hemiMain.color.copy(lin(TH.hemiSky));hemiMain.groundColor.copy(lin(TH.hemiGround));hemiMain.intensity=TH.hemiI;
   sun.color.copy(lin(TH.sunColor));sun.intensity=TH.sunI;
@@ -339,6 +357,7 @@ class Agent{
     if(this.model){this.model.visible=!this.isPlayer;this.model.rotation.set(0,yaw,0);this.model.position.copy(p);}
   }
 }
+function knifeModelOf(a,id){return id==='knife'?a.knifeModel||null:null;}
 function skinOf(a,id){if(id==='knife')return a.knifeSkin||null;const i=a.primary&&a.primary.id===id?a.primary:a.secondary&&a.secondary.id===id?a.secondary:null;return i&&i.skin||null;}
 function weaponSpeed(a){const w=WEP[a.curId()];let s=w.speed||6;if(w.cls==='sniper'&&a.scope)s*=0.6;return s;}
 function agentList(){return G.agents;}

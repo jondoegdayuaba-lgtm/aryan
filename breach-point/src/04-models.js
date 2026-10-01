@@ -68,11 +68,12 @@ function loadGLB(b64){
   const mats=(json.materials||[]).map(m=>{const p=m.pbrMetallicRoughness||{};const f=p.baseColorFactor||[1,1,1,1];
     const metal=p.metallicFactor!==undefined?p.metallicFactor:1,rough=p.roughnessFactor!==undefined?p.roughnessFactor:1;
     const name=m.name||'';const col=new THREE.Color(f[0],f[1],f[2]).convertSRGBToLinear();
-    const plain=/glass|lens|screen|red|visor|lamp|wrap|bottle|led|snow|patch|clabel|glow/.test(name);
+    const plain=/glass|lens|screen|red|visor|lamp|wrap|bottle|led|snow|patch|clabel|glow|emit|neon/.test(name);
     const isGun=/^g_/.test(name);
     const mt=new THREE.MeshStandardMaterial({color:col,metalness:isGun?metal:Math.min(metal,0.15),roughness:Math.max(isGun?0.08:0.35,rough),transparent:m.alphaMode==='BLEND'||f[3]<1,opacity:f[3],
       map:plain?null:TEX.detail,normalMap:plain?null:TEX.detailN,envMapIntensity:isGun?0.9:0.8});
-    if(/screen|lampglass|g_red/.test(name)){mt.emissive=col.clone();mt.emissiveIntensity=/lampglass/.test(name)?2.2:1.6;}
+    // emissive convention for Blender materials: names with 'emit' or 'neon' glow (and bloom); 'emit2'/'emit4' scale it
+    if(/screen|lampglass|g_red|emit|neon/.test(name)){mt.emissive=col.clone();const k=name.match(/emit(\d+)/);mt.emissiveIntensity=k?+k[1]:/neon/.test(name)?4:/lampglass/.test(name)?2.2:1.6;}
     mt.name=name;return mt;});
   const defMat=new THREE.MeshStandardMaterial({color:0xcccccc});
   const meshes=(json.meshes||[]).map(m=>m.primitives.map(pr=>{const g=new THREE.BufferGeometry();
@@ -127,8 +128,8 @@ function skinMaterial(fid){
   if(F.glow){m.emissiveMap=m.map;m.emissive=new THREE.Color(0xffffff);m.emissiveIntensity=F.glow;}
   return skinMatCache[fid]=m;
 }
-function buildGun(id,team,skin){
-  const name=gunAsset(id,team);const group=asset(name);
+function buildGun(id,team,skin,variant){
+  const name=id==='knife'&&variant&&ASSET[variant]?variant:gunAsset(id,team);const group=asset(name);
   const mz=group.getObjectByName(name+'_muzzle'),fo=group.getObjectByName(name+'_fore');
   const out={group,muzzle:mz?mz.position.clone():V3(0,0,-0.5),fore:fo?fo.position.clone():V3(0,0,-0.3)};
   if(id==='bomb'){const led=group.getObjectByName('bomb_led');if(led){const m=led.children[0];m.material=m.material.clone();group.userData.led=m;}}
@@ -165,10 +166,10 @@ function buildCharacter(agentId){
     legs:[{hip:f('hipL'),knee:f('kneeL')},{hip:f('hipR'),knee:f('kneeR')}]};
   return root;
 }
-function setCharGun(model,id,team,skin){
-  const u=model.userData;const key=id?gunAsset(id,team)+(skin||''):null;if(u.gunId===key)return;u.gunId=key;
+function setCharGun(model,id,team,skin,variant){
+  const u=model.userData;const key=id?gunAsset(id,team)+(skin||'')+(variant||''):null;if(u.gunId===key)return;u.gunId=key;
   while(u.gunHolder.children.length)u.gunHolder.remove(u.gunHolder.children[0]);
-  if(!id)return;const g=buildGun(id,team,skin).group;if(id==='bomb'){g.scale.setScalar(0.8);g.rotation.x=-0.6;}
+  if(!id)return;const g=buildGun(id,team,skin,variant).group;if(id==='bomb'){g.scale.setScalar(0.8);g.rotation.x=-0.6;}
   if(WEP[id].cls==='nade'){g.position.set(0.02,0,0.02);}
   u.gunHolder.add(g);
 }

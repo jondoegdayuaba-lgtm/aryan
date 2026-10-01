@@ -8,9 +8,9 @@ const VM={
   init(){this.root=new THREE.Group();vmScene.add(this.root);this.holder=new THREE.Group();this.root.add(this.holder);
     this.flash=new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.soft,color:0xffc070,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false}));this.flash.visible=false;},
   setWeapon(a){
-    const id=a.curId();this.owner=a;this.id=id;this.team=a.team;this.skin=skinOf(a,id);this.agent=a.agentId;
+    const id=a.curId();this.owner=a;this.id=id;this.team=a.team;this.skin=skinOf(a,id);this.agent=a.agentId;this.kmodel=knifeModelOf(a,id);
     while(this.holder.children.length)this.holder.remove(this.holder.children[0]);
-    const g=buildGun(id,a.team,this.skin);this.gun=g;this.holder.add(g.group);
+    const g=buildGun(id,a.team,this.skin,this.kmodel);this.gun=g;this.holder.add(g.group);
     const cls=WEP[id].cls;
     const armR=asset(a.agentId+'_vmarm');armR.position.set(0.005,-0.035,0.04);armR.rotation.set(0.15,0.32,0);g.group.add(armR);
     if(cls!=='knife'&&cls!=='nade'){const armL=asset(a.agentId+'_vmarm');armL.position.copy(g.fore).add(V3(-0.01,-0.03,0));
@@ -25,7 +25,7 @@ const VM={
   slash(h){this.slashT=0;this.slashHeavy=h;},
   update(dt,a,mdx,mdy){
     if(!a){this.root.visible=false;return;}
-    if(this.owner!==a||this.id!==a.curId()||this.team!==a.team||this.skin!==skinOf(a,this.id)||this.agent!==a.agentId)this.setWeapon(a);
+    if(this.owner!==a||this.id!==a.curId()||this.team!==a.team||this.skin!==skinOf(a,this.id)||this.agent!==a.agentId||this.kmodel!==knifeModelOf(a,this.id))this.setWeapon(a);
     const cls=WEP[this.id].cls;
     this.root.visible=a.alive&&!(cls==='sniper'&&a.scope);
     const base=cls==='knife'?[0.15,-0.15,-0.32]:cls==='nade'?[0.17,-0.16,-0.42]:cls==='bomb'?[0.06,-0.2,-0.36]:cls==='pistol'||cls==='heavy'?[0.12,-0.13,-0.36]:cls==='sniper'?[0.15,-0.17,-0.46]:[0.13,-0.15,-0.33];

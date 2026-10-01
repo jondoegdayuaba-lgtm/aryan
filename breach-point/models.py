@@ -747,6 +747,13 @@ container('contR', 0xa8382d); container('contB', 0x2e5f8f); container('contG', 0
 pine('pine', False); pine('pineSnow', True); pallets(); crane(); bollard(); streetlamp(); sandbags()
 drum('drumB', 0x2e5f8f); drum('drumR', 0xa8382d); forklift(); fence(); lifebuoy()
 
+# plug-ins: each breach-point/blender/*.py adds more models using the helpers above (exec'd in this namespace)
+import glob, os
+_dirs = [os.path.join(os.path.dirname(os.path.abspath(__file__)), 'blender')] + [d for d in os.environ.get('BP_PLUGINS', '').split(os.pathsep) if d]
+for _plugin in sorted(p for d in _dirs for p in glob.glob(os.path.join(d, '*.py'))):
+    print('plug-in', os.path.basename(_plugin))
+    exec(compile(open(_plugin).read(), _plugin, 'exec'), globals())
+
 out = sys.argv[-1] if sys.argv[-1].endswith('.glb') else 'models.glb'
 bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_apply=True, export_yup=True,
                           export_texcoords=False, export_materials='EXPORT', export_animations=False)

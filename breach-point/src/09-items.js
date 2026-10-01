@@ -43,14 +43,18 @@ const FINISHES={
   crimsonweb:{name:'Crimson Web',pat:'web',cols:['#8a0e12','#120404'],metal:0.5,rough:0.3,scale:0.5},
   rubychrome:{name:'Ruby Chrome',pat:'chrome',cols:['#ff8a8a','#d01020','#5a0408'],metal:1,rough:0.1,scale:0.6}
 };
+// Extra pattern painters can be registered here: PATTERNS.name=(g,w,h,cols,wrapDraw,finish)=>{...}
+const PATTERNS={};
+// Knife models: 'knife' is the default Talon; others are Blender assets named after their key (knife_xxx)
+const KNIVES={knife:{name:'Talon Knife'}};
 const finishTexCache={};
 function finishTex(fid){
   if(finishTexCache[fid])return finishTexCache[fid];
-  const F=FINISHES[fid],C=F.cols,S_=256;
+  const F=FINISHES[fid],C=F.cols,S_=F.res||256;
   const t=canvasTex(S_,S_,(g,w,h)=>{
     const wrapDraw=fn=>{for(const ox of[-w,0,w])for(const oy of[-h,0,h]){g.save();g.translate(ox,oy);fn();g.restore();}};
     g.fillStyle=C[0];g.fillRect(0,0,w,h);
-    switch(F.pat){
+    if(PATTERNS[F.pat])PATTERNS[F.pat](g,w,h,C,wrapDraw,F);else switch(F.pat){
       case 'camo':for(let k=1;k<C.length;k++)for(let i=0;i<9;i++){const x=Math.random()*w,y=Math.random()*h,r=rand(18,42);const pts=[];for(let a=0;a<12;a++){const rr=r*rand(0.6,1.25);pts.push([x+Math.cos(a/12*6.283)*rr,y+Math.sin(a/12*6.283)*rr*0.7]);}
         wrapDraw(()=>{g.fillStyle=C[k];g.beginPath();pts.forEach((p,j)=>j?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1]));g.closePath();g.fill();});}break;
       case 'tiger':g.fillStyle=C[1];for(let i=0;i<9;i++){const y0=i*h/9+rand(-6,6);g.beginPath();g.moveTo(0,y0);
@@ -75,9 +79,9 @@ function finishTex(fid){
       case 'damascus':for(let y=0;y<h;y+=3){g.strokeStyle=(y/3)%2?C[1]:C[0];g.lineWidth=3;g.beginPath();for(let x=0;x<=w;x+=8)g.lineTo(x,y+Math.sin(x*0.05+y*0.08)*10+Math.sin(x*0.13)*4);g.stroke();}break;
       case 'chrome':{const gr=g.createLinearGradient(0,0,w*0.3,h);gr.addColorStop(0,C[0]);gr.addColorStop(0.45,C[1]);gr.addColorStop(0.55,C[2]);gr.addColorStop(1,C[1]);g.fillStyle=gr;g.fillRect(0,0,w,h);break;}
     }
-    speckle(g,w,h,600,['rgba(0,0,0,.5)','rgba(255,255,255,.5)'],1,1.5);
+    if(!F.clean)speckle(g,w,h,600,['rgba(0,0,0,.5)','rgba(255,255,255,.5)'],1,1.5);
   });
-  t.wrapS=t.wrapT=F.pat==='fade'?THREE.MirroredRepeatWrapping:THREE.RepeatWrapping;t.repeat.set(1/F.scale,1/F.scale);
+  t.wrapS=t.wrapT=(F.pat==='fade'||F.mirror)?THREE.MirroredRepeatWrapping:THREE.RepeatWrapping;t.repeat.set(1/F.scale,1/F.scale);
   return finishTexCache[fid]=t;
 }
 
@@ -109,7 +113,7 @@ const CASES=[
     {a:'S_bandit',r:1},{a:'W_ranger',r:1},{a:'S_ghost',r:2},{a:'W_diver',r:2},{a:'S_brute',r:3},{a:'W_riot',r:3},
     {w:'knife',f:'rubychrome',r:4},{w:'hawk',f:'goldleaf',r:4}]}
 ];
-function itemName(it){return it.a?AGENT_INFO[it.a].name:(it.w==='knife'?'★ ':'')+WEP[it.w].name+' | '+FINISHES[it.f].name;}
+function itemName(it){if(it.a)return AGENT_INFO[it.a].name;if(it.w==='knife')return '★ '+KNIVES[it.k||'knife'].name+' | '+(it.f?FINISHES[it.f].name:'Vanilla');return WEP[it.w].name+' | '+FINISHES[it.f].name;}
 function itemKind(it){return it.a?(AGENT_INFO[it.a].team==='S'?'Striker agent':'Warden agent'):it.w==='knife'?'Knife':WEP[it.w].cls==='rifle'||WEP[it.w].cls==='sniper'?'Rifle':WEP[it.w].cls==='smg'||WEP[it.w].cls==='shotgun'?'Mid-tier':'Pistol';}
 function rollCase(cs){
   const tiers=[...new Set(cs.items.map(i=>i.r))];const tot=tiers.reduce((s,r)=>s+RARITY[r].weight,0);
@@ -133,7 +137,8 @@ const Profile={
     this.data.items=this.data.items.filter(i=>i.uid!==uid);this.data.coins+=v;this.save();return v;},
   owns(agent){return AGENT_INFO[agent].def||this.data.items.some(i=>i.a===agent);},
   agentFor(T){const a=this.data.equip[T].agent;return AGENT_INFO[a]&&AGENT_INFO[a].team===T&&this.owns(a)?a:T==='S'?'S_raider':'W_officer';},
-  skinFor(T,wid){const uid=this.data.equip[T].skins[wid];const it=uid&&this.find(uid);return it?it.f:null;},
+  skinFor(T,wid){const uid=this.data.equip[T].skins[wid];const it=uid&&this.find(uid);return it?it.f||null:null;},
+  knifeFor(T){const uid=this.data.equip[T].skins.knife;const it=uid&&this.find(uid);return it?{k:it.k&&KNIVES[it.k]?it.k:'knife',f:it.f||null}:{k:'knife',f:null};},
   equippedIn(uid){const out=[];for(const T of['S','W']){const e=this.data.equip[T];if(Object.values(e.skins).includes(uid))out.push(T);const it=this.find(uid);if(it&&it.a&&e.agent===it.a)out.push(T);}return[...new Set(out)];},
   usable(it,T){if(it.a)return AGENT_INFO[it.a].team===T;const w=WEP[it.w];return !w.team||w.team===T;},
   equip(uid,T){const it=this.find(uid);if(!it||!this.usable(it,T))return false;if(it.a)this.data.equip[T].agent=it.a;else this.data.equip[T].skins[it.w]=uid;this.save();return true;},
