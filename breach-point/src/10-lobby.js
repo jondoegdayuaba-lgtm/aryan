@@ -123,18 +123,18 @@ const Lobby={tab:'play',model:null,modelKey:'',t:0,invFilter:'all',invSel:null,s
   },
   renderPlay(){
     this.renderMaps();
-    const cs=CASES.find(c=>c.id==='neon');
+    const kc=knifeCase(),gift=kc&&Profile.data.knifeGift;const cs=gift?kc:CASES.find(c=>c.id==='neon');
     const st=Profile.data.stats,L=Profile.level(),kd=st.deaths?(st.kills/st.deaths).toFixed(2):st.kills.toFixed(2);
     const wr=st.matches?Math.round(st.wins/st.matches*100)+'%':'—';
-    $('sidePanel').innerHTML=`<div id="featured"><div class="tag">NEW &amp; POPULAR</div><div class="casepic"><img src="${caseArt(cs,240,110)}" alt=""></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px"><b>${esc(cs.name)}</b><span class="chip" style="font-size:14px"><span class="coin"></span>${cs.price}</span></div></div>
+    $('sidePanel').innerHTML=`<div id="featured"><div class="tag">${gift?'WELCOME GIFT · FREE KNIFE':'NEW &amp; POPULAR'}</div><div class="casepic"><img src="${caseArt(cs,240,110)}" alt=""></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px"><b>${esc(cs.name)}</b>${gift?'<span class="chip" style="font-size:14px;color:#7be07b">FREE</span>':`<span class="chip" style="font-size:14px"><span class="coin"></span>${cs.price}</span>`}</div></div>
       <div class="pcard"><img src="${Thumb.agent(Profile.agentFor(this.side()),90,120)}" style="height:84px;border-radius:6px;background:rgba(255,255,255,.06)" alt="">
       <div style="flex:1"><div class="pname">You</div><div style="color:var(--dim);font-size:14px;font-weight:600">Level ${L.lv} · ${L.into} / ${L.need} XP</div><div class="xpbar"><div style="width:${(L.into/L.need*100).toFixed(1)}%"></div></div>
       <div class="chip" style="margin-top:8px;display:inline-flex;font-size:15px"><span class="coin"></span>${Profile.coins.toLocaleString()}</div></div></div>
       <h4>CAREER</h4><div class="stats4"><div><b>${st.matches}</b><small>MATCHES</small></div><div><b>${wr}</b><small>WIN RATE</small></div><div><b>${kd}</b><small>K/D</small></div><div><b>${st.mvps}</b><small>MVP STARS</small></div></div>
       <h4>RECENT MATCHES</h4>${Profile.data.history.length?Profile.data.history.map(h=>`<div class="hist"><span class="${h.res}">${h.res==='W'?'WIN':h.res==='L'?'LOSS':'DRAW'} ${h.score}</span><span>${esc(h.map)}</span><span>${h.k}/${h.d}</span><span style="color:#ffd56b">+${h.coins}</span></div>`).join(''):'<div style="color:var(--dim);font-size:14px">No matches yet. Play one to earn coins.</div>'}
       <h4>COLLECTION</h4><div style="color:var(--dim);font-size:14px">${Profile.data.items.length} items · ${Profile.data.opened||0} cases opened</div>`;
-    $('featured').onclick=()=>{this.storeSel='neon';SFX.ui();this.go('store');};
+    $('featured').onclick=()=>{this.storeSel=cs.id;SFX.ui();this.go('store');};
   },
   // ------------------------------ inventory ------------------------------
   renderInventory(){
@@ -202,17 +202,18 @@ const Lobby={tab:'play',model:null,modelKey:'',t:0,invFilter:'all',invSel:null,s
     $('storeGrid').innerHTML=CASES.map(cs=>`<button class="icard${cs.id===this.storeSel?' sel':''}" data-c="${cs.id}" style="height:190px"><div class="pic" style="height:120px"><img src="${caseArt(cs,220,120)}" alt=""></div>
       <div class="in" style="font-size:16px">${esc(cs.name)}</div><div class="ik" style="display:flex;align-items:center;gap:6px"><span class="coin"></span>${cs.price}</div><div class="bar" style="background:${cs.color}"></div></button>`).join('');
     $('storeGrid').querySelectorAll('.icard').forEach(c=>c.onclick=()=>{this.storeSel=c.dataset.c;SFX.ui();this.renderStore();});
-    const cs=CASES.find(c=>c.id===this.storeSel)||CASES[0];const can=Profile.coins>=cs.price;
+    const cs=CASES.find(c=>c.id===this.storeSel)||CASES[0];const free=cs===knifeCase()&&Profile.data.knifeGift;const can=free||Profile.coins>=cs.price;
     $('storeDetail').innerHTML=`<div class="big"><img src="${caseArt(cs,340,190)}" alt=""></div><h3>${esc(cs.name)}</h3>
-      <button class="btn ${can?'primary':''}" id="btnOpenCase" ${can?'':'disabled'}>Open for <span class="coin" style="vertical-align:-3px"></span> ${cs.price}</button>
-      ${can?'':`<div style="color:#ff8a7a;font-size:14px">You need ${cs.price-Profile.coins} more coins. Play a match to earn more.</div>`}
+      <button class="btn ${can?'primary':''}" id="btnOpenCase" ${can?'':'disabled'}>${free?'Open FREE (welcome gift)':`Open for <span class="coin" style="vertical-align:-3px"></span> ${cs.price}`}</button>
+      ${free?'<div style="color:#7be07b;font-size:14px">Every player gets one free knife from this case.</div>':''}${can?'':`<div style="color:#ff8a7a;font-size:14px">You need ${cs.price-Profile.coins} more coins. Play a match to earn more.</div>`}
       <div style="font-size:13px;color:var(--dim);letter-spacing:.1em;margin-top:6px">CONTAINS ONE OF</div>
       <div style="overflow:auto;flex:1;display:flex;flex-direction:column;gap:4px">${cs.items.slice().sort((a,b)=>b.r-a.r).map(it=>`<div class="hist" style="align-items:center;border-left:3px solid ${RARITY[it.r].color}"><img src="${Thumb.item(it)}" style="height:34px;width:70px;object-fit:contain" alt=""><span style="flex:1;margin-left:8px">${esc(it.r===4&&it.w==='knife'?'★ Rare special item':itemName(it))}</span><span style="color:${RARITY[it.r].color};font-size:12px">${RARITY[it.r].name}</span></div>`).join('')}</div>`;
-    if(can)$('btnOpenCase').onclick=()=>this.openCase(cs);
+    if(can)$('btnOpenCase').onclick=()=>this.openCase(cs,free);
   },
-  openCase(cs){
-    if(Profile.coins<cs.price)return;SFX.init();
-    Profile.data.coins-=cs.price;Profile.data.opened=(Profile.data.opened||0)+1;Profile.save();this.refreshTop();
+  openCase(cs,free){
+    if(free&&!(cs===knifeCase()&&Profile.data.knifeGift))free=false;
+    if(!free&&Profile.coins<cs.price)return;SFX.init();
+    if(free)Profile.data.knifeGift=false;else Profile.data.coins-=cs.price;Profile.data.opened=(Profile.data.opened||0)+1;Profile.save();this.refreshTop();
     const win=rollCase(cs);const N=58,WIN=50;const cards=[];for(let i=0;i<N;i++)cards.push(i===WIN?win:rollCase(cs));
     $('caseTitle').textContent=cs.name.toUpperCase();$('caseResult').innerHTML='';
     const reel=$('reel');reel.style.transition='none';reel.style.transform='translateX(0px)';

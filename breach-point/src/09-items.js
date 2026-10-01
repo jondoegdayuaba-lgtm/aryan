@@ -115,6 +115,8 @@ const CASES=[
 ];
 function itemName(it){if(it.a)return AGENT_INFO[it.a].name;if(it.w==='knife')return '★ '+KNIVES[it.k||'knife'].name+' | '+(it.f?FINISHES[it.f].name:'Vanilla');return WEP[it.w].name+' | '+FINISHES[it.f].name;}
 function itemKind(it){return it.a?(AGENT_INFO[it.a].team==='S'?'Striker agent':'Warden agent'):it.w==='knife'?'Knife':WEP[it.w].cls==='rifle'||WEP[it.w].cls==='sniper'?'Rifle':WEP[it.w].cls==='smg'||WEP[it.w].cls==='shotgun'?'Mid-tier':'Pistol';}
+// the knives-only case (every item is a knife); one is free for every profile
+function knifeCase(){return CASES.find(c=>c.items.length&&c.items.every(i=>i.w==='knife'))||null;}
 function rollCase(cs){
   const tiers=[...new Set(cs.items.map(i=>i.r))];const tot=tiers.reduce((s,r)=>s+RARITY[r].weight,0);
   let x=Math.random()*tot,tier=tiers[0];for(const r of tiers){x-=RARITY[r].weight;if(x<=0){tier=r;break;}}
@@ -125,9 +127,9 @@ function rollCase(cs){
 const Profile={
   data:null,
   defaults(){return{coins:750,xp:0,items:[],uid:1,equip:{S:{agent:'S_raider',skins:{}},W:{agent:'W_officer',skins:{}}},
-    stats:{matches:0,wins:0,losses:0,draws:0,kills:0,deaths:0,mvps:0},history:[],opened:0};},
+    stats:{matches:0,wins:0,losses:0,draws:0,kills:0,deaths:0,mvps:0},history:[],opened:0,knifeGift:true};},
   load(){let d=null;try{d=JSON.parse(localStorage.getItem('breachpoint.profile')||'null');}catch(e){}
-    this.data=Object.assign(this.defaults(),d||{});for(const T of['S','W'])if(!this.data.equip[T])this.data.equip[T]=this.defaults().equip[T];},
+    this.data=Object.assign(this.defaults(),d||{});if(this.data.knifeGift===undefined)this.data.knifeGift=true;for(const T of['S','W'])if(!this.data.equip[T])this.data.equip[T]=this.defaults().equip[T];},
   save(){try{localStorage.setItem('breachpoint.profile',JSON.stringify(this.data));}catch(e){}},
   get coins(){return this.data.coins;},
   level(){const xp=this.data.xp;let lv=1,need=500,acc=0;while(xp>=acc+need){acc+=need;lv++;need=Math.round(need*1.15);}return{lv,into:xp-acc,need};},
