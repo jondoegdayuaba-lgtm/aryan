@@ -1,16 +1,26 @@
-// Builds desktop/missile-run.html: the whole game (three.js included) in one file
-// that runs by double-clicking it, no web server needed.
+// Builds a game into one HTML file (three.js included) that runs by
+// double-clicking it, no web server needed.
 //   npm install && npm run build:desktop
+//   node tools/build-desktop.mjs            -> desktop/missile-run.html
+//   node tools/build-desktop.mjs arena      -> desktop/block-brawl.html
 import { build } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
+const GAMES = {
+  'missile-run': { dir: '.', out: 'missile-run.html' },
+  arena: { dir: 'arena', out: 'block-brawl.html' },
+};
+const game = GAMES[process.argv[2] || 'missile-run'];
+if (!game) throw new Error(`Unknown game "${process.argv[2]}". Pick one of: ${Object.keys(GAMES).join(', ')}`);
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const read = (p) => readFileSync(resolve(root, p), 'utf8');
+const gameDir = resolve(root, game.dir);
+const read = (p) => readFileSync(resolve(gameDir, p), 'utf8');
 
 const result = await build({
-  entryPoints: [resolve(root, 'js/main.js')],
+  entryPoints: [resolve(gameDir, 'js/main.js')],
   bundle: true,
   format: 'iife',
   minify: true,
@@ -32,5 +42,5 @@ swap(/\s*<script type="importmap">.*<\/script>/.exec(html)[0], '');
 swap('<script type="module" src="js/main.js"></script>', `<script>\n${js}</script>`);
 
 mkdirSync(resolve(root, 'desktop'), { recursive: true });
-writeFileSync(resolve(root, 'desktop/missile-run.html'), html);
-console.log(`desktop/missile-run.html written (${(html.length / 1024).toFixed(0)} KB)`);
+writeFileSync(resolve(root, 'desktop', game.out), html);
+console.log(`desktop/${game.out} written (${(html.length / 1024).toFixed(0)} KB)`);

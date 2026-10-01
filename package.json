@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:desktop": "node tools/build-desktop.mjs"
+    "build:desktop": "node tools/build-desktop.mjs",
+    "build:arena": "node tools/build-desktop.mjs arena"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

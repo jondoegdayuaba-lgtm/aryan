@@ -82,3 +82,41 @@ Four extra missile skins unlock as your best score climbs.
 | `js/collision.js` | Simple collision shapes |
 
 three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+---
+
+# Block Brawl (`arena/`)
+
+A second game in this repo: a fast 3D arena shooter in the style of browser `.io` FPS games. You fight bots in a walled yard with shipping containers, crates, cover walls and a raised centre platform. It's original code and art: everything is built from boxes, and the sounds are synthesised.
+
+- **Modes:** Free for All (first to 25), Team Deathmatch (4 v 4, first team to 50), and Gun Game (each kill swaps your gun for the next one; get a knife kill on the last level to win, and a knife kill knocks the victim down a level).
+- **Weapons:** assault rifle, SMG, shotgun, sniper (with scope), rocket launcher (rocket jumps work), pistol, knife and frag grenades. Headshots do extra damage.
+- **Movement:** sprint-slide, slide-jump, crouch, stairs, and jumping onto crates.
+- **Bots** have Easy, Normal and Hard settings. They find paths around the map with A*, react with a short delay, strafe, jump and fire in bursts.
+- Health regenerates after 4 seconds without damage. You respawn after 3 seconds, with brief spawn protection.
+
+Play it at `arena/index.html` (serve the repo root with `python3 -m http.server 8000` and open http://localhost:8000/arena/), or double-click `desktop/block-brawl.html`. Rebuild that file with `npm run build:arena`.
+
+| Desktop | Phone |
+| --- | --- |
+| WASD move, Space jump | Left thumb: move |
+| Shift / C slide (hold to crouch) | Right thumb: look |
+| Left click shoot, right click / E aim | Fire (drag it to aim while shooting), Aim |
+| R reload, 1 2 3 / Q / wheel switch weapon | R, Swap |
+| G grenade, Tab scoreboard | G, scoreboard button |
+| Esc / P pause, M mute | Pause button |
+
+Tune weapons, movement, modes and bot skill in `arena/js/config.js`.
+
+| File | What it does |
+| --- | --- |
+| `arena/js/main.js` | Match flow, player controls, camera, HUD |
+| `arena/js/map.js` | The arena, ray and box queries, pathfinding grid |
+| `arena/js/physics.js` | Box collisions, step-up, acceleration |
+| `arena/js/actors.js` | Fighter state and blocky character models |
+| `arena/js/bots.js` | Bot AI |
+| `arena/js/combat.js` | Hitscan, rockets, grenades, explosions, damage |
+| `arena/js/weapons.js` | Gun models and the first-person view model |
+| `arena/js/effects.js` | Tracers, sparks, explosions |
+| `arena/js/audio.js` | Synthesised sounds |
+| `arena/js/input.js` | Mouse, keyboard and touch controls |

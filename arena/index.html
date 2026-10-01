@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Block Brawl</title>
+  <meta name="description" content="A fast 3D arena shooter in the browser: slide, aim down sights and battle bots in Free for All, Team Deathmatch and Gun Game.">
+  <meta name="theme-color" content="#16192b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2316192b'/%3E%3Ccircle cx='32' cy='32' r='16' fill='none' stroke='%23ffb020' stroke-width='5'/%3E%3Cpath d='M32 8v14M32 42v14M8 32h14M42 32h14' stroke='%23ffb020' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Chakra+Petch:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js" } }</script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+
+  <div id="hud" hidden>
+    <div id="vignette"></div>
+    <div id="scope" hidden><div class="scope-ring"></div></div>
+    <div class="top">
+      <div id="topscore" class="topscore"></div>
+      <div id="timer" class="timer">0:00</div>
+    </div>
+    <div id="killfeed" class="killfeed" aria-live="polite"></div>
+    <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+    </button>
+    <button id="btn-board" class="icon-btn" type="button" aria-label="Scoreboard">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="3" rx="1"/><rect x="4" y="10.5" width="16" height="3" rx="1"/><rect x="4" y="16" width="16" height="3" rx="1"/></svg>
+    </button>
+
+    <div id="crosshair" class="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></div>
+    <div id="hitmarker" class="hitmarker" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div id="dmg" class="dmg" aria-hidden="true"></div>
+    <div id="banner" class="banner"></div>
+    <div id="reload-hint" class="hint" hidden>Press R to reload</div>
+    <div id="reloading" class="hint" hidden>Reloading…</div>
+
+    <div class="bottom-left">
+      <div class="hp">
+        <span id="health-num" class="hp-num">100</span>
+        <div class="hp-bar"><div id="health-fill"></div></div>
+      </div>
+    </div>
+    <div class="bottom-right">
+      <div class="ammo"><span id="ammo-mag" class="mag">30</span><span id="ammo-res" class="res">/ 150</span></div>
+      <div class="weapon"><span id="weapon-name">Assault Rifle</span><span class="nades" title="Grenades (G)"><span class="label">G</span> <span id="nades">● ●</span></span></div>
+    </div>
+
+    <div id="death" class="death" hidden>
+      <p id="death-by"></p>
+      <p class="respawn">Respawning in <span id="death-timer">3</span></p>
+    </div>
+
+    <div id="scoreboard" class="scoreboard" hidden>
+      <h2>Scoreboard</h2>
+      <div id="scoreboard-body"></div>
+    </div>
+
+    <!-- Touch controls -->
+    <div id="stick" class="stick" hidden><div id="stick-knob" class="stick-knob"></div></div>
+    <div class="touch-pad">
+      <button type="button" class="tbtn tbtn-fire" data-touch="fire">Fire</button>
+      <button type="button" class="tbtn tbtn-aim" data-touch="aim">Aim</button>
+      <button type="button" class="tbtn tbtn-jump" data-touch="jump" data-hold>Jump</button>
+      <button type="button" class="tbtn tbtn-slide" data-touch="slide">Slide</button>
+      <button type="button" class="tbtn tbtn-reload" data-touch="reload">R</button>
+      <button type="button" class="tbtn tbtn-swap" data-touch="swap">Swap</button>
+      <button type="button" class="tbtn tbtn-nade" data-touch="nade">G</button>
+    </div>
+  </div>
+
+  <section id="menu" class="screen" aria-labelledby="title">
+    <div class="menu-card">
+      <h1 id="title" class="title"><span id="title-a"></span> <span id="title-b" class="accent"></span></h1>
+      <p id="tagline" class="tagline"></p>
+
+      <div class="opt">
+        <span class="label">Mode</span>
+        <div id="opt-mode" class="chips"></div>
+        <p id="mode-desc" class="desc"></p>
+      </div>
+      <div class="opt" id="row-gun">
+        <span class="label">Primary weapon</span>
+        <div id="opt-gun" class="chips"></div>
+      </div>
+      <div class="opt-row">
+        <div class="opt">
+          <span class="label">Bots</span>
+          <div id="opt-diff" class="chips"></div>
+        </div>
+        <div class="opt" id="row-bots">
+          <span class="label">How many</span>
+          <div id="opt-bots" class="chips"></div>
+        </div>
+      </div>
+      <div class="opt sens">
+        <label class="label" for="sens">Mouse sensitivity <span id="sens-val">1.0</span></label>
+        <input id="sens" type="range" min="0.2" max="3" step="0.1" value="1">
+      </div>
+
+      <button id="btn-play" class="big-btn" type="button">Play</button>
+
+      <dl class="controls controls-desktop">
+        <div><dt>WASD</dt><dd>Move</dd></div>
+        <div><dt>Space</dt><dd>Jump</dd></div>
+        <div><dt>Shift / C</dt><dd>Slide (hold to crouch)</dd></div>
+        <div><dt>Left click</dt><dd>Shoot</dd></div>
+        <div><dt>Right click / E</dt><dd>Aim down sights</dd></div>
+        <div><dt>R</dt><dd>Reload</dd></div>
+        <div><dt>1 2 3 / Q / Wheel</dt><dd>Switch weapon</dd></div>
+        <div><dt>G</dt><dd>Grenade</dd></div>
+        <div><dt>Tab</dt><dd>Scoreboard</dd></div>
+        <div><dt>Esc / P · M</dt><dd>Pause · Mute</dd></div>
+      </dl>
+      <dl class="controls controls-touch">
+        <div><dt>Left thumb</dt><dd>Move</dd></div>
+        <div><dt>Right thumb</dt><dd>Look (drag Fire to aim while shooting)</dd></div>
+      </dl>
+
+      <div class="menu-foot">
+        <span id="totals"></span>
+        <button id="btn-sound" class="text-btn" type="button">Sound on</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="paused" class="screen screen-center" hidden>
+    <h2 class="title small">Paused</h2>
+    <button id="btn-resume" class="big-btn" type="button">Resume</button>
+    <button id="btn-quit" class="text-btn" type="button">Quit to menu</button>
+  </section>
+
+  <section id="results" class="screen screen-center" hidden>
+    <h2 id="result-title" class="title small">Match over</h2>
+    <dl id="result-stats" class="result-stats"></dl>
+    <div id="result-board" class="result-board"></div>
+    <button id="btn-again" class="big-btn" type="button">Play again</button>
+    <button id="btn-menu" class="text-btn" type="button">Main menu</button>
+  </section>
+
+  <div id="loading" class="loading">Loading arena…</div>
+  <noscript><p class="loading">This game needs JavaScript turned on.</p></noscript>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
