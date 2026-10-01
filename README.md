@@ -1,5 +1,7 @@
 # Missile Run
 
+> This repo also contains **Pulse Vector**, a one-file rhythm platformer. See [`pulse-vector/README.md`](pulse-vector/README.md).
+
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.
 
 ## How the flying works
