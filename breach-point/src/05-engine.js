@@ -388,16 +388,21 @@ function blockedAt(a,y,H){
   return false;
 }
 function moveAxis(a,ax,d){
-  if(!d)return;a.pos[ax]+=d;const R=R_AG;const H=a.height;
-  const list=World.query(a.pos.x-R,a.pos.z-R,a.pos.x+R,a.pos.z+R).slice();
-  for(const b of list){
-    if(a.pos.x+R<=b.x0||a.pos.x-R>=b.x1||a.pos.z+R<=b.z0||a.pos.z-R>=b.z1)continue;
-    if(b.y1<=a.pos.y+0.01||b.y0>=a.pos.y+H)continue;
-    const step=b.y1-a.pos.y;
-    if(step<=0.56&&(a.onGround||a.vel.y<=0.5)&&!blockedAt(a,b.y1,H)){a.pos.y=b.y1;a.onGround=true;if(a.vel.y<0)a.vel.y=0;continue;}
-    if(ax==='x'){const pl=a.pos.x+R-b.x0,pr=b.x1-(a.pos.x-R);a.pos.x+=pl<pr?-pl-1e-4:pr+1e-4;a.vel.x=0;}
-    else{const pl=a.pos.z+R-b.z0,pr=b.z1-(a.pos.z-R);a.pos.z+=pl<pr?-pl-1e-4:pr+1e-4;a.vel.z=0;}
+  if(!d)return;const p0=a.pos[ax];a.pos[ax]+=d;const R=R_AG;const H=a.height;
+  // push out against the direction of travel (never to a far face of a long wall); repeat so a push cannot leave the agent in a neighbouring box
+  for(let pass=0;pass<3;pass++){let hit=false;
+    const list=World.query(a.pos.x-R,a.pos.z-R,a.pos.x+R,a.pos.z+R).slice();
+    for(const b of list){
+      if(a.pos.x+R<=b.x0||a.pos.x-R>=b.x1||a.pos.z+R<=b.z0||a.pos.z-R>=b.z1)continue;
+      if(b.y1<=a.pos.y+0.01||b.y0>=a.pos.y+H)continue;
+      const step=b.y1-a.pos.y;
+      if(step<=0.56&&(a.onGround||a.vel.y<=0.5)&&!blockedAt(a,b.y1,H)){a.pos.y=b.y1;a.onGround=true;if(a.vel.y<0)a.vel.y=0;continue;}
+      hit=true;const lo=ax==='x'?b.x0:b.z0,hi=ax==='x'?b.x1:b.z1;
+      a.pos[ax]=d>0?lo-R-1e-4:hi+R+1e-4;if(a.vel[ax]*d>0)a.vel[ax]=0;
+    }
+    if(!hit)return;
   }
+  if(blockedAt(a,a.pos.y,H))a.pos[ax]=p0;
 }
 function physics(a,dt){
   const inp=a.input;
@@ -447,8 +452,7 @@ function separateAgents(){
     for(let j=i+1;j<L.length;j++){const b=L[j];if(!b.alive)continue;
       const dx=b.pos.x-a.pos.x,dz=b.pos.z-a.pos.z,d=Math.hypot(dx,dz);
       if(d<0.75&&d>1e-4&&Math.abs(a.pos.y-b.pos.y)<1.6){const push=(0.75-d)/2,nx=dx/d,nz=dz/d;
-        a.pos.x-=nx*push;a.pos.z-=nz*push;b.pos.x+=nx*push;b.pos.z+=nz*push;
-        moveAxis(a,'x',0.0001);moveAxis(b,'x',0.0001);}}}
+        const k=Math.min(push,0.2);moveAxis(a,'x',-nx*k);moveAxis(a,'z',-nz*k);moveAxis(b,'x',nx*k);moveAxis(b,'z',nz*k);}}}
 }
 
 const Noise={emit(src,pos,radius){for(const b of G.agents){if(!b.bot||!b.alive||b.team===src.team)continue;
@@ -505,9 +509,9 @@ function traceBullet(a,w,o,d,dmgScale){
 }
 function fireGun(a,w,inst){
   inst.mag--;a.nextFire=NOW+w.rof;a.lastFire=NOW;
+  const spread=inaccuracy(a,w)+(a.bot?a.bot.aimJitter:0);  // first shot uses the base spread
   const pat=patternAt(w,a.recoilIdx);a.recoilIdx=Math.min(a.recoilIdx+1,w.pattern.length-2);
   const comp=a.bot?a.bot.diff.recoilComp:0;
-  const spread=inaccuracy(a,w)+(a.bot?a.bot.aimJitter:0);
   const o=a.eye();const pellets=w.pellets||1;let end=0;
   for(let i=0;i<pellets;i++){
     const ang=Math.random()*Math.PI*2;const r=(w.pellets?w.cone*Math.sqrt(Math.random())+spread*0.3*Math.random():spread*Math.random())*DEG;
@@ -727,12 +731,13 @@ function pickupItem(a,it,i){
   if(a===G.player){SFX.pickup();if(a.slot===3||a.slot===s||(s===1&&a.slot===2))switchSlot(a,s);else if(a===viewTarget())VM.setWeapon(a);}
   else if(a.bot&&s===1&&a.slot!==1)switchSlot(a,1);
 }
-function clearItems(){for(const it of items)scene.remove(it.mesh);items.length=0;G.bombItem=null;for(const n of nades)scene.remove(n.mesh);nades.length=0;}
+function clearItems(){if(G.bomb&&G.bomb.mesh)scene.remove(G.bomb.mesh);G.bomb=null;for(const it of items)scene.remove(it.mesh);items.length=0;G.bombItem=null;for(const n of nades)scene.remove(n.mesh);nades.length=0;}
 
 /* ------------------------------- the bomb ------------------------------- */
 function tryPlant(a,dt){
   if(!a.hasBomb||!a.onGround||G.phase!=='live'||G.bomb)return false;
   const site=inSite(a.pos);if(!site){if(a===G.player&&!a._siteWarn){a._siteWarn=true;HUD.center('You must be on a bomb site to plant.',1.5);}return false;}
+  if(a.pos.y>World.heightAt(a.pos.x,a.pos.z)+0.3){if(a===G.player&&!a._siteWarn){a._siteWarn=true;HUD.center('Plant the bomb on the ground.',1.5);}return false;}
   if(a.plantProg===0){a.plantSite=site;a.plantTick=0;}
   a.plantProg+=dt;a.plantTick-=dt;if(a.plantTick<=0){a.plantTick=0.45;SFX.plantTick(a.pos);}
   if(a.plantProg>=3){plantBomb(a,site);a.plantProg=0;}
@@ -746,6 +751,9 @@ function plantBomb(a,site){
   if(a.slot===5){a.slot=5;switchSlot(a,a.primary?1:a.secondary?2:3);}
   for(const b of G.agents)if(b.bot)b.bot.onBombPlanted();
 }
+// in reach on the floor and not through a wall or panel
+function canDefuse(a,B){const dx=a.pos.x-B.pos.x,dz=a.pos.z-B.pos.z;if(dx*dx+dz*dz>1.7*1.7||Math.abs(a.pos.y-B.pos.y)>1.2)return false;
+  const e=a.eye();return !World.segBlocked(e.x,e.y,e.z,B.pos.x,B.pos.y+0.2,B.pos.z);}
 function updateBomb(dt){
   const B=G.bomb;if(!B||B.done)return;
   B.t-=dt;const iv=B.t>20?1:B.t>10?0.7:B.t>5?0.42:B.t>2?0.25:0.12;
@@ -753,7 +761,7 @@ function updateBomb(dt){
   else if(B.led&&B.beep<iv-0.08)B.led.material.color.set(0x401010);
   // defuse
   let def=null;
-  for(const a of G.agents){if(!a.alive||a.team!=='W'||!a.input.use||!a.onGround)continue;if(a.pos.distanceTo(B.pos)<1.7){def=a;break;}}
+  for(const a of G.agents){if(!a.alive||a.team!=='W'||!a.input.use||!a.onGround)continue;if(canDefuse(a,B)){def=a;break;}}
   if(def&&(B.defuser===def||!B.defuser)){
     if(B.defuser!==def){B.defuser=def;def.defuseProg=0;def.defTick=0;if(def===G.player)HUD.chat('Defusing...','sys');}
     def.defuseProg+=dt;def.defTick-=dt;if(def.defTick<=0){def.defTick=0.35;SFX.defuseTick(B.pos);}

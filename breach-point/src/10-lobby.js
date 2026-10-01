@@ -118,7 +118,7 @@ const Lobby={tab:'play',model:null,modelKey:'',t:0,invFilter:'all',invSel:null,s
     for(const id of MAP_ORDER){const M=MAPS[id];const b=document.createElement('button');b.className='mapcard'+(S.map===id?' on':'');
       b.style.backgroundImage=`url(${mapArt(M,300,140)})`;b.innerHTML=`<span class="md">${esc(M.tag||(id==='sandline'?'DESERT':id==='harbor'?'DOCKS':'SNOW'))}</span><span class="mn">${esc(M.name)}</span>`;
       b.onclick=()=>{S.map=id;saveSettings();SFX.ui();this.renderMaps();loadMap(id);this.modelKey='';this.refreshModel();};box.appendChild(b);}
-    $('mapDesc').textContent=MAPS[S.map].desc;
+    $('mapDesc').textContent=(MAPS[S.map]||MAPS[MAP_ORDER[0]]).desc;
   },
   renderPlay(){
     this.renderMaps();

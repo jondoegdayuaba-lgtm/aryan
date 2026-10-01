@@ -203,6 +203,11 @@ const Game={paused:false,last:0,fpsAcc:0,fpsN:0,menuT:0,menuModel:null,
     HUD.update(dt);
   },
   frame(t){
+    requestAnimationFrame(tt=>this.frame(tt));
+    try{this.step(t);this.errN=Math.max(0,(this.errN||0)-0.01);}
+    catch(e){console.error(e);this.errN=(this.errN||0)+1;if(this.errN<3)HUD.chat('Internal error: '+e.message,'sys');}
+  },
+  step(t){
     const dt=Math.min(0.05,Math.max(0.001,(t-(this.last||t))/1000));this.last=t;
     if(G.inMatch()&&!this.paused)this.sim(dt);
     if(G.phase!=='menu'&&!this.paused){FX.update(dt);this.animModels(dt);}
@@ -211,7 +216,6 @@ const Game={paused:false,last:0,fpsAcc:0,fpsN:0,menuT:0,menuModel:null,
     // one tip per session if Ultra/High runs slowly on this machine
     if(G.inMatch()&&!this.paused&&!this.fpsTipped&&S.quality!=='low'&&S.quality!=='medium'){this.perfT=(this.perfT||0)+dt;this.perfN=(this.perfN||0)+1;
       if(this.perfT>12){if(this.perfN/this.perfT<35){this.fpsTipped=true;HUD.chat('Low frame rate: open Settings (Esc) and pick a lower Graphics preset.','sys');}else{this.perfT=0;this.perfN=0;}}}
-    requestAnimationFrame(tt=>this.frame(tt));
   }
 };
 
@@ -252,12 +256,14 @@ function setupMenus(){
 
 // switches the world to another map (rebuilds geometry, lighting, sky and radar)
 function loadMap(id){
+  if(!MAPS[id])id=MAP_ORDER[0];
   if(MAP&&MAP.id===id&&mapGroup)return;
   useMap(id);waterMesh=null;buildMap();applyTheme();HUD.buildRadarBase();
 }
 function rollBotSkins(){const out={};for(const w of SKIN_WEAPONS){if(w==='knife'||Math.random()>0.3)continue;const opts=CASES.flatMap(c=>c.items).filter(i=>i.w===w);if(opts.length)out[w]=pick(opts).f;}return out;}
 function knifeItems(){return CASES.flatMap(c=>c.items).filter(i=>i.w==='knife');}
 function boot(){
+  if(!MAPS[S.map])S.map=MAP_ORDER[0]||'sandline';
   buildTextures();
   initRenderer();
   loadGLB(MODELS_GLB);

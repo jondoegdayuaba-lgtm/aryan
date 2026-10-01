@@ -13,7 +13,7 @@ const out=process.argv[2]||'.';const mode=process.argv[3]||'quick';
   await pg.route('https://fonts.**',r=>r.abort());
   await pg.goto('file://'+path.resolve(process.env.HTML||path.join(__dirname,'../../breach-point.html')));
   await pg.waitForFunction(()=>window.__bp||document.getElementById('loading').textContent.startsWith('Failed'),null,{timeout:60000});
-  const shot=async n=>{await pg.waitForTimeout(2500);await pg.screenshot({path:path.join(out,n+'.png')});};
+  const shot=async n=>{await pg.waitForTimeout(2500);await pg.screenshot({path:path.join(out,n+'.png'),timeout:120000}).catch(e=>console.log('screenshot skipped',n));};
   await shot('lobby');
   const E=(f,a)=>pg.evaluate(f,a);
   if(mode==='quick'||mode==='ui'){
