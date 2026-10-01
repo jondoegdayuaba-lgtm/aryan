@@ -82,3 +82,26 @@ Four extra missile skins unlock as your best score climbs.
 | `js/collision.js` | Simple collision shapes |
 
 three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+---
+
+# Breach Point
+
+`breach-point.html` is a second game in this repo: a 5v5 tactical bomb-defusal shooter in one self-contained HTML file. You play with four bots against five bots on Sandline, an original desert-town map. It uses three.js r128 from cdnjs. Open the file in a browser (double-click works) and press **Play**.
+
+- **Teams:** Strikers plant the bomb on site A or B. Wardens defend and defuse. First to 13 rounds wins, and sides swap after round 12.
+- **Rounds:** 12 s freeze time, 20 s buy time, 1:55 round timer. The bomb takes 3 s to plant and goes off after 40 s. Defusing takes 10 s, or 5 s with a kit.
+- **Economy:** you start with $800, money is capped at $16,000, kill rewards depend on the weapon, the loss bonus grows with each round lost, and there is a plant bonus.
+- **Weapons:** G-9 and P-12 pistols, Hawk .50, Vex-9 SMG, Breacher-12 shotgun, AR-K7 and M-4R rifles, Longshot sniper, Talon Knife. Each gun has its own recoil pattern, headshots multiply damage, armor reduces it, and bullets go through wooden walls and crates.
+- **Utility:** smoke, flashbang, HE grenade, and firebomb/incendiary. Left click throws far, right click throws short.
+- **Bots:** Easy, Normal or Hard. They buy, split between sites, hold angles, use utility, rotate, plant, retake and defuse.
+
+Controls: WASD, mouse, Shift walk, Ctrl or C crouch, Space jump, R reload, 1–5 / wheel / Q weapons, G drop, E use / plant / defuse, B buy, Tab scoreboard, Esc pause.
+
+The characters, weapons and props (crates, barrels, cars, palms, doors, windows, awnings, lamps, plants) were modelled in Blender with the script `breach-point/models.py`. They are embedded in the HTML as a GLB. To change them:
+
+```sh
+pip install bpy==4.2.0            # Blender as a Python module (Python 3.11)
+python breach-point/models.py breach-point/models.glb
+python breach-point/embed_models.py breach-point/models.glb
+```
