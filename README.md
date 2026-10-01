@@ -1,6 +1,8 @@
 # Missile Run
 
 > **Also in this repo: Sky Hopper**, an arcade flight sim in a single file, [`sky-hopper.html`](sky-hopper.html). Double-click it to play (it loads three.js from cdnjs, so it needs an internet connection). Take off from the runway, fly through rings for combos, land softly for a bonus, and watch the sun set over the sea. Controls are listed on its start screen.
+>
+> The plane, trees and rocks are modelled in Blender by a script, `tools/blender/build_models.py`. To change them, edit the script, then run `python3 tools/blender/build_models.py` (needs Blender's Python module: `pip install bpy`, Python 3.11) and `python3 tools/blender/embed.py` to put the new meshes into `sky-hopper.html`. The `.glb` files in `models/sky-hopper/` open in Blender or any glTF viewer.
 
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.
 
