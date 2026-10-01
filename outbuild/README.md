@@ -5,7 +5,7 @@ An original island battle royale for the browser. You drop from an airship with 
 Everything here is original: the characters, weapons, map, place names, models, textures, sounds and music. It is not affiliated with any other game.
 
 - **Models and animations:** made with Blender's Python API (`blender/`) and exported as GLB. Character clips (idle, walk, run, sprint, crouch, jump, fall, skydive, glide, death, dance, pickaxe swing, throw) are keyframed on the rig; guns have moving magazines, bolts, slides and pumps with keyframed Fire and Reload clips.
-- **Rendering:** [three.js](https://threejs.org) with ACES tone mapping, sun shadows, bloom and SMAA. The Epic setting adds ambient occlusion.
+- **Rendering:** [three.js](https://threejs.org) with ACES tone mapping, sun shadows, height fog, screen-space sun shafts, bloom, a vibrant colour grade and SMAA. Trees and bushes are covered in alpha-tested leaf cards. The Epic setting adds ambient occlusion.
 - **Sound:** synthesised live with the Web Audio API. There are no audio files.
 
 ## Play

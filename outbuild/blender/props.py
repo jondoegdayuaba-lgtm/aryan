@@ -37,6 +37,10 @@ def mats():
     m('Leaves', '#4f9e3a', rough=0.8)
     m('LeavesPine', '#2c6a50', rough=0.85)
     m('LeavesLight', '#9ec646', rough=0.8)
+    # leaf cards: cut-out leaf clusters (the game draws the leaf texture, alpha-tested and double sided)
+    m('LeafCard', '#5aa53c', rough=0.75)
+    m('LeafCardLight', '#a3cf4e', rough=0.75)
+    m('LeafCardPine', '#2f7356', rough=0.8)
     m('PalmLeaf', '#5fb043', rough=0.7)
     m('Rock', '#8e9299', rough=0.85)
     m('RockMoss', '#6e9d44', rough=0.9)
@@ -349,7 +353,8 @@ def rock_bm(size, seed, cuts=4, subdiv=2, amp=0.2, freq=1.1, sink=0.12, base_cut
         d = v.co.normalized()
         n1 = noise.noise(d * freq + off)
         n2 = noise.noise(d * freq * 2.4 + off * 1.3)
-        v.co = d * (1 + amp * n1 + amp * 0.35 * n2)
+        n3 = noise.noise(d * freq * 6.0 + off * 0.7)
+        v.co = d * (1 + amp * n1 + amp * 0.35 * n2 + amp * 0.12 * n3)
         v.co.x *= size[0] / 2
         v.co.y *= size[1] / 2
         v.co.z *= size[2] / 2
@@ -484,6 +489,95 @@ def finish(obj, col, hp, mat, ao=0.55, dist=1.0, samples=20, wind=None, smooth=3
 
 # =============================================================================================== trees
 
+def _card(bm, p, u, v, s):
+    vs = [bm.verts.new(p + (-u - v) * s / 2), bm.verts.new(p + (u - v) * s / 2), bm.verts.new(p + (u + v) * s / 2),
+          bm.verts.new(p + (-u + v) * s / 2)]
+    bm.faces.new(vs)
+
+
+def leaf_cards(b, elems, n, seed, mat, size=(0.8, 1.3), up=0.45, out=(0.72, 1.05)):
+    """Scatter leaf-cluster cards over a crown made of ellipsoid elements: they break up the blob's outline
+    and give it real leafy texture. Normals are set to point out of the crown later (card_finish)."""
+    rnd = random.Random(seed)
+    weights = [e[1] ** 2 for e in elems]
+    bm = bmesh.new()
+    for _ in range(n):
+        e = rnd.choices(elems, weights)[0]
+        c, r = Vector(e[0]), e[1]
+        sc = e[2] if len(e) > 2 else (1, 1, 1)
+        d = Vector((rnd.gauss(0, 1), rnd.gauss(0, 1), rnd.gauss(0, 1) + up))
+        if d.length < 1e-3:
+            continue
+        d.normalize()
+        p = c + Vector((d.x * sc[0], d.y * sc[1], d.z * sc[2])) * r * rnd.uniform(*out)
+        nrm = (d + Vector((rnd.uniform(-0.7, 0.7), rnd.uniform(-0.7, 0.7), rnd.uniform(-0.3, 0.7)))).normalized()
+        t = nrm.cross(Vector((0, 0, 1)))
+        if t.length < 1e-3:
+            t = Vector((1, 0, 0))
+        t.normalize()
+        bt = nrm.cross(t)
+        a = rnd.uniform(0, 2 * math.pi)
+        u = t * math.cos(a) + bt * math.sin(a)
+        v = nrm.cross(u)
+        _card(bm, p, u, v, rnd.uniform(*size))
+    b.add_bm(bm, M[mat])
+    bm.free()
+
+
+def card_finish(obj, centers, up=0.35):
+    """UVs for the cards (each quad gets the whole leaf texture) and soft normals pointing out of the crown,
+    so the foliage shades like one fluffy volume instead of flat shards."""
+    me = obj.data
+    names = [m.name if m else '' for m in me.materials]
+    card = {i for i, nm in enumerate(names) if nm.startswith('LeafCard')}
+    if not card:
+        return obj
+    if not me.uv_layers:
+        me.uv_layers.new(name='UVMap')
+    uv = me.uv_layers.active.data
+    corner = [(0, 0), (1, 0), (1, 1), (0, 1)]
+    normals = [Vector(n.vector) for n in me.corner_normals]
+    cs = [Vector(c) for c in centers]
+    for p in me.polygons:
+        if p.material_index not in card:
+            continue
+        for k, li in enumerate(p.loop_indices):
+            uv[li].uv = corner[k % 4]
+        fc = p.center
+        c = min(cs, key=lambda q: (q - fc).length)
+        nrm = ((fc - c).normalized() + Vector((0, 0, up))).normalized()
+        for li in p.loop_indices:
+            normals[li] = nrm
+    me.normals_split_custom_set(normals)
+    return obj
+
+
+def pine_fringe(b, tiers, seed, mat='LeafCardPine'):
+    """Drooping needle sprays hanging off every tier's rim."""
+    rnd = random.Random(seed)
+    bm = bmesh.new()
+    for (zr, R, h) in tiers:
+        n = max(8, int(R * 6))
+        for k in range(n):
+            a = 2 * math.pi * (k + rnd.uniform(-0.3, 0.3)) / n
+            out = Vector((math.cos(a), math.sin(a), 0))
+            tang = Vector((-math.sin(a), math.cos(a), 0))
+            s = R * rnd.uniform(0.55, 0.8)
+            down = (out * 0.55 + Vector((0, 0, -1))).normalized()
+            p = Vector((0, 0, zr)) + out * R * rnd.uniform(0.78, 0.98) + down * s * 0.32 + Vector((0, 0, R * 0.05))
+            _card(bm, p, tang, -down, s)
+        # a few sprays on the tier's upper slope
+        for k in range(max(4, int(R * 3))):
+            a = rnd.uniform(0, 2 * math.pi)
+            out = Vector((math.cos(a), math.sin(a), 0))
+            tang = Vector((-math.sin(a), math.cos(a), 0))
+            rr = R * rnd.uniform(0.35, 0.7)
+            p = Vector((0, 0, zr + h * (1 - rr / R) * 0.55)) + out * rr
+            slope = (out + Vector((0, 0, h / R * 0.6))).normalized()
+            _card(bm, p, tang, slope, R * rnd.uniform(0.4, 0.6))
+    b.add_bm(bm, M[mat])
+    bm.free()
+
 def pine_tier(b, zr, R, h, rnd, mat, segs=16):
     c = V(rnd.uniform(-0.07, 0.07), rnd.uniform(-0.07, 0.07), zr)
     rot = Euler((rnd.uniform(-0.05, 0.05), rnd.uniform(-0.05, 0.05), rnd.uniform(0, 6.28))).to_matrix()
@@ -517,7 +611,8 @@ def tree_pine(name, H, tiers, trunk_r, seed, col_r, hp):
     radii = [trunk_r * 1.2, trunk_r * 1.05, trunk_r * 0.9, trunk_r * 0.72, trunk_r * 0.45, 0.06]
     tube(b, pts, radii, M['Bark'], segs=8, rfn=flare(5, 0.45, 2), cap_start=True)
     for (zr, R, h) in tiers:
-        pine_tier(b, zr, R, h, rnd, M['LeavesPine'])
+        pine_tier(b, zr, R, h, rnd, M['LeavesPine'], segs=20)
+    pine_fringe(b, tiers, seed + 50)
     obj = b.to_object(name)
     R0 = tiers[0][1]
 
@@ -532,7 +627,8 @@ def tree_pine(name, H, tiers, trunk_r, seed, col_r, hp):
             return 1.0
         return 0.78 + 0.22 * clamp(co.z / H) ** 0.7
 
-    return finish(obj, 'cyl', hp, 'wood', ao=0.55, dist=1.6, wind=wind, smooth=60, shade=shade, r=col_r, h=H)
+    finish(obj, 'cyl', hp, 'wood', ao=0.55, dist=1.6, wind=wind, smooth=60, shade=shade, r=col_r, h=H)
+    return card_finish(obj, [(0, 0, zr + h * 0.3) for (zr, R, h) in tiers], up=0.6)
 
 
 def crown(b, elems, target, light=(), leaf='Leaves', leaf2='LeavesLight', res=0.2, amp=0.06, seed=0,
@@ -556,7 +652,13 @@ def tree_broadleaf(name, H, seed, trunk, branches, elems, light, target, col_r, 
     tube(b, pts, radii, M['Bark'], segs=9, rfn=flare(5, 0.5, 2), cap_start=True)
     for i, (bp, br) in enumerate(branches):
         tube(b, bp, br, M['Bark'], segs=6, seed=seed + i)
-    crown(b, elems, target, light, seed=seed)
+    # the blob is the shaded inner volume; leaf cards cover it and make the outline leafy
+    inner = [(e[0], e[1] * 0.86) + tuple(e[2:]) for e in elems]
+    crown(b, inner, target, light, seed=seed)
+    area = sum(e[1] ** 2 for e in elems)
+    leaf_cards(b, elems, int(area * 22), seed + 7, 'LeafCard', size=(0.75, 1.2), up=0.15, out=(0.82, 1.12))
+    leaf_cards(b, [e for i, e in enumerate(elems) if i in light] or elems, int(area * 8),
+               seed + 8, 'LeafCardLight', size=(0.75, 1.15), up=0.9, out=(0.85, 1.1))
     obj = b.to_object(name)
     zs = [e[0][2] for e in elems]
     z0 = min(z - e[1] * (e[2][2] if len(e) > 2 else 1) for z, e in zip(zs, elems))
@@ -573,7 +675,8 @@ def tree_broadleaf(name, H, seed, trunk, branches, elems, light, target, col_r, 
         t = clamp((co.z - z0) / (H - z0))
         return 0.7 + 0.3 * t ** 0.8
 
-    return finish(obj, 'cyl', hp, 'wood', ao=0.5, dist=1.8, wind=wind, smooth=65, shade=shade, r=col_r, h=H)
+    finish(obj, 'cyl', hp, 'wood', ao=0.5, dist=1.8, wind=wind, smooth=65, shade=shade, r=col_r, h=H)
+    return card_finish(obj, [e[0] for e in elems])
 
 
 def tree_oak_a():
@@ -685,6 +788,8 @@ def tree_birch():
         tube(b, [s0, e], [0.045, 0.015], M['BarkBirch'], segs=4)
         elems.append(((e.x, e.y, e.z + 0.05), rr, (1, 1, 0.8)))
     crown(b, elems, 930, tuple(light), leaf='LeavesLight', leaf2='Leaves', res=0.1, amp=0.05, seed=5, stiff=2.2)
+    leaf_cards(b, elems, 330, 41, 'LeafCardLight', size=(0.55, 0.95), up=0.2, out=(0.85, 1.12))
+    leaf_cards(b, elems, 110, 42, 'LeafCard', size=(0.55, 0.85), up=0.1, out=(0.8, 1.05))
     obj = b.to_object('Tree_Birch_A')
     z0 = 3.2
 
@@ -698,7 +803,8 @@ def tree_birch():
             return 1.0
         return 0.75 + 0.25 * clamp((co.z - z0) / (H - z0))
 
-    return finish(obj, 'cyl', 220, 'wood', ao=0.5, dist=1.2, wind=wind, smooth=65, shade=shade, r=0.3, h=H)
+    finish(obj, 'cyl', 220, 'wood', ao=0.5, dist=1.2, wind=wind, smooth=65, shade=shade, r=0.3, h=H)
+    return card_finish(obj, [e[0] for e in elems])
 
 
 def tree_palm():
@@ -848,6 +954,8 @@ def bush(name, elems, target, leaf, berries, seed, H):
             continue
         b.ico(0.055, loc=hit[0] + hit[1] * 0.02, mat=M['RedPaint'], subdiv=1)
         placed += 1
+    leaf_cards(b, elems, int(sum(e[1] ** 2 for e in elems) * 60), seed + 9,
+               'LeafCardPine' if leaf == 'LeavesPine' else 'LeafCard', size=(0.35, 0.55), up=0.3)
     obj = b.to_object(name)
     Rh = max(Vector(e[0]).xy.length + e[1] for e in elems)
 
@@ -857,7 +965,8 @@ def bush(name, elems, target, leaf, berries, seed, H):
     def shade(co, m):
         return 0.72 + 0.28 * clamp(co.z / H) ** 0.8
 
-    return finish(obj, 'none', 60, 'wood', ao=0.5, dist=0.5, wind=wind, smooth=70, shade=shade)
+    finish(obj, 'none', 60, 'wood', ao=0.5, dist=0.5, wind=wind, smooth=70, shade=shade)
+    return card_finish(obj, [e[0] for e in elems], up=0.4)
 
 
 def bush_a():
@@ -889,7 +998,7 @@ def moss_fn(thr=0.6, seed=0):
 
 def rock(name, size, seed, hp, cuts=4, moss=0.6):
     b = C.MeshBuilder()
-    bm = rock_bm(size, seed, cuts=cuts, amp=0.22, sink=0.1)
+    bm = rock_bm(size, seed, cuts=cuts + 3, subdiv=3, amp=0.24, freq=1.3, sink=0.1)
     add_fn(b, bm, moss_fn(moss, seed))
     bm.free()
     obj = b.to_object(name)
@@ -906,7 +1015,7 @@ def rock_big():
              ((2.6, 2.2, 3.6), (0.8, 1.35, 0), 1.3, 105, 0.6), ((1.3, 1.1, 1.0), (2.3, -1.3, 0), 0.3, 106, None),
              ((1.2, 1.1, 0.9), (-2.4, -0.9, 0), 0.7, 107, None)]
     for (size, loc, rz, seed, top) in parts:
-        bm = rock_bm(size, seed, cuts=4, amp=0.16, sink=0.2, up_bias=0.3, top_cut=top)
+        bm = rock_bm(size, seed, cuts=6, subdiv=3, amp=0.18, sink=0.2, up_bias=0.3, top_cut=top)
         add_fn(b, bm, moss_fn(0.62, seed), Matrix.Translation(loc) @ Matrix.Rotation(rz, 4, 'Z'))
         bm.free()
     for v in b.bm.verts:

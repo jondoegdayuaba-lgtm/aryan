@@ -134,13 +134,90 @@ function patchTriplanar(sh, scale, normalStrength) {
       }`);
 }
 
+// ----------------------------------------------------------------------------- leaf card textures
+// Drawn once on a canvas: a cluster of leaves (broadleaf) or a spray of needles (pine) on transparent ground.
+const leafTexCache = {};
+function leafTexture(kind) {
+  if (leafTexCache[kind]) return leafTexCache[kind];
+  const N = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = N;
+  const x = c.getContext('2d');
+  let seed = kind === 'pine' ? 7 : 3;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  if (kind === 'pine') {
+    // drooping twigs covered in fine needles, darker inside
+    for (let b = 0; b < 4; b++) {
+      const x0 = N * (0.22 + b * 0.18 + (rnd() - 0.5) * 0.04), x1 = x0 + (rnd() - 0.5) * N * 0.12;
+      const y0 = N * (0.03 + rnd() * 0.08);
+      // soft solid core of the spray so it reads as foliage from afar
+      x.fillStyle = 'rgb(52,118,84)';
+      x.beginPath();
+      x.moveTo(x0 - N * 0.05, y0);
+      x.quadraticCurveTo(x0 - N * 0.11, N * 0.5, x1 - N * 0.02, N * 0.93);
+      x.lineTo(x1 + N * 0.02, N * 0.93);
+      x.quadraticCurveTo(x0 + N * 0.11, N * 0.5, x0 + N * 0.05, y0);
+      x.fill();
+      x.strokeStyle = '#3d3022';
+      x.lineWidth = 2.5;
+      x.beginPath(); x.moveTo(x0, y0); x.lineTo(x1, N * 0.95); x.stroke();
+      for (let i = 0; i < 90; i++) {
+        const t = i / 90;
+        const px = x0 + (x1 - x0) * t, py = y0 + t * (N * 0.95 - y0);
+        const len = N * (0.07 + 0.04 * rnd()) * (1 - t * 0.55);
+        const k = 0.65 + rnd() * 0.45 + t * 0.1;
+        x.strokeStyle = `rgb(${(60 * k) | 0},${(140 * k) | 0},${(100 * k) | 0})`;
+        x.lineWidth = 2.4;
+        const sgn = i % 2 ? 1 : -1;
+        x.beginPath();
+        x.moveTo(px, py);
+        x.lineTo(px + sgn * len * (0.8 + rnd() * 0.3), py + len * (0.45 + rnd() * 0.3));
+        x.stroke();
+      }
+    }
+  } else {
+    // many small overlapping leaves, lighter toward the top
+    for (let i = 0; i < 90; i++) {
+      const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * N * 0.4;
+      const px = N / 2 + Math.cos(a) * r, py = N / 2 + Math.sin(a) * r;
+      const L = N * (0.07 + rnd() * 0.05), W = L * 0.58;
+      const ang = Math.atan2(py - N / 2, px - N / 2) + (rnd() - 0.5) * 1.1;
+      const k = 0.7 + rnd() * 0.4 - (py / N - 0.5) * 0.35;
+      x.save();
+      x.translate(px, py);
+      x.rotate(ang);
+      x.fillStyle = `rgb(${(150 * k) | 0},${(225 * k) | 0},${(110 * k) | 0})`;
+      x.beginPath();
+      x.moveTo(-L / 2, 0);
+      x.quadraticCurveTo(0, -W, L / 2, 0);
+      x.quadraticCurveTo(0, W, -L / 2, 0);
+      x.fill();
+      x.strokeStyle = `rgba(255,255,230,${0.22 * k})`;
+      x.lineWidth = 1;
+      x.beginPath(); x.moveTo(-L / 2, 0); x.lineTo(L / 2, 0); x.stroke();
+      x.restore();
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  leafTexCache[kind] = t;
+  return t;
+}
+
+// Leaf cards keep the normal they were given (pointing out of the crown) on both faces.
+function patchCardNormals(sh) {
+  sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>',
+    THREE.ShaderChunk.normal_fragment_begin.replace(/normal\s*\*=\s*faceDirection;/g, '').replace(/bitangent\s*=\s*bitangent\s*\*\s*faceDirection;/g, ''));
+}
+
 // ----------------------------------------------------------------------------- library
 
 function make(name, opts) {
   const {
     color = '#ffffff', rough = 0.8, metal = 0, map, normal, normalScale = 1, emissive, emissiveI = 1,
     wind = 0, ao = true, triplanar = 0, triNormal = 0.6, transparent = false, opacity = 1, side,
-    envI = 1, clearcoat = 0, physical = false, flat = false,
+    envI = 1, clearcoat = 0, physical = false, flat = false, alphaTest = 0, cards = false,
   } = opts;
   const P = physical || clearcoat ? THREE.MeshPhysicalMaterial : THREE.MeshStandardMaterial;
   const m = new P({ color: new THREE.Color(color), roughness: rough, metalness: metal });
@@ -154,7 +231,9 @@ function make(name, opts) {
   if (emissive) { m.emissive = new THREE.Color(emissive); m.emissiveIntensity = emissiveI; }
   if (transparent) { m.transparent = true; m.opacity = opacity; m.depthWrite = false; }
   if (side) m.side = side;
-  const key = [name, wind, ao, triplanar].join('|');
+  if (alphaTest) m.alphaTest = alphaTest;
+  if (cards) m.userData.extraPatch = patchCardNormals;
+  const key = [name, wind, ao, triplanar, cards ? 'cards' : ''].join('|');
   m.onBeforeCompile = (sh) => {
     if (triplanar) {
       sh.__triA = map; sh.__triN = normal;
@@ -204,6 +283,9 @@ export function buildLibrary() {
     LeavesPine: { color: '#2f6b45', rough: 0.8, wind: 0.22 },
     LeavesLight: { color: '#9cc152', rough: 0.75, wind: 0.4 },
     PalmLeaf: { color: '#5aa33b', rough: 0.7, wind: 0.5, side: THREE.DoubleSide },
+    LeafCard: { map: leafTexture('leaf'), color: '#6fb043', rough: 0.72, wind: 0.5, side: THREE.DoubleSide, alphaTest: 0.5, cards: true },
+    LeafCardLight: { map: leafTexture('leaf'), color: '#b9dd5c', rough: 0.72, wind: 0.55, side: THREE.DoubleSide, alphaTest: 0.5, cards: true },
+    LeafCardPine: { map: leafTexture('pine'), color: '#7fbf9a', rough: 0.8, wind: 0.35, side: THREE.DoubleSide, alphaTest: 0.45, cards: true },
     Rock: { map: t('rock'), normal: t('rock_n'), triplanar: 0.2, color: '#d6d6d2', rough: 0.92, triNormal: 0.8 },
     RockMoss: { map: t('grass'), normal: t('grass_n'), triplanar: 0.3, color: '#b9d19a', rough: 0.95 },
     Hay: { map: t('bark'), normal: t('bark_n'), triplanar: 2.5, color: '#f0d27a', rough: 0.95 },

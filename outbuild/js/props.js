@@ -88,6 +88,8 @@ function averageTexture(tex) {
 function farGeometry(parts, cell) {
   const list = [];
   for (const p of parts) {
+    // leaf cards fall apart when simplified; the far tree keeps its leaf volume instead
+    if (/^LeafCard/.test(p.matName)) continue;
     const g = simplify(p.geometry, cell);
     if (!g.index || g.index.count === 0) continue;
     const c = p.material.color ? p.material.color.clone() : new THREE.Color(1, 1, 1);
