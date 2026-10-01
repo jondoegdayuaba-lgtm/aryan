@@ -82,3 +82,15 @@ Four extra missile skins unlock as your best score climbs.
 | `js/collision.js` | Simple collision shapes |
 
 three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+---
+
+# Brainrot Heist
+
+`brainrot-heist.html` is a separate game in one self-contained file: a 3D (three.js) base-building and stealing game. Open it in a browser. It needs internet the first time to load three.js and the font from a CDN.
+
+- Buy silly brainrot creatures off the red carpet. They walk to your base and earn cash every second. Step on the green pads to collect it.
+- Sneak into the 7 AI bots' bases, **hold E** on a brainrot to steal it, and carry it home. If the owner touches you, you drop it.
+- Bots buy, steal from you and from each other, defend their bases and lock their laser doors. Lock yours with the button by your door (60 s).
+- 29 creatures across 7 rarities, Gold/Diamond/Rainbow mutations, base upgrades with extra floors, rebirths, gear (Slap, Speed Coil, Grapple Hook, Invisibility Cloak), random events, an Index, a leaderboard and a minimap.
+- Controls: WASD/arrows + E on desktop (F/G/Q for gear), joystick + action button on touch screens. Progress saves to `localStorage` every 10 seconds.
