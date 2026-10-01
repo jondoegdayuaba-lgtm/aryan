@@ -1,3 +1,34 @@
+# Powder Line
+
+An endless, relaxing snowboard ride down a huge procedural mountain, tuned to look like a real valley at golden hour. Everything is in one file, `powder-line.html`. three.js is loaded from cdnjs, and every texture, model and sound is generated in code.
+
+**Play:** open `powder-line.html` in a browser (double-click works, no server needed; it needs internet once to fetch three.js). Press **Start riding** or Space.
+
+| Keys | Touch |
+| --- | --- |
+| A / D or ← / →: carve | ◀ ▶ buttons, or turn on *Tilt to steer* in the menu |
+| W or ↑: tuck (go faster) | Tuck |
+| S or ↓: brake by sliding sideways | Brake |
+| Space: jump (hold for a bigger pop) | Jump (hold) |
+| In the air: A / D spin, W / S flip | Same buttons |
+| C: switch between chase cam and goggles view | Menu |
+| Esc or P: pause and settings, M: mute | Pause button |
+
+Land straight (spins settle onto the nearest 180° if you let go in time) to score the trick; land sideways or upside down and you tumble. Trees and big rocks knock you over too. The HUD shows speed, distance and trick score.
+
+What's inside:
+
+- **Sky:** single-scattering Rayleigh, Mie and ozone atmosphere baked into a sky-view LUT every frame, with a sun, moon and stars, plus a drifting cloud layer. A full day lasts about 6 minutes and lingers in the golden hours. The same LUT colours the fog of every surface, so distant ridges fade into the sky the way they do in photos.
+- **Terrain:** one long winding valley: ridged peaks, cliff bands, kickers and rolling bumps. It is built from CDLOD quadtree tiles with geomorphing and skirts. Web workers generate the tiles ahead of you, and tiles behind are recycled. A floating origin keeps precision forever.
+- **Snow:** generated normal maps for bumps and wind ripples, macro relief, sun sparkle, and rock on steep faces.
+- **Lighting:** PCF sun shadows plus a terrain shadow map, so ridges throw the valley into shade at sunset. Sky lighting comes from a PMREM environment, with ACES tone mapping.
+- **Forest:** thousands of instanced spruces with snow on the branches, two levels of detail, and individual fade-out at range.
+- **Rider and effects:** the rider is built from primitives with IK legs and arms; it leans, crouches, tucks and grabs. There is a powder spray that grows on hard turns and braking, a carved track, light snowfall, bloom, radial motion blur at speed, and a vignette.
+- **Sound:** Web Audio wind, carving crunch, landing thuds and a soft chime for landed tricks.
+- **Settings:** the pause menu offers graphics quality (low, medium, high), shadows, volume, camera and tilt steering. Settings are remembered in the browser. Resolution adapts automatically if the frame rate drops.
+
+---
+
 # Missile Run
 
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.
