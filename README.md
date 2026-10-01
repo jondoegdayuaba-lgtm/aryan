@@ -1,5 +1,7 @@
 # Missile Run
 
+> **Also in this repo: Sky Hopper**, an arcade flight sim in a single file, [`sky-hopper.html`](sky-hopper.html). Double-click it to play (it loads three.js from cdnjs, so it needs an internet connection). Take off from the runway, fly through rings for combos, land softly for a bonus, and watch the sun set over the sea. Controls are listed on its start screen.
+
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.
 
 ## How the flying works
