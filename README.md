@@ -85,10 +85,23 @@ three.js is MIT licensed; see `vendor/three/LICENSE`.
 
 ## NOCLIP (Backrooms game)
 
-`backrooms.html` is a separate game in a single file: a found-footage style first-person walk through an endless, procedurally generated yellow office maze. three.js loads from cdnjs. Everything else (wallpaper, carpet and ceiling textures, the baked lighting, and all sound) is generated in code. Open the file in a browser to play. It needs internet only for three.js.
+`backrooms.html` is a separate game in a single file: a found-footage style first-person trip through the Backrooms. three.js loads from cdnjs. Everything else (textures, the baked lighting, all sound) is generated in code. Open the file in a browser to play. It needs internet only for three.js.
+
+Every level hides an exit door. Go through it and you noclip into the next level:
+
+| Level | What it is |
+| --- | --- |
+| 0 · The Lobby | Endless yellow office rooms, damp carpet, humming fluorescent panels. |
+| 1 · Habitable Zone | Concrete warehouse halls with hanging strip lights, columns and puddles. |
+| 2 · Pipe Dreams | Narrow dark tunnels lined with rusty pipes and caged orange bulbs. Something grins in the dark. |
+| 37 · The Poolrooms | Cream tiles, green water to your ankles, round columns, curved walls and sunlight. No one else is here. |
+| 188 · The Courtyard of Windows | A courtyard walled in by thousands of windows and sixteen doors. Only one opens. Don't stare at the people in the windows. |
+| 94 · Motion | Endless cartoon hills, picket fences and water towers. The houses twitch like stop-motion. One front door is the way out. |
+| Fun =) · The Party | Confetti, balloons, distant party music, and partygoers who want you to stay. |
 
 - **WASD** move, **mouse** look (click to lock the pointer), **Shift** run (uses stamina), **Esc** pause.
-- Find the exit door about 200 m from where you start. The **SIG** bars in the corner fill up as you get closer, and near the door you can hear it.
+- The **SIG** bars in the corner fill up as you get closer to the real exit, and near it you can hear it.
 - Almond water bottles refill stamina.
-- Something sometimes stands far down a corridor. Stare at it too long, or get too close, and it chases you.
+- Stare at the entity too long, or get too close, and it chases you.
+- Levels you reach unlock on the title screen, so you can start from them later.
 - Graphics **Low** lowers render resolution and view distance for slower machines.
