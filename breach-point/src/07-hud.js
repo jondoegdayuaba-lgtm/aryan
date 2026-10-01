@@ -15,7 +15,7 @@ const VM={
     const gn=g.group.name.replace(/_root$/,''),gp=g.group.getObjectByName(gn+'_grip')||g.group.getObjectByName(gn+'_handle');
     const grip=gp?gp.position.clone():V3(0,-0.06,0.03);
     const armR=asset(a.agentId+'_vmarmR');g.group.add(armR);
-    if(cls==='knife'){g.group.rotation.x=1.1;armR.position.copy(grip);armR.rotation.set(-Math.PI/2,0,0);}
+    if(cls==='knife'){g.group.rotation.x=0.6;armR.position.copy(grip);armR.rotation.set(-Math.PI/2,0,0);}
     else if(cls==='nade'){armR.position.set(0,0.035,0.01);armR.rotation.set(-0.15,0,0);}
     else if(cls==='bomb'){armR.position.set(0.1,0.02,0.02);armR.rotation.set(0,0,0);}
     else{armR.position.copy(grip);armR.rotation.set(-0.28,0,0);}

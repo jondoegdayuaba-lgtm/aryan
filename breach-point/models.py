@@ -565,9 +565,7 @@ def lifebuoy():
     box('lifebuoy_board', (0.9, 0.05, 1.0), (0, 0, 1.3), mat('p_fence', 0x6b4a2e, 0, 0.9), r)
     cyl('lifebuoy_post', 0.05, 1.8, (0, -0.05, 0.9), mat('p_iron', 0x2e2a26, 0.6, 0.5), r, verts=8)
 
-gun('ark7', ark7); gun('m4r', m4r); gun('vex', vex); gun('breacher', breacher); gun('longshot', longshot)
-gun('g9', pistol(G['black'], G['black'], 0.18)); gun('p12', pistol(G['metal'], G['tan'], 0.21))
-gun('hawk', pistol(G['steel'], G['black'], 0.25, 1.2)); gun('knife', knife)
+# rifles, pistols and the default knife are in blender_base/20_guns.py
 gun('he', he); gun('flash', canister(G['gray'], G['steel'])); gun('smoke', canister(G['green'], G['black']))
 gun('fireS', bottle); gun('fireW', canister(G['gray'], G['orange'])); gun('bomb', bomb)
 barrel(); car('van', 0x3d6fa8, True); car('sedan', 0xe6e2d8, False); car('sedan2', 0xa8382d, False); palm()
