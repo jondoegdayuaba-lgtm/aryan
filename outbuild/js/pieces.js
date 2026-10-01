@@ -264,10 +264,48 @@ export function slotBounds(kind, s) {
   return { ...b, minY: y0 - 0.2, maxY: y0 + GRID.coneHeight };
 }
 
-function makeColliders(p) {
+// ----------------------------------------------------------------------------- edit tiles
+// Walls are a 3x3 grid of tiles (column 0..2 along the wall's local x, row 0..2 from the bottom), floors 2x2.
+// A piece's `mask` has a bit set for every tile cut out by editing.
+export const TILE_GRID = { wall: [3, 3], floor: [2, 2] };
+export const tileCount = (kind) => (TILE_GRID[kind] ? TILE_GRID[kind][0] * TILE_GRID[kind][1] : 0);
+
+// Local transform of one tile inside the piece model (the model is scaled down; textures are triplanar, so they don't stretch).
+export function tileMatrix(kind, t, out = new THREE.Matrix4()) {
+  if (kind === 'wall') {
+    const c = t % 3, r = Math.floor(t / 3);
+    return out.compose(new THREE.Vector3(-S / 2 + (c + 0.5) * S / 3, r * H / 3, 0), new THREE.Quaternion(), new THREE.Vector3(1 / 3, 1 / 3, 1));
+  }
+  const c = t % 2, r = Math.floor(t / 2);
+  return out.compose(new THREE.Vector3(-S / 4 + c * S / 2, 0, -S / 4 + r * S / 2), new THREE.Quaternion(), new THREE.Vector3(0.5, 1, 0.5));
+}
+
+// World bounds of one tile.
+export function tileBounds(p, t) {
+  const box = p.kind === 'wall'
+    ? new THREE.Box3(new THREE.Vector3(-S / 2, 0, -GRID.wallHalfThick), new THREE.Vector3(S / 2, H, GRID.wallHalfThick))
+    : new THREE.Box3(new THREE.Vector3(-S / 2, -GRID.floorThick, -S / 2), new THREE.Vector3(S / 2, 0, S / 2));
+  const m = slotTransform(p.kind, p).multiply(tileMatrix(p.kind, t));
+  return box.applyMatrix4(m);
+}
+
+function tiledColliders(p) {
   const out = [];
+  const n = tileCount(p.kind);
+  for (let t = 0; t < n; t++) {
+    if (p.mask & (1 << t)) continue;
+    const b = tileBounds(p, t);
+    out.push(new Collider(BOX, { minX: b.min.x, maxX: b.max.x, minY: b.min.y, maxY: b.max.y, minZ: b.min.z, maxZ: b.max.z }));
+  }
+  return out;
+}
+
+function makeColliders(p) {
+  let out = [];
   const b = slotBounds(p.kind, p);
-  if (p.kind === 'wall') {
+  if (p.mask && tileCount(p.kind)) {
+    out = tiledColliders(p);
+  } else if (p.kind === 'wall') {
     const hole = p.opening && OPENINGS[p.opening];
     if (!hole) {
       out.push(new Collider(BOX, { ...b }));
@@ -348,14 +386,44 @@ export class PieceSystem {
       this.active.add(p);
     }
     this.pieces.set(key, p);
-    slotTransform(p.kind, p, this._m);
-    this._c.set(opts.color || 0xffffff);
-    this.batch(model, slot).add(p, this._m, this._c);
+    p.mask = (slot.mask | 0) & ((1 << tileCount(p.kind)) - 1);
+    p.color = opts.color || 0xffffff;
+    this.attach(p);
     p.colliders = makeColliders(p);
     for (const c of p.colliders) this.physics.add(c);
     p.grounded = this.touchesGround(p);
     if (this.onPlaced) this.onPlaced(p);
     return p;
+  }
+
+  // Draw a piece: one instance, or one per remaining tile once it has been edited.
+  attach(p) {
+    slotTransform(p.kind, p, this._m);
+    this._c.set(p.color);
+    const batch = this.batch(p.model, p);
+    if (p.mask && tileCount(p.kind)) {
+      p.tiles = [];
+      const tm = new THREE.Matrix4();
+      for (let t = 0; t < tileCount(p.kind); t++) {
+        if (p.mask & (1 << t)) continue;
+        const proxy = { progress: p.progress, tile: t };
+        batch.add(proxy, tm.multiplyMatrices(this._m, tileMatrix(p.kind, t)), this._c);
+        p.tiles.push(proxy);
+      }
+    } else {
+      p.tiles = null;
+      batch.add(p, this._m, this._c);
+    }
+  }
+
+  detach(p) {
+    if (p.tiles) { for (const t of p.tiles) if (t.batch) t.batch.remove(t); p.tiles = null; }
+    if (p.batch) p.batch.remove(p);
+  }
+
+  setPieceState(p, progress, flash) {
+    if (p.tiles) { for (const t of p.tiles) if (t.batch) t.batch.setState(t.index, progress, flash); }
+    else if (p.batch) p.batch.setState(p.index, progress, flash);
   }
 
   // Can a player place this piece here? Returns true/false.
@@ -417,7 +485,7 @@ export class PieceSystem {
     p.alive = false;
     this.pieces.delete(p.key);
     this.active.delete(p);
-    if (p.batch) p.batch.remove(p);
+    this.detach(p);
     for (const c of p.colliders) this.physics.remove(c);
     const b = slotBounds(p.kind, p);
     if (this.onDestroyed) this.onDestroyed(p, cause, b);
@@ -463,7 +531,7 @@ export class PieceSystem {
         dirty = true;
       }
       if (p.flash > 0) { p.flash = Math.max(0, p.flash - dt * 6); dirty = true; }
-      if (dirty && p.batch) p.batch.setState(p.index, p.progress, p.flash);
+      if (dirty) this.setPieceState(p, p.progress, p.flash);
       if (p.progress >= 1 && p.flash <= 0) this.active.delete(p);
     }
     if (this.collapseQueue.length) {
@@ -478,22 +546,22 @@ export class PieceSystem {
   replace(p, model, changes = {}) {
     if (!p.alive) return null;
     const frac = p.hp / p.maxHp;
-    const { owner, progress, buildRate, house } = p;
+    const { owner, progress, buildRate, house, color } = p;
     p.alive = false;
     this.pieces.delete(p.key);
     this.active.delete(p);
-    if (p.batch) p.batch.remove(p);
+    this.detach(p);
     for (const c of p.colliders) this.physics.remove(c);
-    const slot = { ix: p.ix, iy: p.iy, iz: p.iz, axis: p.axis, dir: p.dir, ...changes };
+    const slot = { ix: p.ix, iy: p.iy, iz: p.iz, axis: p.axis, dir: p.dir, mask: p.mask, ...changes };
     const onPlaced = this.onPlaced;
     this.onPlaced = null;
-    const n = this.add(model, slot, { owner, house });
+    const n = this.add(model, slot, { owner, house, color });
     this.onPlaced = onPlaced;
     if (!n) return null;
     n.hp = n.maxHp * frac;
     n.progress = progress;
     n.buildRate = buildRate;
-    if (progress < 1) { this.active.add(n); n.batch.setState(n.index, progress, 0); }
+    if (progress < 1) { this.active.add(n); this.setPieceState(n, progress, 0); }
     n.grounded = p.grounded || n.grounded;
     return n;
   }

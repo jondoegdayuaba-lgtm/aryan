@@ -149,10 +149,12 @@ export class BotBrain {
       const d = a.pos.distanceTo(this.target.pos);
       const early = now - (this.landedAt ?? now) < 45;
       const attacked = now - a.lastDamageTime < 4;
-      if (early && this.lootNeed() >= 2 && d > 22 && !attacked && this.goalKind === 'loot' && this.goalTimer > 0) {
+      if (early && !this.target.human && this.lootNeed() >= 2 && d > 45 && !attacked && this.goalKind === 'loot' && this.goalTimer > 0) {
         this.state = 'travel';
         return;
       }
+      // patch up behind cover when the enemy is out of sight (they stay put, they don't run)
+      if (hurt && now - this.lastSeen > 3 && now - a.lastDamageTime > 3 && this.healSlot() >= 0 && this.healCooldown <= 0) { this.state = 'heal'; return; }
       if (this.state !== 'fight') this.reactT = this.skill.react;
       this.state = 'fight';
       return;
@@ -219,8 +221,12 @@ export class BotBrain {
       return a.lastHitBy;
     }
     // keep the current target while we remember it
-    if (this.target && this.target.alive && now - this.lastSeen < 4 && this.target.mode !== 'bus') {
+    // in a duel, or once only a few are left, bots always know where their opponent is and go after them
+    const hunt = g.mapKey === 'duel' || g.aliveCount() <= 4;
+    // keep hunting the current target for a while after losing sight of it
+    if (this.target && this.target.alive && (hunt || now - this.lastSeen < 12) && this.target.mode !== 'bus') {
       if (g.physics.lineOfSight(eye, this.target.chest(_w))) { this.lastSeen = now; this.seenPos.copy(this.target.pos); }
+      else if (hunt) this.seenPos.copy(this.target.pos);
       return this.target;
     }
     let best = null, bd = this.skill.sight;
@@ -239,6 +245,16 @@ export class BotBrain {
       bd = d;
     }
     if (best) { this.lastSeen = now; this.seenPos.copy(best.pos); }
+    else if (hunt) {
+      // nobody in sight: track down the nearest opponent
+      let nd = Infinity;
+      for (const o of g.actors) {
+        if (o === a || !o.alive || o.mode === 'bus') continue;
+        const d = o.pos.distanceTo(a.pos);
+        if (d < nd) { nd = d; best = o; }
+      }
+      if (best) { this.seenPos.copy(best.pos); this.lastSeen = Math.min(this.lastSeen, now - 1); }
+    }
     return best;
   }
 
@@ -495,10 +511,19 @@ export class BotBrain {
     // movement: strafe, keep a sensible distance for the weapon
     this.strafeT -= dt;
     if (this.strafeT <= 0) { this.strafe = this.rng.chance(0.5) ? 1 : -1; this.strafeT = this.rng.float(0.5, 1.5); }
-    const pref = !cur ? 1.5 : cur.id === 'pump' || cur.id === 'tactical' ? 6 : cur.id === 'smg' ? 14 : cur.id === 'sniper' ? 70 : 30;
-    it.moveX = this.strafe * (cur && cur.id === 'sniper' ? 0.3 : 1);
-    it.moveZ = dist > pref * 1.3 ? 1 : dist < pref * 0.6 ? -1 : 0;
-    it.sprint = false;
+    // close in to the weapon's fighting range and stay there: bots push, they don't back off
+    const pref = !cur ? 1.5 : cur.id === 'pump' || cur.id === 'tactical' ? 3.5 : cur.id === 'smg' ? 8 : cur.id === 'sniper' ? 45 : 12;
+    const seen = g.time - this.lastSeen < 0.6;
+    if (!seen) {
+      // lost sight: go where they were last seen
+      it.moveX = 0;
+      it.moveZ = dist > 2.5 ? 1 : 0;
+      it.sprint = dist > 12;
+    } else {
+      it.moveX = this.strafe * (cur && cur.id === 'sniper' ? 0.3 : 0.8);
+      it.moveZ = dist > pref ? 1 : dist < 1.6 && cur && cur.id !== 'pump' && cur.id !== 'tactical' ? -0.4 : 0;
+      it.sprint = dist > pref * 2.5 && !this.rng.chance(0.3);
+    }
     it.crouch = cur && cur.id === 'sniper' && dist > 50;
     if (a.grounded && this.rng.chance(dt * 0.35)) it.jump = true;
     // defensive build when getting hit
@@ -544,6 +569,7 @@ export class BotBrain {
     }
     it.fire = shoot;
     it.firePressed = shoot && (this.rng.chance(0.5) || !def.auto);
+    if (shoot) it.sprint = false;
   }
 
   // Wall between us and the enemy, sometimes with a ramp to climb behind it.

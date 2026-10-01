@@ -109,7 +109,7 @@ class Game {
     const tips = [
       'Hit the glowing blue spot while harvesting for bonus materials.',
       'Wood builds fastest; metal is the strongest.',
-      'Press F on your own wall to add a window or a door.',
+      'Press F on your own build, click the tiles to cut out, then F again to confirm.',
       'Look down and hold W while skydiving to dive faster.',
       'Supply drops float down with epic and legendary loot. Follow the blue beam.',
       'Shield Flasks stack up to 50 shield. Shield Jugs go all the way to 100.',
@@ -309,6 +309,7 @@ class Game {
     this.player = null;
     this.clearNetProjectiles();
     this.building.hideGhost();
+    this.building.hideEditGrid();
     // a scenic spot on the slope of Lookout Peak, looking over the island
     const spot = this.lobbySpot || (this.lobbySpot = this.findLobbySpot());
     if (!this.lobbyChar) {
@@ -872,6 +873,7 @@ class Game {
   }
 
   playerDied(killer) {
+    this.building.hideEditGrid();
     this.placement = this.aliveCount() + 1;
     this.stats.matches++;
     this.stats.kills += this.player.kills;

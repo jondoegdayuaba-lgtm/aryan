@@ -323,11 +323,16 @@ export class Hud {
     const a = g.player;
     const el = $('prompt');
     const t = g.interactTarget(a);
+    if (g.controller.editing) {
+      el.hidden = false;
+      const ramp = g.controller.editing.piece.kind === 'ramp';
+      el.innerHTML = ramp ? '<kbd>Click</kbd> an edge to turn the ramp · <kbd>F</kbd> Confirm · <kbd>R</kbd> Reset'
+        : '<kbd>Click</kbd> or drag tiles to cut · <kbd>F</kbd> Confirm · <kbd>R</kbd> Reset';
+      return;
+    }
     if (!t && !a.buildMode && g.controller.editPiece && a.mode === 'ground') {
       el.hidden = false;
-      const p = g.controller.editPiece;
-      const what = p.kind === 'ramp' ? 'Turn ramp' : { null: 'Add window', bwindow: 'Make door', bdoor: 'Close wall' }[p.opening];
-      el.innerHTML = `<kbd>F</kbd> ${what}`;
+      el.innerHTML = '<kbd>F</kbd> Edit';
       return;
     }
     if (!t || a.mode !== 'ground' || a.buildMode) { el.hidden = true; return; }

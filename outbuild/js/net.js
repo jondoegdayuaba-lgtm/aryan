@@ -315,8 +315,12 @@ export class Net {
     const g = this.game;
     if (e.dr) g.dropCurrent(a);
     if (e.ed) {
-      const p = g.pieces.pieces.get(e.ed);
-      if (p && p.owner === a) g.building.edit(a, p);
+      const ed = e.ed;
+      const p = g.pieces.pieces.get(typeof ed === 'string' ? ed : ed.k);
+      if (p && p.owner === a) {
+        if (typeof ed === 'string') g.building.edit(a, p);
+        else g.building.applyEdit(a, p, { mask: ed.mask, dir: ed.dir });
+      }
     }
     if (e.fall > 0) a.takeDamage(e.fall, null, { fall: true });
     c.edges = this.freshEdges();

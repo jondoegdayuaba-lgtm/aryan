@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { CAMERA } from './config.js';
 import { WEAPONS } from './items.js';
 import { clamp } from './util.js';
+import { RAMP_TILE_DIR } from './building.js';
 
 const PIECE_KEYS = { KeyZ: 'wall', KeyX: 'floor', KeyC: 'ramp', KeyV: 'cone', F1: 'wall', F2: 'floor', F3: 'ramp', F4: 'cone' };
 const MAT_ORDER = ['wood', 'stone', 'metal'];
@@ -80,21 +81,25 @@ export class PlayerController {
         this.buildKind = kinds[(kinds.indexOf(this.buildKind) + inp.mouse.wheel + 4) % 4];
       }
       if (inp.hit('KeyE')) it.interact = true;
-      // online, the host makes these changes
-      if (inp.hit('KeyF') && this.editPiece) { if (a.netLocal) g.net.clientAction('edit', this.editPiece.key); else g.building.edit(a, this.editPiece); }
+      // F: open the edit grid on your own build; F again applies it
+      if (inp.hit('KeyF')) {
+        if (this.editing) this.finishEdit(true);
+        else if (this.editPiece) this.startEdit(this.editPiece);
+      }
       if (inp.hit('KeyG')) { if (a.netLocal) g.net.clientAction('drop'); else g.dropCurrent(a); }
       if (inp.hit('KeyB') && a.mode === 'ground') a.dancing = !a.dancing;
     }
     if (a.mode !== 'ground') this.buildMode = false;
+    if (this.editing) this.buildMode = false;
     if (a.dancing && (it.moveX || it.moveZ || inp.mouse.left || it.jump)) a.dancing = false;
     it.buildMode = this.buildMode;
-    it.reload = active && !this.buildMode && inp.hit('KeyR');
+    it.reload = active && !this.buildMode && !this.editing && inp.hit('KeyR');
 
-    // ---- fire / ADS
-    it.fire = active && inp.mouse.left;
-    it.firePressed = active && inp.mouse.leftPressed;
+    // ---- fire / ADS (the mouse edits tiles instead while the edit grid is open)
+    it.fire = active && inp.mouse.left && !this.editing;
+    it.firePressed = active && inp.mouse.leftPressed && !this.editing;
     const cur = a.current();
-    const canAds = !this.buildMode && cur && cur.type === 'weapon' && a.mode === 'ground' && !it.sprint;
+    const canAds = !this.buildMode && !this.editing && cur && cur.type === 'weapon' && a.mode === 'ground' && !it.sprint;
     this.ads = !!(canAds && active && inp.mouse.right);
     it.ads = this.ads;
     const scope = this.ads && cur && WEAPONS[cur.id].scope;
@@ -106,8 +111,9 @@ export class PlayerController {
     it.aimOrigin = this.aimOrigin;
     it.aimDir = this.aimDir;
 
-    // ---- editable piece under the crosshair
-    this.editPiece = a.mode === 'ground' && a.alive ? g.building.editTarget(a, this.aimOrigin, this.aimDir) : null;
+    // ---- editable piece under the crosshair, and the edit grid while editing
+    this.editPiece = a.mode === 'ground' && a.alive && !this.editing ? g.building.editTarget(a, this.aimOrigin, this.aimDir) : null;
+    if (this.editing) this.updateEdit(active);
 
     // ---- build preview
     if (this.buildMode && a.mode === 'ground' && a.alive) {
@@ -123,6 +129,48 @@ export class PlayerController {
       it.buildSlot = null;
     }
     this.scope = !!scope;
+  }
+
+  // ------------------------------------------------------------------ editing
+  startEdit(p) {
+    this.editing = { piece: p, sel: p.mask || 0, dir: p.dir || 0, paint: null };
+    this.buildMode = false;
+    if (this.game.audio) this.game.audio.ui('hover');
+  }
+
+  updateEdit(active) {
+    const g = this.game;
+    const a = this.actor;
+    const e = this.editing;
+    const p = e.piece;
+    const inp = this.input;
+    // the piece is gone, we died or walked away: drop the edit
+    const far = Math.hypot(p.ix * 4 + 2 - a.pos.x, p.iz * 4 + 2 - a.pos.z) > 9;
+    if (!p.alive || !a.alive || a.mode !== 'ground' || far) { this.finishEdit(false); return; }
+    const hover = g.building.editHover(p, this.aimOrigin, this.aimDir);
+    if (active) {
+      if (p.kind === 'ramp') {
+        if (inp.mouse.leftPressed && RAMP_TILE_DIR[hover] !== undefined) e.dir = RAMP_TILE_DIR[hover];
+      } else if (hover >= 0) {
+        // click a tile to toggle it, hold and drag to paint the same choice over more tiles
+        if (inp.mouse.leftPressed) e.paint = !(e.sel & (1 << hover));
+        if (inp.mouse.left && e.paint !== null) e.sel = e.paint ? e.sel | (1 << hover) : e.sel & ~(1 << hover);
+      }
+      if (!inp.mouse.left) e.paint = null;
+      if (inp.mouse.rightPressed || inp.hit('KeyR')) { e.sel = 0; e.dir = p.dir || 0; }
+    }
+    g.building.showEditGrid(p, e.sel, hover, e.dir, this.rig.camera.position);
+  }
+
+  finishEdit(apply) {
+    const e = this.editing;
+    this.editing = null;
+    this.game.building.hideEditGrid();
+    if (!apply || !e || !e.piece.alive) return;
+    const p = e.piece;
+    const change = p.kind === 'ramp' ? { dir: e.dir } : { mask: e.sel };
+    if (this.actor.netLocal) this.game.net.clientAction('edit', { k: p.key, ...change });
+    else this.game.building.applyEdit(this.actor, p, change);
   }
 
   updateCamera(dt) {

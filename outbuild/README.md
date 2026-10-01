@@ -67,7 +67,7 @@ Notes:
 | **R** | Reload; in build mode, change material |
 | **Q** | Toggle build mode |
 | **Z / X / C / V** | Wall / floor / ramp / roof (also enters build mode) |
-| **F** | Edit your own build: walls cycle window → door → solid; ramps turn |
+| **F** | Edit your own build: click or drag tiles on the grid to cut them out (walls 3×3, floors 2×2) or click a ramp edge to turn it; **F** again confirms, **R** resets |
 | **M** or **Tab** | Map |
 | **B** | Dance |
 | **Esc** | Pause (online: menu; the match keeps going) |
