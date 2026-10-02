@@ -101,6 +101,17 @@ The whole game is that one HTML file. Open it in a browser (double-clicking work
 - **Combat:** 10 hearts, armor reduces damage, sprint hits knock further, and hits while falling are critical. Hold the bow to charge it, release to fire. Killed players drop their items.
 - **Bots:** Easy, Normal and Hard bots differ in aim, reaction time, speed, bridging speed and tactics (Hard bots also pillar up and catch falls with blocks).
 
+## Multiplayer
+
+Up to 8 friends can play together. Bots fill any empty slots.
+
+1. Everyone opens the game and clicks **Multiplayer**, then types a name.
+2. One person clicks **Host a Game** and shares the 5-letter room code.
+3. Everyone else types the code and clicks **Join**.
+4. The host picks the map and difficulty and clicks **Start Match**. Afterwards the host can start another round or return everyone to the lobby.
+
+It uses [PeerJS](https://peerjs.com) (WebRTC, loaded from cdnjs when you open Multiplayer). The free public PeerJS server only introduces the browsers to each other; the game itself is sent directly between players. The host's browser runs the match, so keep the host's game open until the match ends. Very strict networks (some school or office networks) can block direct connections.
+
 Controls follow Minecraft Java's defaults:
 
 | Key | Action |

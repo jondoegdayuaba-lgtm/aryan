@@ -21,6 +21,9 @@ canvas{image-rendering:pixelated;image-rendering:crisp-edges}
 .panel{background:#c6c6c6;border:3px solid #111;box-shadow:inset 3px 3px 0 #fff,inset -3px -3px 0 #555;padding:14px 16px;color:#333}
 .col{display:flex;flex-direction:column;align-items:center;gap:8px}
 .lines{display:flex;flex-direction:column;gap:7px;align-items:flex-start}
+.row{display:flex;gap:10px;align-items:center}
+.tin{font:bold 22px monospace;text-transform:uppercase;padding:6px 8px;border:3px solid #111;background:#1a1a1a;color:#fff;width:230px;outline:none}
+.tin:focus{border-color:#7c88c6}
 #menu{background:linear-gradient(180deg,rgba(40,90,170,.15),rgba(10,20,50,.35))}
 #hud{position:fixed;inset:0;pointer-events:none;z-index:10;display:none}
 #top{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:22px;align-items:center;
@@ -90,10 +93,30 @@ canvas{image-rendering:pixelated;image-rendering:crisp-edges}
   <div id="title"></div>
   <div id="subtitle" style="margin-bottom:22px"></div>
   <div class="btn" id="bPlay"></div>
+  <div class="btn" id="bMulti"></div>
   <div class="btn" id="bMap"></div>
   <div class="btn" id="bDiff"></div>
   <div class="btn" id="bControls"></div>
   <div id="menuHint" style="margin-top:18px;opacity:.85"></div>
+</div>
+<div id="mp" class="screen dim">
+  <div class="panel col" style="min-width:600px;gap:12px">
+    <div id="mpTitle"></div>
+    <div id="mpNameRow" class="row"><div id="mpNameL"></div><input id="mpName" class="tin" maxlength="10" spellcheck="false" autocomplete="off"></div>
+    <div id="mpChoose" class="col">
+      <div class="btn" id="bHost"></div>
+      <div id="mpOr"></div>
+      <div class="row"><input id="mpCode" class="tin" maxlength="5" placeholder="CODE" spellcheck="false" autocomplete="off" style="width:160px;text-align:center"><div class="btn" id="bJoin" style="min-width:150px"></div></div>
+    </div>
+    <div id="mpRoom" class="col" style="display:none">
+      <div id="mpCodeShow"></div><div id="mpCodeHint"></div>
+      <div id="mpPlayers" class="lines" style="min-height:150px;align-self:stretch;background:#b4b4b4;padding:10px"></div>
+      <div id="mpHostCtl" class="col"><div class="btn" id="bMpMap"></div><div class="btn" id="bMpDiff"></div><div class="btn" id="bMpStart"></div></div>
+      <div id="mpWait"></div>
+    </div>
+    <div id="mpStatus"></div>
+  </div>
+  <div class="btn" id="bMpBack"></div>
 </div>
 <div id="controls" class="screen dim">
   <div class="panel col">
@@ -156,6 +179,9 @@ function hash2(x, z, s) {
 function lerpAngle(a, b, t) { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return a + d * t; }
 function fmtTime(s) { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 const $ = id => document.getElementById(id);
+// Multiplayer state. mode: 'off' (single player), 'host' (runs the match) or 'client' (mirrors the host)
+const NET = { mode: 'off', name: '', code: '', peer: null, conns: [], host: null, you: -1, logging: false, started: false, inMatch: false,
+  blk: [], fx: [], feed: [], msgs: [], fxSrc: -1, sendT: 0, pid: 0, did: 0, projs: new Map(), dropsC: new Map(), lobby: null, worker: null };
 
 /* =========================================================================
    Pixel font (5x7, proportional)
@@ -250,6 +276,7 @@ const Sound = {
     s.connect(f); f.connect(g); g.connect(this.master); s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.02);
   },
   play(name, pos) {
+    if (NET.logging && pos) NET.fx.push(['s', name, +pos.x.toFixed(1), +pos.y.toFixed(1), +pos.z.toFixed(1), NET.fxSrc]);
     if (!this.ctx) return;
     let v = 1;
     if (pos) { const d = pos.distanceTo(camera.position); v = Math.max(0, 1 - d / 42); if (v <= 0.02) return; }
@@ -645,13 +672,13 @@ const world = {
     if (i >= m.userData.cap) return false;
     tmpM.makeTranslation(x + .5, y + .5, z + .5); m.setMatrixAt(i, tmpM);
     keys.push(k); m.count = keys.length; m.instanceMatrix.needsUpdate = true;
-    this.map.set(k, { t, i }); return true;
+    this.map.set(k, { t, i }); if (NET.logging) NET.blk.push(x, y, z, t); return true;
   },
   remove(x, y, z) {
     const k = K(x, y, z), b = this.map.get(k); if (!b) return 0;
     const keys = this.keys[b.t], m = this.inst[b.t], last = keys.length - 1;
     if (b.i !== last) { const lk = keys[last]; keys[b.i] = lk; const p = KD(lk); tmpM.makeTranslation(p[0] + .5, p[1] + .5, p[2] + .5); m.setMatrixAt(b.i, tmpM); this.map.get(lk).i = b.i; }
-    keys.pop(); m.count = keys.length; m.instanceMatrix.needsUpdate = true; this.map.delete(k);
+    keys.pop(); m.count = keys.length; m.instanceMatrix.needsUpdate = true; this.map.delete(k); if (NET.logging) NET.blk.push(x, y, z, 0);
     if (b.t === B.CHEST) { this.chests.delete(k); if (ui.chest && ui.chest.key === k) closeInventory(); }
     return b.t;
   },
@@ -905,6 +932,7 @@ const particles = {
     scene.add(this.mesh);
   },
   spawn(x, y, z, n, colors, speed, life, size, grav) {
+    if (NET.logging) NET.fx.push(['p', +x.toFixed(2), +y.toFixed(2), +z.toFixed(2), n, colors.map(c => c.getHex()), speed, life, size, grav === undefined ? 18 : grav, NET.fxSrc]);
     for (let i = 0; i < n; i++) {
       if (this.list.length >= PMAX) this.list.shift();
       this.list.push({ x: x + R(-.3, .3), y: y + R(-.3, .3), z: z + R(-.3, .3), vx: R(-1, 1) * speed, vy: R(0.2, 1.2) * speed, vz: R(-1, 1) * speed, life: life * R(.6, 1.2), max: life, size: size * R(.7, 1.2), col: colors[Math.floor(Math.random() * colors.length)], g: grav === undefined ? 18 : grav });
@@ -1086,8 +1114,8 @@ function hazards(e, dt) {
   for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) for (let y = y0; y <= y1; y++) {
     const t = world.get(x, y, z); if (t === B.LAVA) lava = true; else if (t === B.CACTUS) cact = [x + .5, z + .5];
   }
-  if (lava) { e.hazT = .5; hurtRaw(e, 3, 'lava'); e.vel.y = Math.max(e.vel.y, 7); particles.spawn(e.pos.x, e.pos.y + .5, e.pos.z, 10, [new THREE.Color(0xff8020), new THREE.Color(0xffd040), new THREE.Color(0x444444)], 2, .6, .1, -2); }
-  else if (cact) { e.hazT = .5; hurtRaw(e, 1, 'cactus'); const dx = e.pos.x - cact[0], dz = e.pos.z - cact[1], d = Math.hypot(dx, dz) || 1; e.vel.x += dx / d * 3; e.vel.z += dz / d * 3; }
+  if (lava) { e.hazT = .5; hurtRaw(e, 3, 'lava'); e.vel.y = Math.max(e.vel.y, 7); if (e.remote) e.net.priv.kv = [e.vel.x, e.vel.y, e.vel.z]; particles.spawn(e.pos.x, e.pos.y + .5, e.pos.z, 10, [new THREE.Color(0xff8020), new THREE.Color(0xffd040), new THREE.Color(0x444444)], 2, .6, .1, -2); }
+  else if (cact) { e.hazT = .5; hurtRaw(e, 1, 'cactus'); const dx = e.pos.x - cact[0], dz = e.pos.z - cact[1], d = Math.hypot(dx, dz) || 1; e.vel.x += dx / d * 3; e.vel.z += dz / d * 3; if (e.remote) e.net.priv.kv = [e.vel.x, e.vel.y, e.vel.z]; }
 }
 function separateEntities() {
   for (let i = 0; i < ents.length; i++) for (let j = i + 1; j < ents.length; j++) {
@@ -1095,8 +1123,8 @@ function separateEntities() {
     const dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z, dy = Math.abs(b.pos.y - a.pos.y);
     const d = Math.hypot(dx, dz); if (d < 0.6 && dy < 1.7 && d > 1e-4) {
       const push = (0.6 - d) * 0.5, nx = dx / d * push, nz = dz / d * push;
-      if (!collides(a.pos.x - nx, a.pos.y, a.pos.z - nz)) { a.pos.x -= nx; a.pos.z -= nz; }
-      if (!collides(b.pos.x + nx, b.pos.y, b.pos.z + nz)) { b.pos.x += nx; b.pos.z += nz; }
+      if (!a.remote && !collides(a.pos.x - nx, a.pos.y, a.pos.z - nz)) { a.pos.x -= nx; a.pos.z -= nz; }
+      if (!b.remote && !collides(b.pos.x + nx, b.pos.y, b.pos.z + nz)) { b.pos.x += nx; b.pos.z += nz; }
     }
   }
 }
@@ -1107,6 +1135,7 @@ function lookDir(yaw, pitch, out) { const cp = Math.cos(pitch); return (out || n
    ========================================================================= */
 function displayName(e) { return e.name; }
 function hurtRaw(e, amount, cause) {
+  if (NET.mode === 'client') { if (e === player && cause === 'fall' && e.alive) netSend({ t: 'fall', d: amount }); return; }
   if (!e.alive || game.phase !== 'playing' && game.phase !== 'over') return;
   e.health -= amount; e.lastHurt = game.time; e.hurtT = 0.35;
   if (e.isPlayer) { Sound.play('hurt'); flashHurt(); } else Sound.play('hurt', e.pos);
@@ -1119,7 +1148,7 @@ function damage(t, amount, att, kx, kz, kb, up, cause) {
   const dmg = amount * (1 - red);
   t.invuln = 0.45; t.hurtT = 0.35; t.lastHurt = game.time;
   if (att && att !== t) { t.lastAttacker = att; t.lastAttackTime = game.time; }
-  if (kb > 0) { t.vel.x = kx * kb; t.vel.z = kz * kb; t.vel.y = Math.max(t.vel.y, up); t.onGround = false; t.kbTimer = 0.35; }
+  if (kb > 0) { t.vel.x = kx * kb; t.vel.z = kz * kb; t.vel.y = Math.max(t.vel.y, up); t.onGround = false; t.kbTimer = 0.35; if (t.remote) t.net.priv.kv = [t.vel.x, t.vel.y, t.vel.z]; }
   if (dmg > 0) {
     t.health -= dmg;
     particles.spawn(t.pos.x, t.pos.y + 1.1, t.pos.z, 6, COL.red, 2, .5, .08);
@@ -1151,6 +1180,8 @@ function kill(e, cause, att) {
   if (killer === e) killer = null;
   if (killer && killer.alive !== undefined) killer.kills++;
   e.killer = killer; e.deathCause = cause;
+  if (e.remote) { e.net.priv.dead = { k: killer ? killer.name : null, c: cause, pl: aliveCount() + 1 }; e.net.ctx.chest = null; e.net.ctx.cursor = null; }
+  if (killer && killer.remote) killer.net.priv.ks = 1;
   const voidDeath = cause === 'void';
   if (!voidDeath) {
     particles.spawn(e.pos.x, e.pos.y + 1, e.pos.z, 26, COL.smoke, 2.5, 1.0, .18, -1);
@@ -1165,6 +1196,7 @@ function kill(e, cause, att) {
   if (voidDeath) msg = killer ? `${displayName(killer)} KNOCKED ${V} INTO THE VOID` : `${V} FELL INTO THE VOID`;
   else if (cause === 'fall') msg = killer ? `${displayName(killer)} ELIMINATED ${V}` : `${V} HIT THE GROUND TOO HARD`;
   else if (cause === 'orb') msg = `${V} WARPED TOO HARD`;
+  else if (cause === 'left') msg = `${V} LEFT THE GAME`;
   else if (cause === 'lava') msg = killer ? `${displayName(killer)} ELIMINATED ${V}` : `${V} TRIED TO SWIM IN LAVA`;
   else if (cause === 'cactus') msg = killer ? `${displayName(killer)} ELIMINATED ${V}` : `${V} WAS PRICKED TO DEATH`;
   else msg = killer ? `${displayName(killer)} ELIMINATED ${V}` : `${V} WAS ELIMINATED`;
@@ -1218,7 +1250,7 @@ const PROJ_G = { arrow: 20, snowball: 16, orb: 16 };
 function shoot(owner, type, dir, speed, dmg) {
   const pos = new V3(owner.pos.x, owner.eyeY() - 0.1, owner.pos.z).addScaledVector(dir, 0.5);
   const mesh = new THREE.Mesh(projGeo[type], projMat[type]); mesh.position.copy(pos); scene.add(mesh);
-  projectiles.push({ type, pos, vel: dir.clone().multiplyScalar(speed), owner, dmg: dmg || 0, age: 0, stuck: false, life: 0, mesh });
+  projectiles.push({ id: ++NET.pid, type, pos, vel: dir.clone().multiplyScalar(speed), owner, dmg: dmg || 0, age: 0, stuck: false, life: 0, mesh });
   Sound.play(type === 'arrow' ? 'bow' : 'throw', owner.isPlayer ? null : owner.pos);
 }
 const _p0 = new V3(), _st = new V3(), _pt = new V3();
@@ -1262,7 +1294,7 @@ function warp(e, pt) {
   for (let k = 0; k < 8 && collides(x, y, z); k++) y += 0.5;
   if (collides(x, y, z)) return;
   particles.spawn(e.pos.x, e.pos.y + 1, e.pos.z, 14, COL.orb, 2, .7, .1, 2);
-  e.pos.set(x, y, z); e.vel.set(0, 0, 0); e.fallStart = y;
+  e.pos.set(x, y, z); e.vel.set(0, 0, 0); e.fallStart = y; if (e.remote) { e.netPos.set(x, y, z); e.net.priv.tp = [x, y, z]; }
   particles.spawn(x, y + 1, z, 18, COL.orb, 2, .8, .1, 2);
   Sound.play('orb', e.isPlayer ? null : e.pos);
   hurtRaw(e, 2, 'orb');
@@ -1279,7 +1311,7 @@ const drops = [];
 function dropItem(id, count, x, y, z, vx, vy, vz, owner) {
   const mesh = makeItemMesh(id); mesh.scale.setScalar(mesh.userData.block ? 0.26 : 0.45);
   mesh.position.set(x, y, z); scene.add(mesh);
-  drops.push({ id, count, pos: new V3(x, y, z), vel: new V3(vx, vy, vz), age: 0, mesh, owner, rot: Math.random() * 6 });
+  drops.push({ nid: ++NET.did, id, count, pos: new V3(x, y, z), vel: new V3(vx, vy, vz), age: 0, mesh, owner, rot: Math.random() * 6 });
 }
 function updateDrops(dt) {
   for (let i = drops.length - 1; i >= 0; i--) {
@@ -1301,9 +1333,9 @@ function updateDrops(dt) {
         if (!e.alive || (e === d.owner && d.age < 1.5)) continue;
         if (Math.abs(e.pos.x - d.pos.x) < 1.2 && Math.abs(e.pos.z - d.pos.z) < 1.2 && d.pos.y > e.pos.y - 0.6 && d.pos.y < e.pos.y + 2.2) {
           const it = ITEMS[d.id];
-          if (!e.isPlayer && it.type === 'armor') { const cur = e.inv.armor[it.slot]; if (!cur || ITEMS[cur.id].pts < it.pts) { e.inv.armor[it.slot] = { id: d.id, count: 1 }; refreshArmorVisual(e); gone = true; break; } }
+          if (!e.isPlayer && !e.remote && it.type === 'armor') { const cur = e.inv.armor[it.slot]; if (!cur || ITEMS[cur.id].pts < it.pts) { e.inv.armor[it.slot] = { id: d.id, count: 1 }; refreshArmorVisual(e); gone = true; break; } }
           const left = e.inv.add(d.id, d.count);
-          if (left < d.count) { if (e.isPlayer) Sound.play('pop'); d.count = left; if (left === 0) { gone = true; break; } }
+          if (left < d.count) { if (e.isPlayer) Sound.play('pop'); else if (e.remote) Sound.play('pop', e.pos); d.count = left; if (left === 0) { gone = true; break; } }
         }
       }
     }
@@ -1360,7 +1392,7 @@ function makeHumanoid(e, c) {
 function updateNameTag(e) {
   const P = e.parts; if (!P) return; const g = P.tagC.getContext('2d'); g.clearRect(0, 0, 128, 40);
   const w = measureText(e.name) * 2 + 8; g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(64 - w / 2, 2, w, 19);
-  drawText(g, e.name, 64 - w / 2 + 4, 4, 2, '#ffffff', false);
+  drawText(g, e.name, 64 - w / 2 + 4, 4, 2, e.human ? '#9dff9d' : '#ffffff', false);
   g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(24, 26, 80, 8);
   const hp = clamp(e.health / 20, 0, 1); g.fillStyle = hp > .5 ? '#3cd03c' : hp > .25 ? '#e0c020' : '#e03030'; g.fillRect(25, 27, 78 * hp, 6);
   P.tagT.needsUpdate = true;
@@ -1378,7 +1410,7 @@ function animateHumanoid(e, dt) {
   const amp = Math.min(1, sp / 4) * 0.8, sw = Math.sin(e.walkPhase) * amp;
   P.legL.rotation.x = sw; P.legR.rotation.x = -sw; P.armL.rotation.x = -sw * .8;
   let ar = sw * .8; if (e.swing > 0) ar = -Math.sin(e.swing * Math.PI) * 1.6 - .3;
-  if (e.ai && e.ai.charging) ar = -1.5;
+  if ((e.ai && e.ai.charging) || e.netCharging) ar = -1.5;
   P.armR.rotation.x = ar;
   P.head.rotation.x = clamp(e.pitch, -1, 1) * 0.8;
   const hurt = e.hurtT > 0; P.mats.forEach(m => m.emissive.setHex(hurt ? 0x881111 : 0x000000));
@@ -1616,24 +1648,38 @@ function clearEntities() {
   ents = []; player = null;
   for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0;
   for (const d of drops) scene.remove(d.mesh); drops.length = 0;
+  for (const q of NET.projs.values()) scene.remove(q.mesh); NET.projs.clear();
+  for (const q of NET.dropsC.values()) scene.remove(q.mesh); NET.dropsC.clear();
   particles.clear();
 }
+const PLAYER_LOOK = { shirt: 0x2aa3a8, pants: 0x3b3fa6, hair: 0x3b2610, skin: 0xc8956c };
+const HUMAN_LOOKS = [
+  { shirt: 0xf2f2f2, pants: 0x303030, hair: 0xf0d060, skin: 0xf0c49a }, { shirt: 0x1e1e1e, pants: 0x6a4424, hair: 0x101010, skin: 0x8a5a3a },
+  { shirt: 0xff7f2a, pants: 0x2b2b5c, hair: 0x6a2a10, skin: 0xe0ac7e }, { shirt: 0x7a3ad8, pants: 0x222222, hair: 0xd8d8d8, skin: 0xd9a070 },
+  { shirt: 0x3ad87a, pants: 0x30304a, hair: 0x402010, skin: 0xb07850 }, { shirt: 0xd83a6a, pants: 0x202040, hair: 0x2a1a0a, skin: 0xf2c8a0 },
+  { shirt: 0x3a6ad8, pants: 0x3a2a1a, hair: 0xb04020, skin: 0xc48860 }];
 function startGame() {
+  if (NET.mode === 'client') return;
   Sound.init();
-  clearEntities();
+  clearEntities(); NET.logging = false; NET.inMatch = false;
   genWorld((Math.random() * 1e9) | 0);
+  const humans = [{ name: NET.mode === 'host' ? NET.name : 'YOU' }].concat(NET.mode === 'host' ? NET.conns.filter(c => c.name) : []);
   const order = [0, 1, 2, 3, 4, 5, 6, 7].sort(() => Math.random() - .5);
+  let botN = 0;
   for (let i = 0; i < 8; i++) {
     const isl = islands.filter(s => s.spawn)[order[i]];
-    const e = new Entity(i === 0 ? 'YOU' : 'BOT ' + i, i === 0);
+    const h = humans[i];
+    const e = new Entity(h ? h.name : 'BOT ' + (++botN), i === 0);
     e.pos.set(isl.spawn.x + .5, TOPY + 1, isl.spawn.z + .5); e.fallStart = e.pos.y;
     e.yaw = Math.atan2(isl.spawn.x, isl.spawn.z); // face the center
     e.inv.add('wool', 16);
     buildCage(isl.spawn.x, isl.spawn.z);
-    if (i === 0) { player = e; e.sel = 0; makeHumanoid(e, { shirt: 0x2aa3a8, pants: 0x3b3fa6, hair: 0x3b2610, skin: 0xc8956c }); e.parts.tag.visible = false; e.mesh.visible = false; }
-    else { makeHumanoid(e, BOT_COLORS[(i - 1) % BOT_COLORS.length]); e.ai = newAI(isl.chest.key); }
+    if (i === 0) { player = e; e.sel = 0; e.look = PLAYER_LOOK; makeHumanoid(e, e.look); e.parts.tag.visible = false; e.mesh.visible = false; }
+    else if (h) { e.remote = true; e.human = true; e.look = HUMAN_LOOKS[(i - 1) % HUMAN_LOOKS.length]; makeHumanoid(e, e.look); e.netPos = e.pos.clone(); e.net = { ctx: { cursor: null, chest: null }, priv: {} }; h.ent = e; h.lastInv = ''; }
+    else { e.look = BOT_COLORS[(botN - 1) % BOT_COLORS.length]; makeHumanoid(e, e.look); e.ai = newAI(isl.chest.key); }
     ents.push(e);
   }
+  if (NET.mode === 'host') hostSendStart();
   game.phase = 'countdown'; game.countdown = 5; game.lastCount = 6; game.time = 0; game.refilled = false; game.sudden = false; game.sdT = 0; game.endShown = false; game.paused = false;
   pstate.view = 0; breaking.reset(); ui.feedList.forEach(f => f.el.remove()); ui.feedList = [];
   showScreen(null); $('hud').style.display = 'block'; $('vignetteSD').style.display = 'none';
@@ -1648,6 +1694,14 @@ function aliveCount() { return ents.filter(e => e.alive).length; }
 function checkWin() {
   if (game.phase !== 'playing') return;
   const alive = ents.filter(e => e.alive);
+  if (NET.mode === 'host') {
+    if (alive.length > 1) return;
+    game.phase = 'over'; const w = alive[0];
+    if (w) addFeed(w.name + ' WINS THE MATCH!', '#ffe14d');
+    if (w === player) { game.won = true; setTimeout(() => showEnd(true), 900); Sound.play('victory'); bigMessage('VICTORY!', '#ffe14d', 3); }
+    else { if (w && w.remote) w.net.priv.end = 1; setTimeout(() => showEnd(false), 1300); }
+    return;
+  }
   if (player.alive && alive.length === 1) {
     game.phase = 'over'; game.won = true;
     setTimeout(() => showEnd(true), 900);
@@ -1657,7 +1711,8 @@ function checkWin() {
 }
 function onPlayerDeath() {
   game.place = aliveCount() + 1;
-  game.phase = 'over'; game.won = false;
+  if (NET.mode === 'off') game.phase = 'over';
+  game.won = false;
   Sound.play('lose');
   setTimeout(() => showEnd(false), 1300);
 }
@@ -1681,14 +1736,22 @@ function showEnd(win) {
   }
   line('KILLS: ' + player.kills); line('TIME: ' + fmtTime(game.time));
   line('MAP: ' + MAPS[game.map].name + '   DIFFICULTY: ' + game.diff.toUpperCase(), '#c0c0ff');
+  if (NET.mode === 'client') line('WAITING FOR THE HOST TO START THE NEXT ROUND...', '#ffe14d');
+  $('bAgain').style.display = NET.mode === 'client' ? 'none' : 'flex';
+  setText($('bMenu'), NET.mode === 'host' ? 'BACK TO LOBBY' : NET.mode === 'client' ? 'LEAVE GAME' : 'MAIN MENU', 3);
   showScreen('end');
 }
-function quitToMenu() {
+function resetToMenuWorld() {
   if (document.pointerLockElement) document.exitPointerLock();
   closeInventory(true);
-  clearEntities(); genWorld(12345);
+  clearEntities(); NET.started = false; genWorld(12345);
   game.phase = 'menu'; game.paused = false;
-  $('hud').style.display = 'none'; showScreen('menu'); setVM(null);
+  $('hud').style.display = 'none'; setVM(null);
+}
+function quitToMenu() {
+  if (NET.mode === 'host') { backToLobby(); return; }
+  if (NET.mode === 'client') { leaveMP(); return; }
+  resetToMenuWorld(); showScreen('menu');
 }
 
 /* =========================================================================
@@ -1725,7 +1788,7 @@ document.addEventListener('pointerlockchange', () => {
   else { mouse[0] = mouse[1] = mouse[2] = false; if (inGame() && !ui.invOpen && player && player.alive) pauseGame(); }
 });
 document.addEventListener('pointerlockerror', () => { if (inGame() && !ui.invOpen) pauseGame(); });
-function pauseGame() { game.paused = true; showScreen('pause'); }
+function pauseGame() { game.paused = true; setText($('pTitle'), NET.mode === 'off' ? 'PAUSED' : 'MENU', 6); setText($('bQuit'), NET.mode === 'host' ? 'END MATCH (LOBBY)' : NET.mode === 'client' ? 'LEAVE GAME' : 'QUIT TO MENU', 3); showScreen('pause'); }
 document.addEventListener('mousemove', e => {
   if (ui.invOpen) { const ci = $('cursorItem'); ci.style.left = e.clientX + 'px'; ci.style.top = e.clientY + 'px'; const tt = $('tooltip'); tt.style.left = (e.clientX + 14) + 'px'; tt.style.top = (e.clientY - 22) + 'px'; }
   if (!controlsActive()) return;
@@ -1778,7 +1841,7 @@ function onMouseDown(btn) {
   if (btn !== 2) return;
   // right click: open a chest you're looking at (sneak to place against it instead)
   const r = raycastBlock(eyePos(player), lookDir(player.yaw, player.pitch), BUILD_REACH);
-  if (r && r.type === B.CHEST && !(player.crouch && ht === 'block')) { openInventory(world.chests.get(K(r.x, r.y, r.z))); return; }
+  if (r && r.type === B.CHEST && !(player.crouch && ht === 'block')) { if (NET.mode === 'client') netOpenChest(K(r.x, r.y, r.z)); else openInventory(world.chests.get(K(r.x, r.y, r.z))); return; }
   if (ht === 'bow') { if (player.inv.count(id => id === 'arrow') > 0) { pstate.charging = true; pstate.bowT = 0; } else bigMessage('NO ARROWS', '#ff8080', 1.0, true); return; }
   if (ht === 'food') { pstate.eatT = 0; return; }
   playerUse(); pstate.placeT = 0.22;
@@ -1793,7 +1856,7 @@ function onMouseUp(btn) {
     pstate.charging = false;
     if (pstate.bowT > 0.15 && game.phase === 'playing') {
       const p = Math.min(1, pstate.bowT / 1.0), as = player.inv.findSlot(id => id === 'arrow');
-      if (as >= 0) { shoot(player, 'arrow', lookDir(player.yaw, player.pitch), 8 + 40 * p, Math.round(2 + 7 * p)); player.inv.take(as, 1); }
+      if (as >= 0) { if (NET.mode === 'client') { netSend({ t: 'bow', pw: p, y: player.yaw, pi: player.pitch }); Sound.play('bow'); } else shoot(player, 'arrow', lookDir(player.yaw, player.pitch), 8 + 40 * p, Math.round(2 + 7 * p)); player.inv.take(as, 1); }
     }
     pstate.bowT = 0;
   }
@@ -1805,7 +1868,7 @@ function playerAttack() {
   const blk = raycastBlock(o, d, BUILD_REACH);
   let best = null, bt = REACH;
   for (const e of ents) { if (e === player || !e.alive) continue; const t = rayAABB(o, d, e.pos.x - W - .08, e.pos.y, e.pos.z - W - .08, e.pos.x + W + .08, e.pos.y + H + .05, e.pos.z + W + .08); if (t !== null && t < bt && (!blk || t < blk.t)) { bt = t; best = e; } }
-  if (best && game.phase === 'playing') meleeAttack(player, best);
+  if (best && game.phase === 'playing') { if (NET.mode === 'client') netSend({ t: 'atk', i: ents.indexOf(best) }); else meleeAttack(player, best); }
   else if (!blk) Sound.play('swish');
 }
 function playerUse() {
@@ -1814,14 +1877,24 @@ function playerUse() {
     if (game.phase !== 'playing') return;
     const r = raycastBlock(eyePos(player), lookDir(player.yaw, player.pitch), BUILD_REACH);
     let placed = false;
-    if (r && (r.nx || r.ny || r.nz)) placed = placeBlock(player, r.x + r.nx, r.y + r.ny, r.z + r.nz, player.sel);
+    if (r && (r.nx || r.ny || r.nz)) placed = placeAt(r.x + r.nx, r.y + r.ny, r.z + r.nz);
     if (!placed && player.pitch < -0.6) placed = assistPlace();
     if (placed) vm.swing = 0.001;
   } else if (it.type === 'throw') {
     if (game.phase !== 'playing' || pstate.useT > 0) return; pstate.useT = 0.3;
-    shoot(player, h.id === 'orb' ? 'orb' : 'snowball', lookDir(player.yaw, player.pitch), 24);
+    if (NET.mode === 'client') { netSend({ t: 'thr', y: player.yaw, pi: player.pitch }); Sound.play('throw'); }
+    else shoot(player, h.id === 'orb' ? 'orb' : 'snowball', lookDir(player.yaw, player.pitch), 24);
     player.inv.take(player.sel, 1); vm.swing = 0.001;
-  } else if (it.type === 'armor') { equipArmor(player, player.sel); Sound.play('chest'); }
+  } else if (it.type === 'armor') { if (NET.mode === 'client') netSend({ t: 'equip' }); else equipArmor(player, player.sel); Sound.play('chest'); }
+}
+// place a block for the local player (a client places it straight away and asks the host to confirm)
+function placeAt(x, y, z) {
+  if (NET.mode !== 'client') return placeBlock(player, x, y, z, player.sel);
+  const s = player.held; if (!s || !ITEMS[s.id].block) return false;
+  if (y < 1 || y > 200 || world.solid(x, y, z) || cellBlockedByEntity(x, y, z)) return false;
+  world.set(x, y, z, ITEMS[s.id].block); player.inv.take(player.sel, 1);
+  Sound.play('place', new V3(x + .5, y + .5, z + .5));
+  netSend({ t: 'plc', x, y, z, s: player.sel }); return true;
 }
 // Bridging assist: looking down past your own feet places the block just in front of them
 function assistPlace() {
@@ -1831,26 +1904,31 @@ function assistPlace() {
     const x = Math.floor(p.pos.x + fx * t), z = Math.floor(p.pos.z + fz * t);
     if (world.solid(x, y, z)) continue;
     const nb = (cx, cz) => world.solid(cx + 1, y, cz) || world.solid(cx - 1, y, cz) || world.solid(cx, y, cz + 1) || world.solid(cx, y, cz - 1) || world.solid(cx, y - 1, cz);
-    if (nb(x, z)) return placeBlock(p, x, y, z, p.sel);
+    if (nb(x, z)) return placeAt(x, y, z);
     // diagonal step: fill the connecting cell first
     const sx = Math.sign(fx), sz = Math.sign(fz);
     for (const [cx, cz] of Math.abs(fx) > Math.abs(fz) ? [[x - sx, z], [x, z - sz]] : [[x, z - sz], [x - sx, z]])
-      if (!world.solid(cx, y, cz) && nb(cx, cz)) return placeBlock(p, cx, y, cz, p.sel);
+      if (!world.solid(cx, y, cz) && nb(cx, cz)) return placeAt(cx, y, cz);
     return false;
   }
   return false;
 }
-function dropFromSlot(ref, all) {
-  const st = getSlot(ref); if (!st) return; const n = all ? st.count : 1;
-  const d = lookDir(player.yaw, player.pitch);
-  dropItem(st.id, n, player.pos.x + d.x * .5, player.eyeY() - .3, player.pos.z + d.z * .5, d.x * 5, d.y * 5 + 2, d.z * 5, player);
-  st.count -= n; if (st.count <= 0) setSlot(ref, null); renderInventory(); updateTooltip();
+function throwItem(e, id, n) {
+  const d = lookDir(e.yaw, e.pitch);
+  dropItem(id, n, e.pos.x + d.x * .5, e.eyeY() - .3, e.pos.z + d.z * .5, d.x * 5, d.y * 5 + 2, d.z * 5, e);
 }
+function dropFromSlotC(c, e, ref, all) {
+  const st = getSlotC(c, e, ref); if (!st) return; const n = all ? st.count : 1;
+  throwItem(e, st.id, n); st.count -= n; if (st.count <= 0) setSlotC(c, e, ref, null);
+}
+function dropFromSlot(ref, all) {
+  if (NET.mode === 'client') { netSend({ t: 'dropSlot', ref, all: all ? 1 : 0 }); return; }
+  dropFromSlotC(ui, player, ref, all); renderInventory(); updateTooltip();
+}
+function dropHeldE(e, all) { const h = e.held; if (!h) return; const n = all ? h.count : 1; throwItem(e, h.id, n); e.inv.take(e.sel, n); }
 function dropHeld(all) {
-  const h = player.held; if (!h) return; const d = lookDir(player.yaw, player.pitch);
-  const n = all ? h.count : 1;
-  dropItem(h.id, n, player.pos.x + d.x * .5, player.eyeY() - .3, player.pos.z + d.z * .5, d.x * 5, d.y * 5 + 2, d.z * 5, player);
-  player.inv.take(player.sel, n);
+  if (NET.mode === 'client') { const h = player.held; if (!h) return; netSend({ t: 'drop', all: all ? 1 : 0 }); player.inv.take(player.sel, all ? h.count : 1); return; }
+  dropHeldE(player, all);
 }
 function updatePlayer(dt) {
   const p = player; if (!p || !p.alive) return;
@@ -1876,7 +1954,7 @@ function updatePlayer(dt) {
   if (eating) {
     const before = pstate.eatT; pstate.eatT += dt;
     if (Math.floor(before / .27) !== Math.floor(pstate.eatT / .27)) Sound.play('dig');
-    if (pstate.eatT >= 1.6) { eat(player, player.sel); pstate.eatT = 0; }
+    if (pstate.eatT >= 1.6) { if (NET.mode === 'client') { netSend({ t: 'eat' }); Sound.play('eat'); player.inv.take(player.sel, 1); } else eat(player, player.sel); pstate.eatT = 0; }
   } else pstate.eatT = 0;
   if (act && mouse[2] && heldType() === 'block') { pstate.placeT -= dt; if (pstate.placeT <= 0) { playerUse(); pstate.placeT = 0.2; } }
   // block targeting & breaking
@@ -1888,7 +1966,11 @@ function updatePlayer(dt) {
     breaking.t += dt / (BLOCKS[r.type].hard * 0.75);
     breaking.digT -= dt; if (breaking.digT <= 0) { breaking.digT = 0.22; Sound.play('dig'); vm.swing = 0.001; }
     crackMesh.visible = true; crackMesh.position.set(r.x + .5, r.y + .5, r.z + .5); crackMesh.material.map = crackTex[Math.min(5, Math.floor(breaking.t * 6))];
-    if (breaking.t >= 1) { breakBlock(p, r.x, r.y, r.z); breaking.reset(); }
+    if (breaking.t >= 1) {
+      if (NET.mode === 'client') { world.remove(r.x, r.y, r.z); particles.spawn(r.x + .5, r.y + .5, r.z + .5, 14, BLOCKS[r.type].colors, 2.4, .7, .11); Sound.play('break', new V3(r.x + .5, r.y + .5, r.z + .5)); netSend({ t: 'brk', x: r.x, y: r.y, z: r.z }); }
+      else breakBlock(p, r.x, r.y, r.z);
+      breaking.reset();
+    }
   } else if (breaking.active) breaking.reset();
 }
 const highlight = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: .55 }));
@@ -1932,7 +2014,7 @@ function updateVM(dt) {
    ========================================================================= */
 const ui = { screen: 'menu', invOpen: false, chest: null, cursor: null, hover: null, feedList: [], hb: [], hearts: [], armor: [], sig: '' };
 function showScreen(name) {
-  for (const id of ['menu', 'controls', 'pause', 'end', 'inv']) $(id).classList.toggle('show', id === name);
+  for (const id of ['menu', 'mp', 'controls', 'pause', 'end', 'inv']) $(id).classList.toggle('show', id === name);
   ui.screen = name; if (name !== 'inv') { $('tooltip').style.display = 'none'; }
 }
 function bigMessage(text, color, dur, small) {
@@ -1941,6 +2023,8 @@ function bigMessage(text, color, dur, small) {
 }
 function subMessage(text, color, dur) { setText($('sub'), text, 3, color || '#fff'); ui.subT = dur || 3; }
 function addFeed(text, color) {
+  if (NET.logging) NET.feed.push([text, color]);
+  text = youify(text);
   (ui.log = ui.log || []).push(fmtTime(game.time) + ' ' + text);
   const el = document.createElement('div'); el.appendChild(textCanvas(text, 2, color)); $('feed').prepend(el);
   ui.feedList.unshift({ el, t: 7 });
@@ -1977,6 +2061,7 @@ function setupUI() {
   });
   $('inv').addEventListener('mousedown', e => {
     if (e.target.closest('#invpanel') || !ui.cursor) return;
+    if (NET.mode === 'client') { netSend({ t: 'dropCur', n: e.button === 2 ? 1 : ui.cursor.count }); return; }
     const d = lookDir(player.yaw, player.pitch), n = e.button === 2 ? 1 : ui.cursor.count;
     dropItem(ui.cursor.id, n, player.pos.x + d.x * .5, player.eyeY() - .3, player.pos.z + d.z * .5, d.x * 5, d.y * 5 + 2, d.z * 5, player);
     ui.cursor.count -= n; if (ui.cursor.count <= 0) ui.cursor = null; renderInventory();
@@ -1986,11 +2071,23 @@ function setupUI() {
   // buttons
   const click = (id, fn) => $(id).addEventListener('click', () => { Sound.init(); Sound.play('click'); fn(); });
   click('bPlay', startGame);
+  setText($('bMulti'), 'MULTIPLAYER', 3, '#9dd8ff');
+  setText($('mpTitle'), 'PLAY WITH FRIENDS', 5, '#3a3a3a', false); setText($('mpNameL'), 'YOUR NAME:', 2, '#3a3a3a', false);
+  setText($('bHost'), 'HOST A GAME', 3); setText($('mpOr'), '- OR JOIN WITH A ROOM CODE -', 2, '#3a3a3a', false); setText($('bJoin'), 'JOIN', 3); setText($('bMpBack'), 'BACK', 3);
+  try { $('mpName').value = localStorage.getItem('skyislands-name') || ''; } catch (e) { /* storage blocked */ }
+  click('bMulti', () => { mpStatus(''); showMP(); });
+  click('bHost', hostGame);
+  click('bJoin', joinGame);
+  $('mpCode').addEventListener('keydown', e => { if (e.key === 'Enter') joinGame(); });
+  click('bMpMap', () => { game.map = MAP_ORDER[(MAP_ORDER.indexOf(game.map) + 1) % MAP_ORDER.length]; updateMapButton(); genWorld(12345); lobbyBroadcast(); renderLobby(); });
+  click('bMpDiff', () => { const o = ['easy', 'normal', 'hard']; game.diff = o[(o.indexOf(game.diff) + 1) % 3]; updateDiffButton(); lobbyBroadcast(); renderLobby(); });
+  click('bMpStart', startGame);
+  click('bMpBack', () => { if (NET.mode !== 'off') leaveMP(); else showScreen('menu'); });
   click('bMap', () => { game.map = MAP_ORDER[(MAP_ORDER.indexOf(game.map) + 1) % MAP_ORDER.length]; updateMapButton(); genWorld(12345); });
   click('bDiff', () => { const o = ['easy', 'normal', 'hard']; game.diff = o[(o.indexOf(game.diff) + 1) % 3]; updateDiffButton(); });
   click('bControls', () => { ui.controlsFrom = 'menu'; showScreen('controls'); });
   click('bBack', () => showScreen(ui.controlsFrom || 'menu'));
-  click('bResume', () => { lockPointer(); });
+  click('bResume', () => { setText($('bResume'), 'RESUME', 3); lockPointer(); });
   click('bPControls', () => { ui.controlsFrom = 'pause'; showScreen('controls'); });
   click('bQuit', quitToMenu);
   click('bAgain', startGame);
@@ -2080,16 +2177,24 @@ function openInventory(chest) {
   renderInventory(); showScreen('inv');
   if (document.pointerLockElement) document.exitPointerLock();
 }
+function closeCtx(c, e) {
+  if (c.cursor) { const left = e.inv.add(c.cursor.id, c.cursor.count); if (left > 0) dropItem(c.cursor.id, left, e.pos.x, e.eyeY(), e.pos.z, 0, 2, 0, e); }
+  c.cursor = null; c.chest = null;
+}
 function closeInventory(noLock) {
   if (!ui.invOpen) return;
-  ui.invOpen = false;
-  if (ui.cursor && player) { const left = player.inv.add(ui.cursor.id, ui.cursor.count); if (left > 0) dropItem(ui.cursor.id, left, player.pos.x, player.eyeY(), player.pos.z, 0, 2, 0, player); }
+  ui.invOpen = false; ui.chestPending = null;
+  if (NET.mode === 'client') netSend({ t: 'close' });
+  else if (player) closeCtx(ui, player);
   ui.cursor = null; ui.chest = null; $('cursorItem').style.display = 'none'; $('tooltip').style.display = 'none';
   showScreen(null);
   if (!noLock && inGame() && player && player.alive) lockPointer();
 }
-function getSlot(ref) { if (ref.kind === 'chest') return ui.chest ? ui.chest.items[ref.idx] : null; if (ref.kind === 'armor') return player.inv.armor[ref.idx]; return player.inv.slots[ref.idx]; }
-function setSlot(ref, v) { if (ref.kind === 'chest') { if (ui.chest) ui.chest.items[ref.idx] = v; } else if (ref.kind === 'armor') player.inv.armor[ref.idx] = v; else player.inv.slots[ref.idx] = v; }
+// inventory operations work on a context (c.cursor, c.chest) and an entity, so the host can run them for remote players too
+function getSlotC(c, e, ref) { if (ref.kind === 'chest') return c.chest ? c.chest.items[ref.idx] : null; if (ref.kind === 'armor') return e.inv.armor[ref.idx]; return e.inv.slots[ref.idx]; }
+function setSlotC(c, e, ref, v) { if (ref.kind === 'chest') { if (c.chest) c.chest.items[ref.idx] = v; } else if (ref.kind === 'armor') e.inv.armor[ref.idx] = v; else e.inv.slots[ref.idx] = v; }
+function getSlot(ref) { return getSlotC(ui, player, ref); }
+function setSlot(ref, v) { setSlotC(ui, player, ref, v); }
 function canPut(ref, st) { if (!st) return true; if (ref.kind !== 'armor') return true; const it = ITEMS[st.id]; return it.type === 'armor' && it.slot === ref.idx; }
 function addToList(list, from, to, st) { // merge into list[from..to)
   const max = ITEMS[st.id].stack;
@@ -2099,39 +2204,48 @@ function addToList(list, from, to, st) { // merge into list[from..to)
 }
 function slotClick(ref, button, shift) {
   if (ref.kind === 'chest' && !ui.chest) return;
-  const cur = getSlot(ref);
   Sound.play('click');
-  if (shift && cur) {
-    const st = { id: cur.id, count: cur.count }; const it = ITEMS[cur.id];
-    if (ref.kind === 'chest') { addToList(player.inv.slots, 0, 36, st); }
-    else if (ref.kind === 'armor') { addToList(player.inv.slots, 0, 36, st); }
-    else if (it.type === 'armor' && !player.inv.armor[it.slot]) { player.inv.armor[it.slot] = { id: cur.id, count: 1 }; st.count = 0; }
-    else if (ui.chest) addToList(ui.chest.items, 0, 27, st);
-    else if (ref.idx < 9) addToList(player.inv.slots, 9, 36, st);
-    else addToList(player.inv.slots, 0, 9, st);
-    setSlot(ref, st.count > 0 ? st : null);
-  } else if (button === 2) {
-    if (!ui.cursor && cur) { const half = Math.ceil(cur.count / 2); ui.cursor = { id: cur.id, count: half }; cur.count -= half; if (cur.count <= 0) setSlot(ref, null); }
-    else if (ui.cursor && canPut(ref, ui.cursor)) {
-      if (!cur) { setSlot(ref, { id: ui.cursor.id, count: 1 }); ui.cursor.count--; }
-      else if (cur.id === ui.cursor.id && cur.count < ITEMS[cur.id].stack) { cur.count++; ui.cursor.count--; }
-      if (ui.cursor.count <= 0) ui.cursor = null;
-    }
-  } else {
-    if (!ui.cursor && cur) { ui.cursor = cur; setSlot(ref, null); }
-    else if (ui.cursor && canPut(ref, ui.cursor)) {
-      if (!cur) { setSlot(ref, ui.cursor); ui.cursor = null; }
-      else if (cur.id === ui.cursor.id && ITEMS[cur.id].stack > 1) { const n = Math.min(ITEMS[cur.id].stack - cur.count, ui.cursor.count); cur.count += n; ui.cursor.count -= n; if (ui.cursor.count <= 0) ui.cursor = null; }
-      else { setSlot(ref, ui.cursor); ui.cursor = cur; }
-    }
-  }
+  if (NET.mode === 'client') { netSend({ t: 'slot', ref, b: button, sh: shift ? 1 : 0 }); return; }
+  slotClickC(ui, player, ref, button, shift);
   renderInventory(); updateTooltip();
 }
-function swapWithHotbar(ref, h) {
+function slotClickC(c, e, ref, button, shift) {
+  if (ref.kind === 'chest' && !c.chest) return;
+  const cur = getSlotC(c, e, ref);
+  if (shift && cur) {
+    const st = { id: cur.id, count: cur.count }; const it = ITEMS[cur.id];
+    if (ref.kind === 'chest') { addToList(e.inv.slots, 0, 36, st); }
+    else if (ref.kind === 'armor') { addToList(e.inv.slots, 0, 36, st); }
+    else if (it.type === 'armor' && !e.inv.armor[it.slot]) { e.inv.armor[it.slot] = { id: cur.id, count: 1 }; st.count = 0; }
+    else if (c.chest) addToList(c.chest.items, 0, 27, st);
+    else if (ref.idx < 9) addToList(e.inv.slots, 9, 36, st);
+    else addToList(e.inv.slots, 0, 9, st);
+    setSlotC(c, e, ref, st.count > 0 ? st : null);
+  } else if (button === 2) {
+    if (!c.cursor && cur) { const half = Math.ceil(cur.count / 2); c.cursor = { id: cur.id, count: half }; cur.count -= half; if (cur.count <= 0) setSlotC(c, e, ref, null); }
+    else if (c.cursor && canPut(ref, c.cursor)) {
+      if (!cur) { setSlotC(c, e, ref, { id: c.cursor.id, count: 1 }); c.cursor.count--; }
+      else if (cur.id === c.cursor.id && cur.count < ITEMS[cur.id].stack) { cur.count++; c.cursor.count--; }
+      if (c.cursor.count <= 0) c.cursor = null;
+    }
+  } else {
+    if (!c.cursor && cur) { c.cursor = cur; setSlotC(c, e, ref, null); }
+    else if (c.cursor && canPut(ref, c.cursor)) {
+      if (!cur) { setSlotC(c, e, ref, c.cursor); c.cursor = null; }
+      else if (cur.id === c.cursor.id && ITEMS[cur.id].stack > 1) { const n = Math.min(ITEMS[cur.id].stack - cur.count, c.cursor.count); cur.count += n; c.cursor.count -= n; if (c.cursor.count <= 0) c.cursor = null; }
+      else { setSlotC(c, e, ref, c.cursor); c.cursor = cur; }
+    }
+  }
+}
+function swapC(c, e, ref, h) {
   if (ref.kind === 'inv' && ref.idx === h) return;
-  const a = getSlot(ref), b = player.inv.slots[h];
+  const a = getSlotC(c, e, ref), b = e.inv.slots[h];
   if (!canPut(ref, b)) return;
-  setSlot(ref, b); player.inv.slots[h] = a; renderInventory(); updateTooltip();
+  setSlotC(c, e, ref, b); e.inv.slots[h] = a;
+}
+function swapWithHotbar(ref, h) {
+  if (NET.mode === 'client') { netSend({ t: 'swap', ref, h }); return; }
+  swapC(ui, player, ref, h); renderInventory(); updateTooltip();
 }
 function renderInventory() {
   if (!ui.invOpen) return;
@@ -2154,6 +2268,395 @@ function updateTooltip() {
 }
 
 /* =========================================================================
+   Multiplayer (PeerJS / WebRTC). The host runs the whole match; each client
+   simulates only its own movement and mirrors everything else from the host.
+   ========================================================================= */
+const PEER_PREFIX = 'skyislands-v1-';
+const PEER_URLS = ['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js', 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js', 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'];
+const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
+function loadPeerJS() {
+  return new Promise((res, rej) => {
+    if (window.Peer) return res();
+    let i = 0;
+    const next = () => {
+      if (i >= PEER_URLS.length) return rej({ type: 'load' });
+      const sc = document.createElement('script'); sc.src = PEER_URLS[i++];
+      sc.onload = () => window.Peer ? res() : next(); sc.onerror = next; document.head.appendChild(sc);
+    };
+    next();
+  });
+}
+function wrapConn(c) {
+  return {
+    send(o) { try { if (c.open) c.send(o); } catch (e) { /* connection closing */ } },
+    onData(f) { c.on('data', f); }, onClose(f) { c.on('close', f); c.on('error', f); },
+    close() { try { c.close(); } catch (e) { /* already closed */ } }
+  };
+}
+const PeerTransport = {
+  async host(code, onConn) {
+    await loadPeerJS();
+    return new Promise((res, rej) => {
+      const peer = new window.Peer(PEER_PREFIX + code); let opened = false;
+      peer.on('open', () => { opened = true; res(peer); });
+      peer.on('error', e => { if (!opened) { peer.destroy(); rej(e); } });
+      peer.on('connection', c => c.on('open', () => onConn(wrapConn(c))));
+    });
+  },
+  async join(code) {
+    await loadPeerJS();
+    return new Promise((res, rej) => {
+      const peer = new window.Peer(); let done = false;
+      const fail = e => { if (!done) { done = true; peer.destroy(); rej(e); } };
+      peer.on('error', fail); setTimeout(() => fail({ type: 'timeout' }), 15000);
+      peer.on('open', () => {
+        const c = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' });
+        c.on('open', () => { if (!done) { done = true; res({ conn: wrapConn(c), peer }); } });
+        c.on('error', fail);
+      });
+    });
+  }
+};
+const transport = () => window.SkyNetTransport || PeerTransport;
+function errText(e) {
+  const t = e && e.type;
+  return t === 'peer-unavailable' ? 'ROOM NOT FOUND - CHECK THE CODE' : t === 'timeout' ? 'TIMED OUT - IS THE HOST STILL THERE?' : t === 'load' ? 'COULD NOT LOAD THE NETWORK LIBRARY (NO INTERNET?)'
+    : t === 'browser-incompatible' ? 'THIS BROWSER DOES NOT SUPPORT WEBRTC' : t === 'network' || t === 'server-error' || t === 'socket-error' ? 'CANNOT REACH THE MATCHMAKING SERVER' : 'CONNECTION FAILED';
+}
+function netSend(m) { if (NET.mode === 'client' && NET.host) NET.host.send(m); }
+function cleanName(v) { let n = String(v || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10); if (/^BOT\b/.test(n) || n === 'YOU') n = ''; return n; }
+function youify(t) {
+  if (NET.mode === 'off' || !player || !player.name) return t;
+  return t.replace(new RegExp('\\b' + player.name + '\\b', 'g'), 'YOU');
+}
+function mpStatus(t, col) { setText($('mpStatus'), t || ' ', 2, col || '#3a3a3a', false); }
+function getName() {
+  let n = cleanName($('mpName').value); if (!n) n = 'PLAYER' + RI(10, 99);
+  $('mpName').value = n; try { localStorage.setItem('skyislands-name', n); } catch (e) { /* storage blocked */ }
+  return n;
+}
+function newCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let c = ''; for (let i = 0; i < 5; i++) c += A[Math.floor(Math.random() * A.length)]; return c; }
+
+/* ---- lobby screens ---- */
+function showMP() {
+  showScreen('mp');
+  $('mpChoose').style.display = NET.mode === 'off' ? 'flex' : 'none';
+  $('mpRoom').style.display = NET.mode === 'off' ? 'none' : 'flex';
+  $('mpNameRow').style.display = NET.mode === 'off' ? 'flex' : 'none';
+  renderLobby();
+}
+function renderLobby() {
+  if (NET.mode === 'off') return;
+  setText($('mpCodeShow'), 'ROOM CODE: ' + NET.code, 5, '#1a5aa8', false);
+  setText($('mpCodeHint'), NET.mode === 'host' ? 'SEND THIS CODE TO YOUR FRIENDS. BOTS FILL THE EMPTY SLOTS.' : 'CONNECTED TO THE HOST.', 2, '#3a3a3a', false);
+  const list = $('mpPlayers'); list.innerHTML = '';
+  const L = NET.mode === 'host' ? { players: [NET.name + ' (HOST)'].concat(NET.conns.filter(c => c.name).map(c => c.name)), map: game.map, diff: game.diff, inMatch: NET.inMatch } : NET.lobby;
+  if (L) {
+    list.appendChild(textCanvas('PLAYERS (' + L.players.length + '/8):', 2, '#3a3a3a', false));
+    L.players.forEach(n => list.appendChild(textCanvas('  ' + n + (NET.mode === 'client' && n === NET.name ? '  <- YOU' : ''), 2, '#205020', false)));
+    const m = MAPS[L.map] || MAPS.classic;
+    list.appendChild(textCanvas('MAP: ' + m.name + '   DIFFICULTY: ' + String(L.diff).toUpperCase(), 2, '#3a3a3a', false));
+  }
+  $('mpHostCtl').style.display = NET.mode === 'host' ? 'flex' : 'none';
+  if (NET.mode === 'host') { const m = MAPS[game.map]; setText($('bMpMap'), 'MAP: ' + m.name, 3, m.title); setText($('bMpDiff'), 'DIFFICULTY: ' + game.diff.toUpperCase(), 3); setText($('bMpStart'), 'START MATCH', 3, '#9dff9d'); }
+  setText($('mpWait'), NET.mode === 'client' ? (L && L.inMatch ? 'A MATCH IS RUNNING - YOU WILL JOIN THE NEXT ROUND' : 'WAITING FOR THE HOST TO START...') : ' ', 2, '#7a4a00', false);
+}
+async function hostGame() {
+  Sound.init(); NET.name = getName(); mpStatus('CREATING ROOM...');
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const code = newCode();
+    try {
+      NET.peer = await transport().host(code, hostAccept);
+      NET.mode = 'host'; NET.code = code; NET.conns = []; NET.inMatch = false;
+      startHostTimer(); showMP(); mpStatus(''); return;
+    } catch (e) { if (!(e && e.type === 'unavailable-id')) { mpStatus(errText(e), '#a02020'); return; } }
+  }
+  mpStatus('COULD NOT CREATE A ROOM, TRY AGAIN', '#a02020');
+}
+async function joinGame() {
+  Sound.init();
+  const code = $('mpCode').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length !== 5) { mpStatus('ENTER THE 5-LETTER ROOM CODE', '#a02020'); return; }
+  NET.name = getName(); mpStatus('CONNECTING...');
+  try {
+    const { conn, peer } = await transport().join(code);
+    NET.peer = peer; NET.host = conn; NET.mode = 'client'; NET.code = code; NET.lobby = null;
+    conn.onData(m => { try { clientRecv(m); } catch (err) { console.error(err); } });
+    conn.onClose(() => { if (NET.mode === 'client' && NET.host === conn) leaveMP('LOST CONNECTION TO THE HOST'); });
+    conn.send({ t: 'hello', name: NET.name });
+    showMP(); mpStatus('');
+  } catch (e) { mpStatus(errText(e), '#a02020'); }
+}
+function leaveMP(msg) {
+  const wasHost = NET.mode === 'host', conns = NET.conns, host = NET.host, peer = NET.peer;
+  NET.mode = 'off'; NET.conns = []; NET.host = null; NET.peer = null; NET.inMatch = false; NET.logging = false; NET.lobby = null;
+  stopHostTimer();
+  if (wasHost) for (const c of conns) c.conn.send({ t: 'bye' });
+  setTimeout(() => { for (const c of conns) c.conn.close(); if (host) host.close(); if (peer && peer.destroy) peer.destroy(); }, 300);
+  if (game.phase !== 'menu') resetToMenuWorld();
+  if (msg) { showMP(); mpStatus(msg, '#a02020'); } else showScreen('menu');
+}
+function backToLobby() { // host ends the match and returns everyone to the lobby
+  NET.inMatch = false; NET.logging = false;
+  for (const c of NET.conns) c.ent = null;
+  resetToMenuWorld(); showMP(); lobbyBroadcast();
+}
+// keep the host simulating when its tab is in the background (workers aren't throttled like rAF)
+function startHostTimer() {
+  stopHostTimer();
+  try { NET.worker = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 50)'], { type: 'text/javascript' }))); NET.worker.onmessage = bgTick; }
+  catch (e) { NET.worker = { iv: setInterval(bgTick, 50) }; }
+}
+function stopHostTimer() { if (!NET.worker) return; if (NET.worker.terminate) NET.worker.terminate(); else clearInterval(NET.worker.iv); NET.worker = null; }
+function bgTick() {
+  if (performance.now() - lastFrameAt < 250) return; // the normal render loop is running
+  const now = performance.now(); let el = Math.min(2, (now - last) / 1000); last = now;
+  while (el > 0) { const st = Math.min(0.05, el); update(st); el -= st; }
+}
+
+/* ---- host side ---- */
+function hostAccept(conn) {
+  if (NET.mode !== 'host') { conn.close(); return; }
+  if (NET.conns.length >= 7) { conn.send({ t: 'full' }); setTimeout(() => conn.close(), 500); return; }
+  const c = { conn, name: null, ent: null, lastInv: '' };
+  NET.conns.push(c);
+  conn.onData(m => { try { hostRecv(c, m); } catch (err) { console.error(err); } });
+  conn.onClose(() => hostDrop(c));
+}
+function hostDrop(c) {
+  const i = NET.conns.indexOf(c); if (i < 0) return;
+  NET.conns.splice(i, 1);
+  if (c.ent && c.ent.alive && NET.inMatch) kill(c.ent, 'left', null);
+  lobbyBroadcast();
+}
+function lobbyBroadcast() {
+  if (NET.mode !== 'host') return;
+  const msg = { t: 'lobby', players: [NET.name + ' (HOST)'].concat(NET.conns.filter(c => c.name).map(c => c.name)), map: game.map, diff: game.diff, inMatch: NET.inMatch };
+  for (const c of NET.conns) if (c.name) c.conn.send(msg);
+  if (ui.screen === 'mp') renderLobby();
+}
+function hostSendStart() {
+  NET.blk = []; NET.fx = []; NET.feed = []; NET.msgs = []; NET.sendT = 0;
+  const blocks = []; for (const [k, b] of world.map) blocks.push(k, b.t);
+  const ed = ents.map(e => ({ n: e.name, c: e.look, p: [e.pos.x, e.pos.y, e.pos.z], y: e.yaw, h: e.human || e === player ? 1 : 0 }));
+  for (const c of NET.conns) if (c.ent) c.conn.send({ t: 'start', map: game.map, diff: game.diff, blocks, ents: ed, you: ents.indexOf(c.ent) });
+  NET.inMatch = true; NET.logging = true;
+  lobbyBroadcast();
+}
+const validRef = r => r && ['inv', 'chest', 'armor'].includes(r.kind) && Number.isInteger(r.idx) && r.idx >= 0 && r.idx < (r.kind === 'inv' ? 36 : r.kind === 'chest' ? 27 : 4);
+function hostRecv(c, m) {
+  if (!m || typeof m.t !== 'string') return;
+  if (m.t === 'hello') {
+    if (c.name) return;
+    let n = cleanName(m.name) || 'PLAYER' + RI(10, 99);
+    const taken = () => n === NET.name || NET.conns.some(o => o !== c && o.name === n);
+    while (taken()) n = n.slice(0, 7) + RI(10, 99);
+    c.name = n; lobbyBroadcast(); return;
+  }
+  const e = c.ent; if (!e || !NET.inMatch || !e.alive) return;
+  if (m.t === 'st') {
+    if (!Array.isArray(m.p) || m.p.length !== 3 || !m.p.every(Number.isFinite)) return;
+    e.netPos.set(m.p[0], m.p[1], m.p[2]); if (Array.isArray(m.v)) e.vel.set(+m.v[0] || 0, +m.v[1] || 0, +m.v[2] || 0);
+    e.yaw = +m.y || 0; e.pitch = +m.pi || 0; e.onGround = !!m.g; e.crouch = !!m.c; e.sprinting = !!m.s; e.sel = clamp(m.sel | 0, 0, 8);
+    if (m.sw && e.swing <= 0) e.swing = 0.001; e.netCharging = !!m.ch;
+    return;
+  }
+  const inv = ['slot', 'swap', 'close', 'dropSlot', 'dropCur', 'open'].includes(m.t);
+  if (game.phase !== 'playing' && !inv) return;
+  const near = (x, y, z) => Math.hypot(x + .5 - e.pos.x, y + .5 - (e.pos.y + 1.6), z + .5 - e.pos.z) < 7.5;
+  NET.fxSrc = ents.indexOf(e); c.lastInv = '';
+  try {
+    switch (m.t) {
+      case 'atk': { NET.fxSrc = -1; const t = ents[m.i | 0]; if (t && t !== e && t.alive && t.pos.distanceTo(e.pos) < 5.5) { e.swing = 0.001; meleeAttack(e, t); } break; }
+      case 'plc': { const x = m.x | 0, y = m.y | 0, z = m.z | 0; if (near(x, y, z)) placeBlock(e, x, y, z, clamp(m.s | 0, 0, 8)); NET.blk.push(x, y, z, world.get(x, y, z)); break; }
+      case 'brk': { const x = m.x | 0, y = m.y | 0, z = m.z | 0; if (near(x, y, z)) breakBlock(e, x, y, z); NET.blk.push(x, y, z, world.get(x, y, z)); break; }
+      case 'thr': { const h = e.held; if (h && ITEMS[h.id].type === 'throw') { shoot(e, h.id === 'orb' ? 'orb' : 'snowball', lookDir(+m.y || 0, +m.pi || 0), 24); e.inv.take(e.sel, 1); } break; }
+      case 'bow': { const as = e.inv.findSlot(id => id === 'arrow'); if (e.held && e.held.id === 'bow' && as >= 0) { const pw = clamp(+m.pw || 0, 0, 1); shoot(e, 'arrow', lookDir(+m.y || 0, +m.pi || 0), 8 + 40 * pw, Math.round(2 + 7 * pw)); e.inv.take(as, 1); } break; }
+      case 'eat': if (e.held && ITEMS[e.held.id].type === 'food') eat(e, e.sel); break;
+      case 'equip': equipArmor(e, e.sel); break;
+      case 'drop': dropHeldE(e, !!m.all); break;
+      case 'open': { const ch = world.chests.get(m.k); if (ch && near(ch.x, ch.y, ch.z)) { e.net.ctx.chest = ch; Sound.play('chest', e.pos); } break; }
+      case 'close': closeCtx(e.net.ctx, e); break;
+      case 'slot': if (validRef(m.ref)) slotClickC(e.net.ctx, e, m.ref, m.b | 0, !!m.sh); break;
+      case 'swap': if (validRef(m.ref)) swapC(e.net.ctx, e, m.ref, clamp(m.h | 0, 0, 8)); break;
+      case 'dropSlot': if (validRef(m.ref)) dropFromSlotC(e.net.ctx, e, m.ref, !!m.all); break;
+      case 'dropCur': { const cu = e.net.ctx.cursor; if (cu) { const n = clamp(m.n | 0, 1, cu.count); throwItem(e, cu.id, n); cu.count -= n; if (cu.count <= 0) e.net.ctx.cursor = null; } break; }
+      case 'fall': hurtRaw(e, clamp(+m.d || 0, 0, 20), 'fall'); break;
+    }
+  } finally { NET.fxSrc = -1; }
+}
+function remoteUpdate(e, dt) {
+  if (e.pos.distanceTo(e.netPos) > 8) e.pos.copy(e.netPos); else e.pos.lerp(e.netPos, 1 - Math.exp(-14 * dt));
+}
+function hostBroadcast() {
+  const shared = {
+    t: 's', ph: game.phase, tm: r1(game.time), cd: r2(game.countdown), sd: game.sudden ? 1 : 0,
+    e: ents.map(e => [r2(e.pos.x), r2(e.pos.y), r2(e.pos.z), r2(e.yaw), r2(e.pitch), e.alive ? 1 : 0, r1(e.health),
+      (e.hurtT > 0 ? 1 : 0) | (e.swing > 0 ? 2 : 0) | (e.crouch ? 4 : 0) | ((e.ai && e.ai.charging) || e.netCharging || (e === player && pstate.charging) ? 8 : 0),
+      e.held ? e.held.id : '', e.inv.armor.map(a => a ? a.id : '').join(','), e.kills, r2(e.vel.x), r2(e.vel.z), e.onGround ? 1 : 0]),
+    pr: projectiles.map(q => [q.id, q.type, r2(q.pos.x), r2(q.pos.y), r2(q.pos.z), r2(q.vel.x), r2(q.vel.y), r2(q.vel.z), q.stuck ? 1 : 0]),
+    dr: drops.map(d => [d.nid, d.id, r2(d.pos.x), r2(d.pos.y), r2(d.pos.z)]),
+    b: NET.blk, fx: NET.fx, fd: NET.feed, m: NET.msgs
+  };
+  NET.blk = []; NET.fx = []; NET.feed = []; NET.msgs = [];
+  for (const c of NET.conns) {
+    const e = c.ent; if (!e) continue;
+    const ctx = e.net.ctx; if (ctx.chest && !world.chests.has(ctx.chest.key)) ctx.chest = null;
+    const me = { hp: r1(Math.max(0, e.health)) };
+    const sig = JSON.stringify([e.inv.slots, e.inv.armor, ctx.cursor, ctx.chest ? ctx.chest.items : 0]);
+    if (sig !== c.lastInv) { c.lastInv = sig; me.inv = e.inv.slots; me.arm = e.inv.armor; me.cur = ctx.cursor; me.ch = ctx.chest ? { k: ctx.chest.key, c: ctx.chest.center ? 1 : 0, it: ctx.chest.items } : null; }
+    Object.assign(me, e.net.priv); e.net.priv = {};
+    c.conn.send(Object.assign({ me }, shared));
+  }
+}
+function netTick(dt) {
+  if (NET.mode === 'off') return;
+  NET.sendT -= dt; if (NET.sendT > 0) return; NET.sendT = 0.05;
+  if (NET.mode === 'host' && NET.inMatch) hostBroadcast();
+  else if (NET.mode === 'client' && NET.started && player && player.alive) {
+    const p = player;
+    netSend({ t: 'st', p: [r3(p.pos.x), r3(p.pos.y), r3(p.pos.z)], v: [r2(p.vel.x), r2(p.vel.y), r2(p.vel.z)], y: r3(p.yaw), pi: r3(p.pitch), g: p.onGround ? 1 : 0, c: p.crouch ? 1 : 0, s: p.sprinting ? 1 : 0, sel: p.sel, sw: p.swing > 0 || vm.swing > 0 ? 1 : 0, ch: pstate.charging ? 1 : 0 });
+  }
+}
+
+/* ---- client side ---- */
+function clientRecv(m) {
+  switch (m.t) {
+    case 'lobby':
+      NET.lobby = m;
+      if (!m.inMatch && NET.started) { resetToMenuWorld(); showMP(); }
+      else if (ui.screen === 'mp') renderLobby();
+      break;
+    case 'start': clientStart(m); break;
+    case 's': if (NET.started) clientSnapshot(m); break;
+    case 'full': leaveMP('THAT ROOM IS FULL (8 PLAYERS)'); break;
+    case 'bye': leaveMP('THE HOST CLOSED THE ROOM'); break;
+  }
+}
+function clientStart(m) {
+  Sound.init(); closeInventory(true); clearEntities();
+  game.map = MAPS[m.map] ? m.map : 'classic'; game.diff = m.diff;
+  world.clear(); islands = []; applyMapLook(MAPS[game.map]);
+  for (let i = 0; i < m.blocks.length; i += 2) { const p = KD(m.blocks[i]); world.set(p[0], p[1], p[2], m.blocks[i + 1]); }
+  ents = m.ents.map((d, i) => {
+    const e = new Entity(d.n, i === m.you);
+    e.pos.set(d.p[0], d.p[1], d.p[2]); e.fallStart = e.pos.y; e.yaw = d.y; e.human = !!d.h; e.look = d.c;
+    makeHumanoid(e, d.c);
+    if (i === m.you) { player = e; e.parts.tag.visible = false; e.mesh.visible = false; }
+    else { e.puppet = true; e.netPos = e.pos.clone(); }
+    return e;
+  });
+  NET.you = m.you; NET.started = true;
+  game.phase = 'countdown'; game.countdown = 5; game.lastCount = 6; game.time = 0; game.refilled = false; game.sudden = false; game.endShown = false;
+  pstate.view = 0; breaking.reset(); ui.feedList.forEach(f => f.el.remove()); ui.feedList = []; ui.chestPending = null;
+  $('hud').style.display = 'block'; $('vignetteSD').style.display = 'none'; hudRefreshAll();
+  game.paused = true; setText($('pTitle'), 'MATCH STARTING!', 6); setText($('bResume'), 'CLICK TO PLAY', 3, '#9dff9d'); showScreen('pause');
+}
+function clientFeed(t, c) {
+  let col = (c === '#ffe14d' || c === '#ff6060') && !/ WINS /.test(t) ? '#ffffff' : c;
+  if (player && new RegExp('\\b' + player.name + '\\b').test(t) && !/ WINS /.test(t)) col = t.startsWith(player.name + ' ') && / ELIMINATED | KNOCKED /.test(t) ? '#ffe14d' : '#ff6060';
+  addFeed(t, col);
+}
+function clientSnapshot(m) {
+  const b = m.b; for (let i = 0; i < b.length; i += 4) { if (b[i + 3]) world.set(b[i], b[i + 1], b[i + 2], b[i + 3]); else world.remove(b[i], b[i + 1], b[i + 2]); }
+  for (const f of m.fx) {
+    if (f[f.length - 1] === NET.you) continue;
+    if (f[0] === 'p') particles.spawn(f[1], f[2], f[3], f[4], f[5].map(h => new THREE.Color(h)), f[6], f[7], f[8], f[9]);
+    else Sound.play(f[1], new V3(f[2], f[3], f[4]));
+  }
+  for (const [t, c] of m.fd) clientFeed(t, c);
+  for (const g of m.m) { if (g[0] === 'big') bigMessage(g[1], g[2], g[3], g[4]); else subMessage(g[1], g[2], g[3]); if (g[5]) Sound.play(g[5]); }
+  const prev = game.phase;
+  game.time = m.tm; game.countdown = m.cd; game.phase = m.ph;
+  if (m.ph === 'countdown') {
+    const n = Math.ceil(m.cd);
+    if (n !== game.lastCount && n > 0) { game.lastCount = n; bigMessage(String(n), n <= 3 ? '#ff6060' : '#ffe14d', 1.0); Sound.play('beep'); subMessage(MAPS[game.map].name + ' - ' + MAPS[game.map].genre, MAPS[game.map].title, 1.2); }
+  }
+  if (prev === 'countdown' && m.ph !== 'countdown') { bigMessage('GO!', '#7dff7d', 1.2); Sound.play('go'); Sound.play('glass'); subMessage('RIGHT CLICK CHESTS, SHIFT TO SNEAK', '#ffffff', 4); }
+  if (m.sd && !game.sudden) { game.sudden = true; $('vignetteSD').style.display = 'block'; }
+  m.e.forEach((a, i) => {
+    const e = ents[i]; if (!e) return;
+    const [x, y, z, yaw, pitch, alive, hp, fl, held, arm, kills, vx, vz, og] = a;
+    e.kills = kills;
+    if (e === player) return;
+    e.netPos.set(x, y, z); e.yaw = yaw; e.pitch = pitch; e.vel.set(vx, 0, vz); e.onGround = !!og; e.crouch = !!(fl & 4); e.netCharging = !!(fl & 8);
+    if (fl & 1) e.hurtT = 0.2;
+    if ((fl & 2) && e.swing <= 0) e.swing = 0.001;
+    if (e.alive && !alive) { e.alive = false; if (e.mesh) e.mesh.visible = false; }
+    if (Math.abs(e.health - hp) > .01) { e.health = hp; updateNameTag(e); }
+    e.inv.slots[0] = held ? { id: held, count: 1 } : null; e.sel = 0;
+    if (arm !== e.armSig) { e.armSig = arm; e.inv.armor = arm.split(',').map(id => id ? { id, count: 1 } : null); refreshArmorVisual(e); }
+  });
+  const seen = new Set();
+  for (const [id, type, x, y, z, vx, vy, vz, st] of m.pr) {
+    seen.add(id); let q = NET.projs.get(id);
+    if (!q) { const mesh = new THREE.Mesh(projGeo[type], projMat[type]); scene.add(mesh); q = { mesh, type, pos: new V3(), vel: new V3() }; NET.projs.set(id, q); }
+    q.pos.set(x, y, z); q.vel.set(vx, vy, vz); q.stuck = !!st;
+  }
+  for (const [id, q] of NET.projs) if (!seen.has(id)) { scene.remove(q.mesh); NET.projs.delete(id); }
+  seen.clear();
+  for (const [id, item, x, y, z] of m.dr) {
+    seen.add(id); let q = NET.dropsC.get(id);
+    if (!q) { const mesh = makeItemMesh(item); mesh.scale.setScalar(mesh.userData.block ? 0.26 : 0.45); scene.add(mesh); q = { mesh, t: Math.random() * 6 }; NET.dropsC.set(id, q); }
+    q.mesh.position.set(x, y + 0.1, z);
+  }
+  for (const [id, q] of NET.dropsC) if (!seen.has(id)) { scene.remove(q.mesh); NET.dropsC.delete(id); }
+  if (m.me) clientMe(m.me);
+}
+function clientMe(me) {
+  const p = player;
+  if (me.hp !== undefined) { if (me.hp < p.health - 0.01 && p.alive) { Sound.play('hurt'); flashHurt(); p.hurtT = 0.35; } p.health = me.hp; }
+  if (me.inv) {
+    p.inv.slots = me.inv; p.inv.armor = me.arm; ui.cursor = me.cur;
+    if (me.ch) {
+      if (ui.chestPending === me.ch.k) ui.chestPending = null;
+      if (ui.invOpen && ui.chest && ui.chest.key === me.ch.k) { ui.chest.items = me.ch.it; ui.chest.center = !!me.ch.c; setText($('chestTitle'), me.ch.c ? 'CENTER CHEST' : 'CHEST', 2, '#404040', false); }
+    } else if (ui.chest && !ui.chestPending) { ui.chest = null; $('chestBox').style.display = 'none'; }
+    refreshArmorVisual(p); renderInventory(); updateTooltip();
+  }
+  if (me.kv) { p.vel.set(me.kv[0], me.kv[1], me.kv[2]); p.onGround = false; p.kbTimer = 0.35; }
+  if (me.tp) { p.pos.set(me.tp[0], me.tp[1], me.tp[2]); p.vel.set(0, 0, 0); p.fallStart = me.tp[1]; Sound.play('orb'); }
+  if (me.ks) Sound.play('kill');
+  if (me.dead && p.alive) {
+    p.alive = false; p.health = 0; p.killer = me.dead.k ? { name: me.dead.k } : null; p.deathCause = me.dead.c; game.place = me.dead.pl;
+    if (p.mesh) p.mesh.visible = false; closeInventory(true); Sound.play('lose');
+    setTimeout(() => showEnd(false), 1300);
+  }
+  if (me.end && p.alive) { game.won = true; Sound.play('victory'); bigMessage('VICTORY!', '#ffe14d', 3); setTimeout(() => showEnd(true), 900); }
+}
+function netOpenChest(k) {
+  netSend({ t: 'open', k }); ui.chestPending = k;
+  openInventory({ key: k, center: false, items: new Array(27).fill(null) });
+  setTimeout(() => { if (ui.chestPending === k) ui.chestPending = null; }, 1500);
+}
+function puppetUpdate(e, dt) {
+  if (!e.alive) return;
+  e.hurtT -= dt; if (e.swing > 0) { e.swing += dt / 0.3; if (e.swing >= 1) e.swing = 0; }
+  if (e.pos.distanceTo(e.netPos) > 8) e.pos.copy(e.netPos); else e.pos.lerp(e.netPos, 1 - Math.exp(-14 * dt));
+}
+function clientUpdate(dt) {
+  for (const e of ents) {
+    if (e === player) {
+      if (!e.alive) continue;
+      e.invuln -= dt; e.hurtT -= dt; e.kbTimer -= dt; e.sprintCD -= dt;
+      if (e.swing > 0) { e.swing += dt / 0.3; if (e.swing >= 1) e.swing = 0; }
+      updatePlayer(dt);
+    } else puppetUpdate(e, dt);
+  }
+  for (const e of ents) if (e.mesh) animateHumanoid(e, dt);
+  for (const q of NET.projs.values()) {
+    if (!q.stuck) { q.vel.y -= PROJ_G[q.type] * dt; q.pos.addScaledVector(q.vel, dt); }
+    q.mesh.position.copy(q.pos);
+    if (q.type === 'arrow') { if (!q.stuck) { _pt.copy(q.pos).add(q.vel); q.mesh.lookAt(_pt); } } else { q.mesh.rotation.x += dt * 8; q.mesh.rotation.y += dt * 6; }
+  }
+  for (const q of NET.dropsC.values()) { q.t += dt; q.mesh.rotation.y = q.t * 2; }
+  particles.update(dt);
+  updateCamera(dt); updateVM(dt); updateHUD(dt); updateDebug(dt);
+  if ($('plist').style.display === 'flex' && Math.random() < .1) showPlayerList(true);
+  netTick(dt);
+}
+
+/* =========================================================================
    Main loop
    ========================================================================= */
 function update(dt) {
@@ -2163,9 +2666,11 @@ function update(dt) {
     const a = game.menuT * 0.06; camera.position.set(Math.cos(a) * 52, TOPY + 22, Math.sin(a) * 52);
     camera.lookAt(0, TOPY - 2, 0);
     particles.update(dt);
+    netTick(dt);
     return;
   }
-  if (game.paused) return;
+  if (game.paused && NET.mode === 'off') return;
+  if (NET.mode === 'client') { clientUpdate(dt); return; }
   if (game.phase === 'countdown') {
     game.countdown -= dt;
     const n = Math.ceil(game.countdown);
@@ -2179,10 +2684,11 @@ function update(dt) {
     if (!game.refilled && game.time >= REFILL_T) {
       game.refilled = true; for (const ch of world.chests.values()) fillChest(ch);
       for (const e of ents) if (e.ai) e.ai.looted.clear();
-      bigMessage('CHESTS REFILLED!', '#7dff7d', 2.5, true); Sound.play('alert'); addFeed('ALL CHESTS HAVE BEEN REFILLED', '#7dff7d'); renderInventory();
+      bigMessage('CHESTS REFILLED!', '#7dff7d', 2.5, true); Sound.play('alert'); if (NET.logging) NET.msgs.push(['big', 'CHESTS REFILLED!', '#7dff7d', 2.5, true, 'alert']); addFeed('ALL CHESTS HAVE BEEN REFILLED', '#7dff7d'); renderInventory();
     }
     if (!game.sudden && game.time >= SUDDEN_T) {
       game.sudden = true; bigMessage('SUDDEN DEATH!', '#ff5040', 3); subMessage('THE ISLANDS ARE CRUMBLING!', '#ffa040', 3.5); Sound.play('alert');
+      if (NET.logging) NET.msgs.push(['big', 'SUDDEN DEATH!', '#ff5040', 3, false, 'alert'], ['sub', 'THE ISLANDS ARE CRUMBLING!', '#ffa040', 3.5]);
       $('vignetteSD').style.display = 'block'; addFeed('SUDDEN DEATH - ISLANDS CRUMBLE', '#ff8040');
     }
     if (game.sudden && game.phase === 'playing') { game.sdT -= dt; if (game.sdT <= 0) { game.sdT = 0.2; crumbleStep(); } }
@@ -2192,7 +2698,7 @@ function update(dt) {
     if (!e.alive) continue;
     e.invuln -= dt; e.hurtT -= dt; e.kbTimer -= dt; e.sprintCD -= dt;
     if (e.swing > 0) { e.swing += dt / 0.3; if (e.swing >= 1) e.swing = 0; }
-    if (e.isPlayer) updatePlayer(dt); else botUpdate(e, dt);
+    if (e.isPlayer) updatePlayer(dt); else if (e.remote) remoteUpdate(e, dt); else botUpdate(e, dt);
     // regeneration
     if (e.health < 20 && game.phase !== 'countdown') {
       e.regenT += dt;
@@ -2206,7 +2712,14 @@ function update(dt) {
   separateEntities();
   for (const e of ents) if (e.mesh) animateHumanoid(e, dt);
   updateProjectiles(dt); updateDrops(dt); particles.update(dt);
-  // camera
+  updateCamera(dt);
+  updateVM(dt);
+  updateHUD(dt);
+  updateDebug(dt);
+  if ($('plist').style.display === 'flex' && Math.random() < .1) showPlayerList(true);
+  netTick(dt);
+}
+function updateCamera(dt) {
   if (player && player.alive) {
     const sp = Math.hypot(player.vel.x, player.vel.z), bob = player.onGround ? Math.sin(pstate.bob * 2) * 0.035 * Math.min(1, sp / 5) : 0;
     camera.position.set(player.pos.x, player.eyeY() + bob, player.pos.z);
@@ -2228,14 +2741,10 @@ function update(dt) {
     if (camera.fov !== 75) { camera.fov = 75; camera.updateProjectionMatrix(); }
     highlight.visible = false; crackMesh.visible = false;
   }
-  updateVM(dt);
-  updateHUD(dt);
-  updateDebug(dt);
-  if ($('plist').style.display === 'flex' && Math.random() < .1) showPlayerList(true);
 }
-let last = performance.now();
+let last = performance.now(), lastFrameAt = 0;
 function frame(now) {
-  requestAnimationFrame(frame);
+  requestAnimationFrame(frame); lastFrameAt = performance.now();
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
   update(dt);
   renderer.clear(); renderer.render(scene, camera);
@@ -2252,7 +2761,7 @@ showScreen('menu');
 $('loading').style.display = 'none';
 requestAnimationFrame(frame);
 // small debug/test handle
-window.SkyIslands = { ui, game, pstate, get ents() { return ents; }, get player() { return player; }, world, startGame, update, ITEMS, kill, closeInventory, openInventory, slotClick, setPaused: v => { game.paused = v; }, _setLocked: v => { locked = v; if (v) { game.paused = false; showScreen(null); } } };
+window.SkyIslands = { get locked() { return locked; }, NET, hostGame, joinGame, leaveMP, ui, game, pstate, get ents() { return ents; }, get player() { return player; }, world, startGame, update, ITEMS, kill, closeInventory, openInventory, slotClick, setPaused: v => { game.paused = v; }, _setLocked: v => { locked = v; if (v) { game.paused = false; showScreen(null); } } };
 })();
 </script>
 </body>
