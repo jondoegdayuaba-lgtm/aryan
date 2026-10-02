@@ -32,6 +32,10 @@ canvas{image-rendering:pixelated;image-rendering:crisp-edges}
 #cross:before{left:10px;top:0;width:2px;height:22px}
 #cross:after{left:0;top:10px;width:22px;height:2px}
 #crouchTag{position:absolute;left:50%;bottom:128px;transform:translateX(-50%);display:none;background:rgba(0,0,0,.45);padding:4px 8px}
+#debug{position:absolute;left:8px;top:8px;display:none;flex-direction:column;gap:3px;align-items:flex-start}
+#debug>canvas{background:rgba(0,0,0,.4);padding:1px 2px}
+#plist{position:absolute;left:50%;top:70px;transform:translateX(-50%);display:none;flex-direction:column;gap:3px;align-items:stretch;background:rgba(0,0,0,.55);padding:8px 10px;min-width:280px}
+#plist>div{display:flex;justify-content:space-between;gap:24px}
 #charge{position:absolute;left:50%;top:calc(50% + 22px);transform:translateX(-50%);width:60px;height:6px;background:rgba(0,0,0,.5);display:none}
 #charge>div{height:100%;width:0;background:#fff}
 #big{position:absolute;left:50%;top:32%;transform:translate(-50%,-50%);text-align:center}
@@ -70,6 +74,8 @@ canvas{image-rendering:pixelated;image-rendering:crisp-edges}
   <div id="top"><div id="tPlayers"></div><div id="tTime"></div><div id="tEvent"></div></div>
   <div id="feed"></div>
   <div id="cross"></div>
+  <div id="debug"></div>
+  <div id="plist"></div>
   <div id="charge"><div></div></div>
   <div id="crouchTag"></div>
   <div id="big"></div>
@@ -1149,7 +1155,7 @@ function makeHumanoid(e, c) {
   const tagT = new THREE.CanvasTexture(tagC); tagT.magFilter = THREE.NearestFilter; tagT.minFilter = THREE.LinearFilter; tagT.generateMipmaps = false;
   const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tagT, transparent: true, depthWrite: false }));
   tag.scale.set(1.15, 0.36, 1); tag.position.y = 2.15; root.add(tag);
-  e.mesh = root; e.parts = { head, armL, armR, legL, legR, armorMats, ov, hand, tagC, tagT, mats, heldId: null, heldMesh: null };
+  e.mesh = root; e.parts = { tag, body, head, armL, armR, legL, legR, armorMats, ov, hand, tagC, tagT, mats, heldId: null, heldMesh: null };
   scene.add(root);
   updateNameTag(e); refreshArmorVisual(e);
 }
@@ -1168,6 +1174,7 @@ function refreshArmorVisual(e) {
 function animateHumanoid(e, dt) {
   const P = e.parts; if (!P || !e.alive) return;
   e.mesh.position.copy(e.pos); e.mesh.rotation.y = e.yaw;
+  if (e.crouch) { e.mesh.position.y -= .12; P.body.rotation.x = .35; P.head.position.z = -.12; } else { P.body.rotation.x = 0; P.head.position.z = 0; }
   const sp = Math.hypot(e.vel.x, e.vel.z);
   if (e.onGround) e.walkPhase += sp * dt * 2.2;
   const amp = Math.min(1, sp / 4) * 0.8, sw = Math.sin(e.walkPhase) * amp;
@@ -1425,12 +1432,12 @@ function startGame() {
     e.yaw = Math.atan2(isl.spawn.x, isl.spawn.z); // face the center
     e.inv.add('wool', 16);
     buildCage(isl.spawn.x, isl.spawn.z);
-    if (i === 0) { player = e; e.sel = 0; }
+    if (i === 0) { player = e; e.sel = 0; makeHumanoid(e, { shirt: 0x2aa3a8, pants: 0x3b3fa6, hair: 0x3b2610, skin: 0xc8956c }); e.parts.tag.visible = false; e.mesh.visible = false; }
     else { makeHumanoid(e, BOT_COLORS[(i - 1) % BOT_COLORS.length]); e.ai = newAI(isl.chest.key); }
     ents.push(e);
   }
   game.phase = 'countdown'; game.countdown = 5; game.lastCount = 6; game.time = 0; game.refilled = false; game.sudden = false; game.sdT = 0; game.endShown = false; game.paused = false;
-  breaking.reset(); ui.feedList.forEach(f => f.el.remove()); ui.feedList = [];
+  pstate.view = 0; breaking.reset(); ui.feedList.forEach(f => f.el.remove()); ui.feedList = [];
   showScreen(null); $('hud').style.display = 'block'; $('vignetteSD').style.display = 'none';
   hudRefreshAll();
   lockPointer();
@@ -1535,34 +1542,54 @@ document.addEventListener('mouseup', e => { if (mouse[e.button]) { mouse[e.butto
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('wheel', e => { if (!controlsActive()) return; player.sel = (player.sel + (e.deltaY > 0 ? 1 : -1) + 9) % 9; onSelChange(); }, { passive: true });
 document.addEventListener('keydown', e => {
+  if (e.code === 'KeyW' && !e.repeat && !keys.KeyW) { const now = performance.now(); if (now - pstate.lastWTap < 300) pstate.sprintLatch = true; pstate.lastWTap = now; }
   keys[e.code] = true;
-  if (['Space', 'Tab'].includes(e.code)) e.preventDefault();
+  // keep browser shortcuts (Ctrl+D, Ctrl+S, F5 reload, Tab focus...) out of the game while playing
+  if ((controlsActive() || ui.invOpen) && e.code !== 'F11' && e.code !== 'F12' && e.code !== 'Escape') e.preventDefault();
   if (ui.invOpen) {
     if (e.code === 'KeyE' || e.code === 'Escape') { closeInventory(); return; }
     if (/^Digit[1-9]$/.test(e.code) && ui.hover) { swapWithHotbar(ui.hover, +e.code.slice(5) - 1); return; }
+    if (e.code === 'KeyQ' && ui.hover) { dropFromSlot(ui.hover, e.ctrlKey); return; }
     return;
   }
   if (!controlsActive()) return;
   if (/^Digit[1-9]$/.test(e.code)) { player.sel = +e.code.slice(5) - 1; onSelChange(); }
-  if (e.code === 'KeyE') openInventory();
-  if (e.code === 'KeyQ') dropHeld();
+  if (e.code === 'KeyE') openInventory(null);
+  if (e.code === 'KeyQ') dropHeld(e.ctrlKey);
+  if (e.code === 'F1') { pstate.hideHud = !pstate.hideHud; $('hud').style.visibility = pstate.hideHud ? 'hidden' : 'visible'; }
+  if (e.code === 'F3') { pstate.debug = !pstate.debug; $('debug').style.display = pstate.debug ? 'flex' : 'none'; }
+  if (e.code === 'F5') { pstate.view = (pstate.view + 1) % 3; }
+  if (e.code === 'Tab') showPlayerList(true);
 });
-document.addEventListener('keyup', e => { keys[e.code] = false; });
-window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+document.addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'KeyW') pstate.sprintLatch = false; if (e.code === 'Tab') showPlayerList(false); });
+// Ctrl+W (sprint + forward) is a browser shortcut that can't be blocked; ask before leaving a match
+window.addEventListener('beforeunload', e => { if (inGame() && player && player.alive) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; showPlayerList(false); });
 
 const breaking = { x: 0, y: 0, z: 0, t: 0, active: false, digT: 0, reset() { this.active = false; this.t = 0; crackMesh.visible = false; } };
-const pstate = { bowT: 0, charging: false, placeT: 0, useT: 0, swingCD: 0, bob: 0, fov: 75, itemNameT: 0, lastSel: -1 };
+const pstate = { lastWTap: -1e9, sprintLatch: false, view: 0, hideHud: false, debug: false, eatT: 0, fpsT: 0, frames: 0, fps: 0, bowT: 0, charging: false, placeT: 0, useT: 0, swingCD: 0, bob: 0, fov: 75, itemNameT: 0, lastSel: -1 };
 function eyePos(e) { return new V3(e.pos.x, e.eyeY(), e.pos.z); }
 function onSelChange() { pstate.charging = false; pstate.bowT = 0; breaking.reset(); pstate.itemNameT = 2; }
 function heldType() { const h = player.held; return h ? (ITEMS[h.id].type || (ITEMS[h.id].block ? 'block' : 'item')) : 'none'; }
 function onMouseDown(btn) {
   const ht = heldType();
-  if (ht === 'bow' && (btn === 0 || btn === 2)) { if (player.inv.count(id => id === 'arrow') > 0) { pstate.charging = true; pstate.bowT = 0; } else bigMessage('NO ARROWS', '#ff8080', 1.0, true); return; }
-  if (btn === 0) { playerAttack(); }
-  if (btn === 2) { playerUse(); pstate.placeT = 0.22; }
+  if (btn === 0) { playerAttack(); return; }
+  if (btn === 1) { pickBlock(); return; }
+  if (btn !== 2) return;
+  // right click: open a chest you're looking at (sneak to place against it instead)
+  const r = raycastBlock(eyePos(player), lookDir(player.yaw, player.pitch), BUILD_REACH);
+  if (r && r.type === B.CHEST && !(player.crouch && ht === 'block')) { openInventory(world.chests.get(K(r.x, r.y, r.z))); return; }
+  if (ht === 'bow') { if (player.inv.count(id => id === 'arrow') > 0) { pstate.charging = true; pstate.bowT = 0; } else bigMessage('NO ARROWS', '#ff8080', 1.0, true); return; }
+  if (ht === 'food') { pstate.eatT = 0; return; }
+  playerUse(); pstate.placeT = 0.22;
+}
+function pickBlock() {
+  const r = raycastBlock(eyePos(player), lookDir(player.yaw, player.pitch), BUILD_REACH); if (!r) return;
+  const want = BLOCKS[r.type].drop;
+  for (let i = 0; i < 9; i++) { const s = player.inv.slots[i]; if (s && (ITEMS[s.id].block === r.type || s.id === want)) { player.sel = i; onSelChange(); return; } }
 }
 function onMouseUp(btn) {
-  if (pstate.charging && (btn === 0 || btn === 2) && !mouse[0] && !mouse[2]) {
+  if (pstate.charging && btn === 2) {
     pstate.charging = false;
     if (pstate.bowT > 0.15 && game.phase === 'playing') {
       const p = Math.min(1, pstate.bowT / 1.0), as = player.inv.findSlot(id => id === 'arrow');
@@ -1587,17 +1614,13 @@ function playerUse() {
     if (game.phase !== 'playing') return;
     const r = raycastBlock(eyePos(player), lookDir(player.yaw, player.pitch), BUILD_REACH);
     let placed = false;
-    const footY = Math.floor(player.pos.y + 0.01) - 1;
-    const bridging = player.pitch < -0.6 && (!r || (r.ny === 1 && r.y === footY));
-    if (bridging) placed = assistPlace();
-    else if (r && (r.nx || r.ny || r.nz)) placed = placeBlock(player, r.x + r.nx, r.y + r.ny, r.z + r.nz, player.sel);
+    if (r && (r.nx || r.ny || r.nz)) placed = placeBlock(player, r.x + r.nx, r.y + r.ny, r.z + r.nz, player.sel);
+    if (!placed && player.pitch < -0.6) placed = assistPlace();
     if (placed) vm.swing = 0.001;
   } else if (it.type === 'throw') {
     if (game.phase !== 'playing' || pstate.useT > 0) return; pstate.useT = 0.3;
     shoot(player, h.id === 'orb' ? 'orb' : 'snowball', lookDir(player.yaw, player.pitch), 24);
     player.inv.take(player.sel, 1); vm.swing = 0.001;
-  } else if (it.type === 'food') {
-    if (pstate.useT > 0) return; pstate.useT = 1.0; eat(player, player.sel);
   } else if (it.type === 'armor') { equipArmor(player, player.sel); Sound.play('chest'); }
 }
 // Bridging assist: looking down past your own feet places the block just in front of them
@@ -1617,9 +1640,15 @@ function assistPlace() {
   }
   return false;
 }
-function dropHeld() {
+function dropFromSlot(ref, all) {
+  const st = getSlot(ref); if (!st) return; const n = all ? st.count : 1;
+  const d = lookDir(player.yaw, player.pitch);
+  dropItem(st.id, n, player.pos.x + d.x * .5, player.eyeY() - .3, player.pos.z + d.z * .5, d.x * 5, d.y * 5 + 2, d.z * 5, player);
+  st.count -= n; if (st.count <= 0) setSlot(ref, null); renderInventory(); updateTooltip();
+}
+function dropHeld(all) {
   const h = player.held; if (!h) return; const d = lookDir(player.yaw, player.pitch);
-  const n = keys.ControlLeft ? h.count : 1;
+  const n = all ? h.count : 1;
   dropItem(h.id, n, player.pos.x + d.x * .5, player.eyeY() - .3, player.pos.z + d.z * .5, d.x * 5, d.y * 5 + 2, d.z * 5, player);
   player.inv.take(player.sel, n);
 }
@@ -1629,11 +1658,13 @@ function updatePlayer(dt) {
   const act = controlsActive();
   let fx = 0, fz = 0;
   if (act) { if (keys.KeyW) fz += 1; if (keys.KeyS) fz -= 1; if (keys.KeyA) fx -= 1; if (keys.KeyD) fx += 1; }
-  p.crouch = act && !!keys.KeyC;
-  p.sprinting = act && (keys.ShiftLeft || keys.ShiftRight) && fz > 0 && !p.crouch && p.sprintCD <= 0 && !pstate.charging;
+  p.crouch = act && !!(keys.ShiftLeft || keys.ShiftRight);
+  if (p.crouch || !act) pstate.sprintLatch = false;
+  p.sprinting = act && (pstate.sprintLatch || keys.ControlLeft || keys.ControlRight) && fz > 0 && !p.crouch && p.sprintCD <= 0 && !pstate.charging;
   const fX = -Math.sin(p.yaw), fZ = -Math.cos(p.yaw), rX = Math.cos(p.yaw), rZ = -Math.sin(p.yaw);
   let wx = fX * fz + rX * fx, wz = fZ * fz + rZ * fx; const l = Math.hypot(wx, wz); if (l > 0) { wx /= l; wz /= l; }
-  let spd = p.crouch ? CROUCH_SPD : p.sprinting ? SPRINT : WALK; if (pstate.charging) spd *= .45;
+  const eating = act && mouse[2] && heldType() === 'food';
+  let spd = p.crouch ? CROUCH_SPD : p.sprinting ? SPRINT : WALK; if (pstate.charging || eating) { spd = Math.min(spd, WALK) * .3; p.sprinting = false; }
   applyMove(p, wx, wz, spd, dt);
   if (act && keys.Space && p.onGround) p.vel.y = JUMP;
   p.guard = p.crouch ? 1 : 0;
@@ -1641,6 +1672,12 @@ function updatePlayer(dt) {
   if (p.hitWall && p.sprinting) p.sprinting = false;
   // continuous actions
   if (act && pstate.charging) pstate.bowT += dt;
+  // hold right click to eat (about 1.6 s, like Minecraft)
+  if (eating) {
+    const before = pstate.eatT; pstate.eatT += dt;
+    if (Math.floor(before / .27) !== Math.floor(pstate.eatT / .27)) Sound.play('dig');
+    if (pstate.eatT >= 1.6) { eat(player, player.sel); pstate.eatT = 0; }
+  } else pstate.eatT = 0;
   if (act && mouse[2] && heldType() === 'block') { pstate.placeT -= dt; if (pstate.placeT <= 0) { playerUse(); pstate.placeT = 0.2; } }
   // block targeting & breaking
   const r = act ? raycastBlock(eyePos(p), lookDir(p.yaw, p.pitch), BUILD_REACH) : null;
@@ -1670,13 +1707,13 @@ function setVM(id) {
   if (id === null) { vm.mesh = armMesh; armMesh.position.set(0, 0, 0); armMesh.rotation.set(.25, -.15, 0); vm.holder.add(armMesh); return; }
   const m = makeItemMesh(id); vm.mesh = m;
   if (m.userData.block) { m.scale.setScalar(.2); m.rotation.set(.12, .75, 0); m.position.set(.02, -.02, -.08); }
-  else if (ITEMS[id].type === 'bow') { m.scale.setScalar(.45); m.rotation.set(0, -.25, .62); m.position.set(-.04, .06, -.04); }
+  else if (ITEMS[id].type === 'bow') { m.scale.setScalar(.32); m.rotation.set(0, -.25, .62); m.position.set(-.04, .06, -.04); }
   else if (ITEMS[id].type === 'sword') { m.scale.setScalar(.46); m.rotation.set(-.1, -1.3, .25); m.position.set(.03, .1, -.08); }
   else { m.scale.setScalar(.32); m.rotation.set(0, -.5, 0); m.position.set(0, .02, -.05); }
   vm.holder.add(m);
 }
 function updateVM(dt) {
-  if (!player || !player.alive || game.phase === 'menu' || game.endShown) { vm.group.visible = false; return; }
+  if (!player || !player.alive || game.phase === 'menu' || game.endShown || pstate.view !== 0 || pstate.hideHud) { vm.group.visible = false; return; }
   vm.group.visible = true;
   setVM(player.held ? player.held.id : null);
   const sp = Math.hypot(player.vel.x, player.vel.z);
@@ -1686,7 +1723,7 @@ function updateVM(dt) {
   let rx = 0, ry = 0, rz = 0;
   if (vm.swing > 0) { vm.swing += dt / 0.26; if (vm.swing >= 1) vm.swing = 0; const s = Math.sin(vm.swing * Math.PI); rx = -s * 0.9; z -= s * .12; x -= s * .1; y += s * .06; }
   if (pstate.charging) { const c = Math.min(1, pstate.bowT); x = .3 - c * .04; y = -.38; z = -.7 + c * .08; ry = .25; rz = Math.sin(performance.now() / 30) * .008 * c; }
-  if (pstate.useT > 0.6 && heldType() === 'food') { x = .2; y = -.32 + Math.sin(performance.now() / 50) * .02; }
+  if (pstate.eatT > 0) { x = .18; y = -.34 + Math.sin(performance.now() / 45) * .02; z = -.6; }
   vm.group.position.set(x, y, z); vm.group.rotation.set(rx, ry, rz);
 }
 
@@ -1716,14 +1753,14 @@ function setupUI() {
   setText($('bPlay'), 'PLAY', 3); updateDiffButton(); setText($('bControls'), 'CONTROLS', 3);
   setText($('menuHint'), 'BRIDGE TO THE CENTER FOR BETTER LOOT - LAST ONE ALIVE WINS', 2, '#e8f4ff');
   setText($('ctTitle'), 'CONTROLS', 4, '#3a3a3a', false);
-  const lines = ['WASD - MOVE', 'MOUSE - LOOK AROUND', 'SPACE - JUMP', 'SHIFT - SPRINT (SPRINT HITS KNOCK FURTHER)', 'C - CROUCH (STOPS YOU FALLING OFF EDGES)', 'LEFT CLICK - ATTACK / HOLD TO BREAK BLOCKS', 'RIGHT CLICK - PLACE BLOCK / THROW / EAT / EQUIP', 'BOW - HOLD A MOUSE BUTTON TO CHARGE, RELEASE TO SHOOT', '1-9 OR WHEEL - SELECT HOTBAR SLOT', 'E - OPEN CHEST (LOOK AT IT) OR INVENTORY', 'SHIFT+CLICK IN INVENTORY - QUICK MOVE / EQUIP ARMOR', 'Q - DROP ITEM', 'ESC - PAUSE', 'TIP: HIT PEOPLE WHILE FALLING FOR CRITICAL HITS'];
+  const lines = ['WASD - MOVE', 'MOUSE - LOOK AROUND', 'SPACE - JUMP', 'SHIFT - SNEAK (YOU WON\'T FALL OFF EDGES)', 'CTRL OR DOUBLE-TAP W - SPRINT', 'LEFT CLICK - ATTACK / HOLD TO BREAK BLOCKS', 'RIGHT CLICK - OPEN CHEST / PLACE / THROW / EQUIP', 'HOLD RIGHT CLICK - EAT / CHARGE BOW (RELEASE TO SHOOT)', 'MIDDLE CLICK - PICK BLOCK', '1-9 OR WHEEL - HOTBAR', 'E - INVENTORY', 'Q - DROP ITEM  (CTRL+Q - DROP STACK)', 'F1 - HIDE HUD   F3 - DEBUG   F5 - CAMERA VIEW', 'TAB - PLAYER LIST   ESC - PAUSE', 'TIP: SPRINT HITS KNOCK FURTHER, FALLING HITS CRIT'];
   lines.forEach(l => $('ctLines').appendChild(textCanvas(l, 2, '#3a3a3a', false)));
   setText($('bBack'), 'BACK', 3);
   setText($('pTitle'), 'PAUSED', 6); setText($('bResume'), 'RESUME', 3); setText($('bPControls'), 'CONTROLS', 3); setText($('bQuit'), 'QUIT TO MENU', 3);
   setText($('bAgain'), 'PLAY AGAIN', 3); setText($('bMenu'), 'MAIN MENU', 3);
-  setText($('crouchTag'), 'CROUCHING - EDGE SAFE', 2, '#9dff9d');
+  setText($('crouchTag'), 'SNEAKING - EDGE SAFE', 2, '#9dff9d');
   setText($('armTitle'), 'ARMOR', 2, '#404040', false); setText($('invTitle'), 'INVENTORY', 2, '#404040', false);
-  setText($('invHint'), 'CLICK: MOVE  RIGHT CLICK: SPLIT  SHIFT+CLICK: QUICK MOVE  E: CLOSE', 1, '#505050', false);
+  setText($('invHint'), 'CLICK: MOVE  RIGHT CLICK: SPLIT  SHIFT+CLICK: QUICK MOVE  Q: DROP  E: CLOSE', 1, '#505050', false);
   // HUD containers
   for (let i = 0; i < 9; i++) { const d = document.createElement('div'); d.className = 'hs'; $('hotbar').appendChild(d); ui.hb.push(d); }
   for (let i = 0; i < 10; i++) { const im = document.createElement('img'); im.src = HEART.full; $('hearts').appendChild(im); ui.hearts.push(im); }
@@ -1739,6 +1776,12 @@ function setupUI() {
     const s = e.target.closest('.slot'); if (!s) return; e.preventDefault();
     slotClick({ kind: s.dataset.kind, idx: +s.dataset.idx }, e.button, e.shiftKey);
   });
+  $('inv').addEventListener('mousedown', e => {
+    if (e.target.closest('#invpanel') || !ui.cursor) return;
+    const d = lookDir(player.yaw, player.pitch), n = e.button === 2 ? 1 : ui.cursor.count;
+    dropItem(ui.cursor.id, n, player.pos.x + d.x * .5, player.eyeY() - .3, player.pos.z + d.z * .5, d.x * 5, d.y * 5 + 2, d.z * 5, player);
+    ui.cursor.count -= n; if (ui.cursor.count <= 0) ui.cursor = null; renderInventory();
+  });
   $('invpanel').addEventListener('mouseover', e => { const s = e.target.closest('.slot'); ui.hover = s ? { kind: s.dataset.kind, idx: +s.dataset.idx } : null; updateTooltip(); });
   $('invpanel').addEventListener('mouseleave', () => { ui.hover = null; updateTooltip(); });
   // buttons
@@ -1752,6 +1795,25 @@ function setupUI() {
   click('bQuit', quitToMenu);
   click('bAgain', startGame);
   click('bMenu', quitToMenu);
+}
+function showPlayerList(on) {
+  const el = $('plist'); if (!on || !player) { el.style.display = 'none'; return; }
+  el.innerHTML = '';
+  const row = (a, b, c) => { const d = document.createElement('div'); d.appendChild(textCanvas(a, 2, c)); d.appendChild(textCanvas(b, 2, c)); el.appendChild(d); };
+  row('PLAYER', 'KILLS', '#ffe14d');
+  for (const e of [...ents].sort((a, b) => b.alive - a.alive || b.kills - a.kills)) row(e.isPlayer ? 'YOU' : e.name, String(e.kills), !e.alive ? '#777777' : e.isPlayer ? '#9dff9d' : '#ffffff');
+  el.style.display = 'flex';
+}
+function updateDebug(dt) {
+  pstate.frames++; pstate.fpsT += dt;
+  if (pstate.fpsT < 0.25) return;
+  pstate.fps = Math.round(pstate.frames / pstate.fpsT); pstate.frames = 0; pstate.fpsT = 0;
+  if (!pstate.debug || !player) return;
+  const dirs = ['SOUTH', 'WEST', 'NORTH', 'EAST'], a = ((-player.yaw * 180 / Math.PI + 180) % 360 + 360) % 360;
+  const el = $('debug'); el.innerHTML = '';
+  ['SKY ISLANDS  ' + pstate.fps + ' FPS', 'XYZ: ' + player.pos.x.toFixed(2) + ' / ' + player.pos.y.toFixed(2) + ' / ' + player.pos.z.toFixed(2),
+   'BLOCK: ' + Math.floor(player.pos.x) + ' ' + Math.floor(player.pos.y) + ' ' + Math.floor(player.pos.z), 'FACING: ' + dirs[Math.round(a / 90) % 4],
+   'BLOCKS: ' + world.map.size + '  ENTITIES: ' + aliveCount() + '  PARTICLES: ' + particles.list.length].forEach(t => el.appendChild(textCanvas(t, 2)));
 }
 function updateDiffButton() { const c = { easy: '#9dff9d', normal: '#ffffff', hard: '#ff9d9d' }[game.diff]; setText($('bDiff'), 'DIFFICULTY: ' + game.diff.toUpperCase(), 3, c); }
 function renderStack(el, st, ghost) {
@@ -1807,9 +1869,8 @@ function updateHUD(dt) {
 }
 
 /* ---- Inventory / chest screen ---- */
-function openInventory() {
-  const r = raycastBlock(eyePos(player), lookDir(player.yaw, player.pitch), BUILD_REACH);
-  ui.chest = r && r.type === B.CHEST ? world.chests.get(K(r.x, r.y, r.z)) : null;
+function openInventory(chest) {
+  ui.chest = chest || null;
   if (ui.chest) Sound.play('chest');
   ui.invOpen = true; ui.cursor = null;
   breaking.reset(); pstate.charging = false; mouse[0] = mouse[1] = mouse[2] = false;
@@ -1873,6 +1934,7 @@ function swapWithHotbar(ref, h) {
 }
 function renderInventory() {
   if (!ui.invOpen) return;
+  if (player && player.mesh) refreshArmorVisual(player);
   if (ui.chest) for (let i = 0; i < 27; i++) renderStack(ui.slotEls.chest[i], ui.chest.items[i]);
   for (let i = 0; i < 36; i++) renderStack(ui.slotEls.inv[i], player.inv.slots[i]);
   for (let i = 0; i < 4; i++) renderStack(ui.slotEls.armor[i], player.inv.armor[i], ARMOR_KEYS[i] + '_leather');
@@ -1909,7 +1971,7 @@ function update(dt) {
     if (n !== game.lastCount && n > 0) { game.lastCount = n; bigMessage(String(n), n <= 3 ? '#ff6060' : '#ffe14d', 1.0); Sound.play('beep'); subMessage('CAGES OPEN SOON - GET READY!', '#ffffff', 1.2); }
     if (game.countdown <= 0) {
       game.phase = 'playing'; game.time = 0; breakCages(); bigMessage('GO!', '#7dff7d', 1.2); Sound.play('go');
-      subMessage('LOOT YOUR CHEST (E) - HOLD C TO CROUCH SAFELY AT EDGES', '#ffffff', 4);
+      subMessage('RIGHT CLICK CHESTS, SHIFT TO SNEAK', '#ffffff', 4);
     }
   } else if (game.phase === 'playing' || game.phase === 'over') {
     if (game.phase === 'playing') game.time += dt;
@@ -1947,6 +2009,13 @@ function update(dt) {
     const sp = Math.hypot(player.vel.x, player.vel.z), bob = player.onGround ? Math.sin(pstate.bob * 2) * 0.035 * Math.min(1, sp / 5) : 0;
     camera.position.set(player.pos.x, player.eyeY() + bob, player.pos.z);
     camera.rotation.set(player.pitch, player.yaw, player.hurtT > 0 ? Math.sin(player.hurtT * 20) * 0.03 : 0);
+    player.mesh.visible = pstate.view !== 0;
+    if (pstate.view !== 0) { // F5: third person behind / in front, pulled in if a block is in the way
+      const eye = eyePos(player), back = lookDir(player.yaw, player.pitch).multiplyScalar(pstate.view === 1 ? -1 : 1);
+      const hit = raycastBlock(eye, back, 4); const dist = hit ? Math.max(0.3, hit.t - 0.3) : 4;
+      camera.position.copy(eye).addScaledVector(back, dist);
+      if (pstate.view === 2) camera.lookAt(eye);
+    }
     const tf = (player.sprinting ? 84 : 75) - (pstate.charging ? Math.min(1, pstate.bowT) * 12 : 0);
     pstate.fov += (tf - pstate.fov) * (1 - Math.exp(-10 * dt));
     if (Math.abs(camera.fov - pstate.fov) > 0.05) { camera.fov = pstate.fov; camera.updateProjectionMatrix(); }
@@ -1959,6 +2028,8 @@ function update(dt) {
   }
   updateVM(dt);
   updateHUD(dt);
+  updateDebug(dt);
+  if ($('plist').style.display === 'flex' && Math.random() < .1) showPlayerList(true);
 }
 let last = performance.now();
 function frame(now) {
@@ -1979,7 +2050,7 @@ showScreen('menu');
 $('loading').style.display = 'none';
 requestAnimationFrame(frame);
 // small debug/test handle
-window.SkyIslands = { ui, game, get ents() { return ents; }, get player() { return player; }, world, startGame, update, ITEMS, kill, closeInventory, openInventory, slotClick, setPaused: v => { game.paused = v; }, _setLocked: v => { locked = v; if (v) { game.paused = false; showScreen(null); } } };
+window.SkyIslands = { ui, game, pstate, get ents() { return ents; }, get player() { return player; }, world, startGame, update, ITEMS, kill, closeInventory, openInventory, slotClick, setPaused: v => { game.paused = v; }, _setLocked: v => { locked = v; if (v) { game.paused = false; showScreen(null); } } };
 })();
 </script>
 </body>

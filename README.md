@@ -96,13 +96,21 @@ The whole game is that one HTML file. Open it in a browser (double-clicking work
 - **Combat:** 10 hearts, armor reduces damage, sprint hits knock further, and hits while falling are critical. Hold the bow to charge it, release to fire. Killed players drop their items.
 - **Bots:** Easy, Normal and Hard bots differ in aim, reaction time, speed, bridging speed and tactics (Hard bots also pillar up and catch falls with blocks).
 
+Controls follow Minecraft Java's defaults:
+
 | Key | Action |
 | --- | --- |
-| WASD / mouse | Move / look |
-| Space / Shift / C | Jump / sprint / crouch (crouching stops you falling off edges) |
+| WASD / mouse / Space | Move / look / jump |
+| Shift | Sneak (you won't walk off edges) |
+| Ctrl or double-tap W | Sprint |
 | Left click | Attack; hold to break a block |
-| Right click | Place block, throw, eat, equip armor. Hold it while looking down to bridge |
-| Hold left or right click with a bow | Charge; release to shoot |
+| Right click | Open a chest, place a block, throw, equip armor (sneak + right-click places against a chest) |
+| Hold right click | Eat, or charge the bow (release to shoot) |
+| Middle click | Pick block |
 | 1-9, mouse wheel | Hotbar |
-| E | Open the chest you're looking at, or your inventory (Shift+click moves items quickly) |
-| Q / Esc | Drop item / pause |
+| E | Inventory (Shift+click quick-moves, Q drops the hovered item, click outside to drop) |
+| Q / Ctrl+Q | Drop item / drop stack |
+| F1 / F3 / F5 | Hide HUD / debug info / camera view |
+| Tab / Esc | Player list / pause |
+
+Ctrl+W is a browser shortcut that closes the tab and can't be blocked, so the game asks before leaving during a match. Use double-tap W to sprint if that gets in your way.
