@@ -31,6 +31,7 @@ canvas{image-rendering:pixelated;image-rendering:crisp-edges}
 #cross:before,#cross:after{content:"";position:absolute;background:#fff}
 #cross:before{left:10px;top:0;width:2px;height:22px}
 #cross:after{left:0;top:10px;width:22px;height:2px}
+#crouchTag{position:absolute;left:50%;bottom:128px;transform:translateX(-50%);display:none;background:rgba(0,0,0,.45);padding:4px 8px}
 #charge{position:absolute;left:50%;top:calc(50% + 22px);transform:translateX(-50%);width:60px;height:6px;background:rgba(0,0,0,.5);display:none}
 #charge>div{height:100%;width:0;background:#fff}
 #big{position:absolute;left:50%;top:32%;transform:translate(-50%,-50%);text-align:center}
@@ -70,6 +71,7 @@ canvas{image-rendering:pixelated;image-rendering:crisp-edges}
   <div id="feed"></div>
   <div id="cross"></div>
   <div id="charge"><div></div></div>
+  <div id="crouchTag"></div>
   <div id="big"></div>
   <div id="sub"></div>
   <div id="bottom">
@@ -1719,6 +1721,7 @@ function setupUI() {
   setText($('bBack'), 'BACK', 3);
   setText($('pTitle'), 'PAUSED', 6); setText($('bResume'), 'RESUME', 3); setText($('bPControls'), 'CONTROLS', 3); setText($('bQuit'), 'QUIT TO MENU', 3);
   setText($('bAgain'), 'PLAY AGAIN', 3); setText($('bMenu'), 'MAIN MENU', 3);
+  setText($('crouchTag'), 'CROUCHING - EDGE SAFE', 2, '#9dff9d');
   setText($('armTitle'), 'ARMOR', 2, '#404040', false); setText($('invTitle'), 'INVENTORY', 2, '#404040', false);
   setText($('invHint'), 'CLICK: MOVE  RIGHT CLICK: SPLIT  SHIFT+CLICK: QUICK MOVE  E: CLOSE', 1, '#505050', false);
   // HUD containers
@@ -1800,6 +1803,7 @@ function updateHUD(dt) {
   // bow charge
   const ch = $('charge'); if (pstate.charging) { ch.style.display = 'block'; ch.firstChild.style.width = Math.min(100, pstate.bowT * 100) + '%'; ch.firstChild.style.background = pstate.bowT >= 1 ? '#ffe14d' : '#fff'; } else ch.style.display = 'none';
   $('cross').style.display = player.alive ? 'block' : 'none';
+  $('crouchTag').style.display = player.alive && player.crouch ? 'block' : 'none';
 }
 
 /* ---- Inventory / chest screen ---- */
@@ -1905,7 +1909,7 @@ function update(dt) {
     if (n !== game.lastCount && n > 0) { game.lastCount = n; bigMessage(String(n), n <= 3 ? '#ff6060' : '#ffe14d', 1.0); Sound.play('beep'); subMessage('CAGES OPEN SOON - GET READY!', '#ffffff', 1.2); }
     if (game.countdown <= 0) {
       game.phase = 'playing'; game.time = 0; breakCages(); bigMessage('GO!', '#7dff7d', 1.2); Sound.play('go');
-      subMessage('LOOT YOUR CHEST (E) AND BRIDGE OUT', '#ffffff', 3);
+      subMessage('LOOT YOUR CHEST (E) - HOLD C TO CROUCH SAFELY AT EDGES', '#ffffff', 4);
     }
   } else if (game.phase === 'playing' || game.phase === 'over') {
     if (game.phase === 'playing') game.time += dt;
