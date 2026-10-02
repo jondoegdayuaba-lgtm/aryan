@@ -82,3 +82,7 @@ Four extra missile skins unlock as your best score climbs.
 | `js/collision.js` | Simple collision shapes |
 
 three.js is MIT licensed; see `vendor/three/LICENSE`.
+
+## Also in this repo
+
+[Turbo Kickoff](turbo-kickoff/README.md), a 3D car-soccer game in progress. Its models are made by a Blender script in `turbo-kickoff/blender/`.
