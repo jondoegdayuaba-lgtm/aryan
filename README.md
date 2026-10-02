@@ -2,6 +2,27 @@
 
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.
 
+## Also in this repo: Blockwild
+
+`blockwild/` is a second game: a blocky sandbox you explore, dig and build in. It has its own name, logo and code-drawn textures, so it's an original game that plays like the block-building games you know.
+
+- Endless generated terrain with plains, forests, pink cherry-blossom groves, beaches, lakes and snowy mountain peaks
+- **Survival**: hold left-click to mine (blocks crack and drop items you pick up), right-click to place, 10 hearts and a hunger bar, fall damage, apples from oak leaves, and a crafting list in the inventory (E)
+- **Creative**: unlimited blocks, instant breaking, a block palette in the inventory, and flying (double-tap Space)
+- Day and night cycle, drifting clouds, smooth block shading, a hotbar with 1-9 and the mouse wheel, F3 debug info, and saving to the browser
+- Phone controls: a move stick, drag to look, tap to place, press and hold to break
+
+Play it at `blockwild/index.html` (served the same way as below), or save `desktop/blockwild.html` to your desktop and double-click it. `npm run build:desktop` rebuilds both one-file games.
+
+| File | What it does |
+| --- | --- |
+| `blockwild/js/main.js` | Game loop, sky, hand, inventory, HUD, menus and input |
+| `blockwild/js/world.js` | Chunks, terrain and trees, meshing, ray casting |
+| `blockwild/js/blocks.js` | Block list, pixel textures, icons and crack overlays |
+| `blockwild/js/player.js` | Walking, jumping, swimming, flying and collisions |
+| `blockwild/js/noise.js` | Seeded noise for terrain |
+| `blockwild/js/audio.js` | Synthesised dig, place, step and hurt sounds |
+
 ## How the flying works
 
 - The camera orbits the missile, and your mouse (or finger) turns the camera, not the missile.

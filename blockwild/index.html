@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Blockwild</title>
+  <meta name="description" content="A blocky sandbox game in the browser: explore hills, cherry groves and snowy peaks, dig, build and survive.">
+  <meta name="theme-color" content="#2b2b2b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%23866043'/%3E%3Crect width='16' height='5' fill='%2360a036'/%3E%3Crect x='3' y='5' width='2' height='2' fill='%2360a036'/%3E%3Crect x='10' y='5' width='3' height='1' fill='%2360a036'/%3E%3Crect x='6' y='10' width='2' height='2' fill='%23624430'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js" } }</script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+  <div id="water-tint" hidden></div>
+  <div id="hurt-flash"></div>
+
+  <div id="hud" hidden>
+    <div id="crosshair" aria-hidden="true"></div>
+    <pre id="debug" hidden></pre>
+    <div id="click-hint" hidden>Click to play</div>
+    <div class="hud-bottom">
+      <div id="item-name"></div>
+      <div id="bars">
+        <div id="hearts"></div>
+        <div id="hunger"></div>
+      </div>
+      <div id="hotbar"></div>
+    </div>
+    <div id="touch" hidden>
+      <div id="joy"><div id="joy-knob"></div></div>
+      <button id="t-jump" class="t-btn" type="button" aria-label="Jump">&#9650;</button>
+      <button id="t-sneak" class="t-btn" type="button" aria-label="Sneak or fly down">&#9660;</button>
+      <button id="t-inv" class="t-btn small" type="button" aria-label="Inventory">&#8943;</button>
+      <button id="t-pause" class="t-btn small" type="button" aria-label="Pause">&#10074;&#10074;</button>
+    </div>
+  </div>
+
+  <section id="title" class="screen">
+    <div class="logo-wrap">
+      <h1 class="logo" aria-label="Blockwild"><span>BLOCK</span><span>WILD</span></h1>
+      <span id="splash" class="splash"></span>
+    </div>
+    <div class="menu">
+      <button class="mc-btn" id="btn-play" type="button">Play</button>
+      <button class="mc-btn" id="btn-controls" type="button">Controls</button>
+      <button class="mc-btn" id="btn-settings" type="button">Settings</button>
+    </div>
+    <div class="foot foot-left">Blockwild Beta 1.0</div>
+    <div class="foot foot-right">An original block sandbox</div>
+  </section>
+
+  <section id="play-menu" class="screen panel" hidden>
+    <h2>Play</h2>
+    <div class="menu">
+      <button class="mc-btn" id="btn-continue" type="button" hidden>Continue World</button>
+      <label class="field">World seed
+        <input id="seed" type="text" maxlength="32" placeholder="Leave empty for random" autocomplete="off">
+      </label>
+      <button class="mc-btn" id="btn-mode" type="button">Game Mode: Survival</button>
+      <p id="mode-help" class="help"></p>
+      <button class="mc-btn" id="btn-create" type="button">Create New World</button>
+      <button class="mc-btn" data-back type="button">Back</button>
+    </div>
+  </section>
+
+  <section id="controls-menu" class="screen panel" hidden>
+    <h2>Controls</h2>
+    <dl class="keys">
+      <div><dt>W A S D</dt><dd>Walk</dd></div>
+      <div><dt>Mouse</dt><dd>Look around</dd></div>
+      <div><dt>Space</dt><dd>Jump / swim up</dd></div>
+      <div><dt>Shift</dt><dd>Sneak (won't fall off edges)</dd></div>
+      <div><dt>Ctrl or double-tap W</dt><dd>Sprint</dd></div>
+      <div><dt>Hold left click</dt><dd>Break block</dd></div>
+      <div><dt>Right click</dt><dd>Place block / eat</dd></div>
+      <div><dt>Middle click</dt><dd>Pick block</dd></div>
+      <div><dt>1-9 / wheel</dt><dd>Choose hotbar slot</dd></div>
+      <div><dt>E</dt><dd>Inventory and crafting</dd></div>
+      <div><dt>Q</dt><dd>Drop item</dd></div>
+      <div><dt>Double-tap Space</dt><dd>Fly (creative)</dd></div>
+      <div><dt>F3</dt><dd>Debug info</dd></div>
+      <div><dt>Esc</dt><dd>Pause</dd></div>
+    </dl>
+    <p class="help">On a phone: left stick to walk, drag to look, tap to place, press and hold to break.</p>
+    <div class="menu"><button class="mc-btn" data-back type="button">Done</button></div>
+  </section>
+
+  <section id="settings-menu" class="screen panel" hidden>
+    <h2>Settings</h2>
+    <div class="menu settings">
+      <label class="slider">Render distance: <b id="v-rd"></b><input id="s-rd" type="range" min="2" max="12" step="1"></label>
+      <label class="slider">Field of view: <b id="v-fov"></b><input id="s-fov" type="range" min="50" max="110" step="1"></label>
+      <label class="slider">Mouse sensitivity: <b id="v-sens"></b><input id="s-sens" type="range" min="20" max="200" step="5"></label>
+      <label class="slider">Sound: <b id="v-vol"></b><input id="s-vol" type="range" min="0" max="100" step="5"></label>
+      <button class="mc-btn" id="s-bob" type="button"></button>
+      <button class="mc-btn" id="s-clouds" type="button"></button>
+      <button class="mc-btn" data-back type="button">Done</button>
+    </div>
+  </section>
+
+  <section id="pause-menu" class="screen panel dim" hidden>
+    <h2>Game Menu</h2>
+    <div class="menu">
+      <button class="mc-btn" id="btn-resume" type="button">Back to Game</button>
+      <button class="mc-btn" id="btn-pause-settings" type="button">Settings</button>
+      <button class="mc-btn" id="btn-quit" type="button">Save and Quit to Title</button>
+    </div>
+  </section>
+
+  <section id="death-menu" class="screen panel red" hidden>
+    <h2>You died!</h2>
+    <p id="death-why" class="help"></p>
+    <div class="menu">
+      <button class="mc-btn" id="btn-respawn" type="button">Respawn</button>
+      <button class="mc-btn" id="btn-death-quit" type="button">Title Screen</button>
+    </div>
+  </section>
+
+  <section id="inventory" class="screen dim" hidden>
+    <div class="inv-panel">
+      <div id="inv-creative" hidden>
+        <h3>Blocks</h3>
+        <div id="palette" class="grid"></div>
+      </div>
+      <div id="inv-crafting" hidden>
+        <h3>Crafting</h3>
+        <div id="recipes"></div>
+      </div>
+      <h3>Inventory</h3>
+      <div id="backpack" class="grid"></div>
+      <div id="inv-hotbar" class="grid hotrow"></div>
+      <button class="mc-btn small" id="btn-inv-close" type="button">Done (E)</button>
+    </div>
+  </section>
+  <div id="cursor-item" hidden><img alt=""><span></span></div>
+
+  <div id="loading" class="screen panel dirt" hidden>
+    <h2>Generating world</h2>
+    <p id="loading-text" class="help">Building terrain</p>
+    <div class="progress"><div id="loading-bar"></div></div>
+  </div>
+
+  <noscript><p class="noscript">This game needs JavaScript turned on.</p></noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
