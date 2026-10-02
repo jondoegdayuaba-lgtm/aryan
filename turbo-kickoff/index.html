@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Turbo Kickoff</title>
+  <meta name="description" content="Turbo Kickoff: 3D car soccer in the browser. Drive, boost, fly and score against AI bots.">
+  <meta name="theme-color" content="#070a14">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23070a14'/%3E%3Ccircle cx='32' cy='30' r='17' fill='%23e8ecf2'/%3E%3Cpath d='M32 18l8 6-3 9h-10l-3-9z' fill='%232b3140'/%3E%3Crect x='10' y='48' width='20' height='6' rx='3' fill='%231d63ff'/%3E%3Crect x='34' y='48' width='20' height='6' rx='3' fill='%23ff7417'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.js",
+        "three/addons/": "./vendor/three/addons/",
+        "cannon-es": "./vendor/cannon-es.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+
+  <div id="loading" class="screen">
+    <h1 class="logo">TURBO <span>KICKOFF</span></h1>
+    <div class="bar"><div id="load-fill"></div></div>
+    <p id="load-text">Loading the stadium…</p>
+  </div>
+
+  <div id="menu" class="screen" hidden>
+    <h1 class="logo">TURBO <span>KICKOFF</span></h1>
+    <p class="tagline">Rocket-powered car soccer</p>
+    <div class="panel">
+      <h2>Bot difficulty</h2>
+      <div class="seg" id="difficulty" role="radiogroup" aria-label="Bot difficulty">
+        <button type="button" data-diff="easy">Easy</button>
+        <button type="button" data-diff="medium" class="on">Medium</button>
+        <button type="button" data-diff="hard">Hard</button>
+      </div>
+      <h2>Play</h2>
+      <div class="modes">
+        <button type="button" class="mode" data-mode="1v1"><b>1v1</b><small>You against one bot</small></button>
+        <button type="button" class="mode" data-mode="2v2"><b>2v2</b><small>You and a bot against two bots</small></button>
+        <button type="button" class="mode" data-mode="freeplay"><b>Free play</b><small>Practise on your own</small></button>
+      </div>
+    </div>
+    <details class="controls">
+      <summary>Controls</summary>
+      <table>
+        <tr><td>W / S</td><td>Drive / reverse (in the air: tilt nose down / up)</td></tr>
+        <tr><td>A / D</td><td>Steer (in the air: turn)</td></tr>
+        <tr><td>Space</td><td>Jump. Press again in the air to double jump, or with a direction to flip</td></tr>
+        <tr><td>Shift</td><td>Boost (also how you fly)</td></tr>
+        <tr><td>Q / E</td><td>Air roll left / right</td></tr>
+        <tr><td>X</td><td>Powerslide (in the air, X + A/D rolls)</td></tr>
+        <tr><td>C</td><td>Ball cam on / off</td></tr>
+        <tr><td>Esc</td><td>Pause</td></tr>
+        <tr><td>M</td><td>Mute</td></tr>
+        <tr><td>R / B</td><td>Free play: reset ball / toggle unlimited boost</td></tr>
+        <tr><td>Gamepad</td><td>RT/LT drive, A jump, B boost, X powerslide, Y ball cam, LB/RB air roll</td></tr>
+      </table>
+    </details>
+  </div>
+
+  <div id="hud" hidden>
+    <div class="scoreboard">
+      <div class="team blue"><span id="score-blue">0</span></div>
+      <div class="clock" id="clock">5:00</div>
+      <div class="team orange"><span id="score-orange">0</span></div>
+    </div>
+    <div id="countdown" aria-live="polite"></div>
+    <div id="banner" hidden><div id="banner-title"></div><div id="banner-sub"></div></div>
+    <div id="popups" aria-live="polite"></div>
+    <div id="ballcam" class="corner-label"><span class="dot"></span>BALL CAM <small>C to toggle</small></div>
+    <div id="freeplay-help" class="corner-label right-top" hidden>FREE PLAY · R reset · B unlimited boost</div>
+    <div class="boost" aria-label="Boost">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <circle cx="60" cy="60" r="50" class="track"/>
+        <circle cx="60" cy="60" r="50" class="fill" id="boost-ring"/>
+      </svg>
+      <div class="boost-num" id="boost-num">33</div>
+      <div class="boost-label">BOOST</div>
+    </div>
+    <div id="speed" class="speed">0 km/h</div>
+  </div>
+
+  <div id="pause" class="screen dim" hidden>
+    <h2 class="big">Paused</h2>
+    <div class="stack">
+      <button type="button" id="btn-resume" class="primary">Resume</button>
+      <button type="button" id="btn-restart">Restart match</button>
+      <button type="button" id="btn-menu">Main menu</button>
+    </div>
+  </div>
+
+  <div id="end" class="screen dim" hidden>
+    <h2 class="big" id="end-title">Victory!</h2>
+    <div class="final" id="end-score"></div>
+    <table class="stats" id="end-table"></table>
+    <p class="mvp" id="end-mvp"></p>
+    <div class="row">
+      <button type="button" id="btn-rematch" class="primary">Rematch</button>
+      <button type="button" id="btn-end-menu">Main menu</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

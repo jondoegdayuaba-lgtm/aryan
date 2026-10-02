@@ -85,4 +85,4 @@ three.js is MIT licensed; see `vendor/three/LICENSE`.
 
 ## Also in this repo
 
-[Turbo Kickoff](turbo-kickoff/README.md), a 3D car-soccer game in progress. Its models are made by a Blender script in `turbo-kickoff/blender/`.
+[Turbo Kickoff](turbo-kickoff/README.md), a 3D car-soccer game against AI bots. Play it by opening `turbo-kickoff/turbo-kickoff.html`; its models are made by a Blender script in `turbo-kickoff/blender/`.

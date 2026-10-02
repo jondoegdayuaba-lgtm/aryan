@@ -1,0 +1,422 @@
+{
+  "about": "Turbo Kickoff arena layout. Metres, three.js axes (Y up). Blue defends the goal at +Z, orange the goal at -Z. Cars face +Z before rotation.",
+  "arena": {
+    "half_width": 36.0,
+    "half_length": 48.0,
+    "height": 20.0,
+    "corner_radius": 10.0,
+    "floor_curve_radius": 3.0,
+    "ceiling_curve_radius": 6.0
+  },
+  "goal": {
+    "half_width": 8.9,
+    "height": 6.4,
+    "depth": 8.8,
+    "blue_goal_line_z": 48.0,
+    "orange_goal_line_z": -48.0
+  },
+  "ball": {
+    "radius": 0.93,
+    "spawn": [
+      0.0,
+      0.93,
+      0.0
+    ]
+  },
+  "car": {
+    "hitbox_size": [
+      0.84,
+      0.36,
+      1.18
+    ],
+    "hitbox_offset": [
+      0.0,
+      0.3,
+      0.01
+    ],
+    "front_wheel_radius": 0.17,
+    "rear_wheel_radius": 0.2,
+    "wheels": {
+      "Wheel_FL": [
+        0.385,
+        0.17,
+        0.4
+      ],
+      "Wheel_FR": [
+        -0.385,
+        0.17,
+        0.4
+      ],
+      "Wheel_RL": [
+        0.41,
+        0.2,
+        -0.37
+      ],
+      "Wheel_RR": [
+        -0.41,
+        0.2,
+        -0.37
+      ]
+    }
+  },
+  "boost_pads": [
+    {
+      "size": "big",
+      "position": [
+        -31.5,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "size": "big",
+      "position": [
+        31.5,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "size": "big",
+      "position": [
+        -27.0,
+        0.0,
+        38.4
+      ]
+    },
+    {
+      "size": "big",
+      "position": [
+        27.0,
+        0.0,
+        38.4
+      ]
+    },
+    {
+      "size": "big",
+      "position": [
+        -27.0,
+        0.0,
+        -38.4
+      ]
+    },
+    {
+      "size": "big",
+      "position": [
+        27.0,
+        0.0,
+        -38.4
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        0.0,
+        0.0,
+        39.75
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        -15.75,
+        0.0,
+        39.225
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        15.75,
+        0.0,
+        39.225
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        -8.2617,
+        0.0,
+        31.0125
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        8.2617,
+        0.0,
+        31.0125
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        0.0,
+        0.0,
+        26.4
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        -31.5,
+        0.0,
+        23.2875
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        31.5,
+        0.0,
+        23.2875
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        -15.7148,
+        0.0,
+        21.5625
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        15.7148,
+        0.0,
+        21.5625
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        -18.0,
+        0.0,
+        9.7125
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        0.0,
+        0.0,
+        9.6
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        18.0,
+        0.0,
+        9.7125
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        -9.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        9.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        -18.0,
+        0.0,
+        -9.7125
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        0.0,
+        0.0,
+        -9.6
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        18.0,
+        0.0,
+        -9.7125
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        -15.7148,
+        0.0,
+        -21.5625
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        15.7148,
+        0.0,
+        -21.5625
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        -31.5,
+        0.0,
+        -23.2875
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        31.5,
+        0.0,
+        -23.2875
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        0.0,
+        0.0,
+        -26.4
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        -8.2617,
+        0.0,
+        -31.0312
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        8.2617,
+        0.0,
+        -31.0125
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        -15.75,
+        0.0,
+        -39.225
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        15.75,
+        0.0,
+        -39.225
+      ]
+    },
+    {
+      "size": "small",
+      "position": [
+        0.0,
+        0.0,
+        -39.75
+      ]
+    }
+  ],
+  "kickoff_spawns": {
+    "blue": [
+      {
+        "position": [
+          -18.0,
+          0.0,
+          24.0
+        ],
+        "yaw": 2.4981
+      },
+      {
+        "position": [
+          18.0,
+          0.0,
+          24.0
+        ],
+        "yaw": -2.4981
+      },
+      {
+        "position": [
+          -2.25,
+          0.0,
+          36.0
+        ],
+        "yaw": 3.0792
+      },
+      {
+        "position": [
+          2.25,
+          0.0,
+          36.0
+        ],
+        "yaw": -3.0792
+      },
+      {
+        "position": [
+          0.0,
+          0.0,
+          43.2
+        ],
+        "yaw": -3.1416
+      }
+    ],
+    "orange": [
+      {
+        "position": [
+          18.0,
+          0.0,
+          -24.0
+        ],
+        "yaw": -0.6435
+      },
+      {
+        "position": [
+          -18.0,
+          0.0,
+          -24.0
+        ],
+        "yaw": 0.6435
+      },
+      {
+        "position": [
+          2.25,
+          0.0,
+          -36.0
+        ],
+        "yaw": -0.0624
+      },
+      {
+        "position": [
+          -2.25,
+          0.0,
+          -36.0
+        ],
+        "yaw": 0.0624
+      },
+      {
+        "position": [
+          0.0,
+          0.0,
+          -43.2
+        ],
+        "yaw": -0.0
+      }
+    ]
+  }
+}

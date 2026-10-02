@@ -2,22 +2,94 @@
 
 A 3D car-soccer game for the browser, inspired by Rocket League. A Blender script generates every 3D model, and the game runs on [three.js](https://threejs.org) with [cannon-es](https://pmndrs.github.io/cannon-es/) physics.
 
-**Status:** Part 1 (the Blender models) is done. Part 2 (the game) is built once the models are exported.
+## Play it
+
+**`turbo-kickoff.html` is the whole game in one file.** Save it anywhere (your desktop is fine) and double-click it. It opens in your browser and runs offline, with no web server or install.
+
+Pick a bot difficulty, then **1v1**, **2v2** (you and a bot against two bots) or **Free play**.
+
+| Key | What it does |
+| --- | --- |
+| W / S | Drive / reverse. In the air: tilt the nose down / up |
+| A / D | Steer. In the air: turn |
+| Space | Jump. Hold for a higher jump. Press again in the air to double jump, or with W/A/S/D to flip into the ball |
+| Shift | Boost (uses the boost meter; drive over pads to refill it) |
+| Shift in the air | Fly (aerials) |
+| Q / E | Air roll |
+| X | Powerslide (in the air, X + A/D also rolls) |
+| C | Ball cam on / off |
+| Esc or P | Pause |
+| M | Mute |
+| R / B | Free play only: reset the ball / toggle unlimited boost |
+
+A gamepad works too: RT/LT drive, left stick steer, A jump, B boost, X powerslide, Y ball cam, LB/RB air roll, Start pause.
+
+How a match works:
+
+- Matches last 5 minutes. Each kickoff counts down 3-2-1-GO, and the clock only runs while the ball is in play.
+- When the clock hits 0:00 the match ends as soon as the ball touches the ground. If the score is tied, overtime starts and the next goal wins.
+- Small pads give 12 boost and big pads fill you to 100. Small pads recharge in 4 seconds, big ones in 10.
+- Drive fast up the curved walls to get onto the walls and ceiling; slow down and you'll fall off.
+- The end screen shows everyone's score, goals, assists, saves and shots, and the MVP (top scorer on the winning team). Goals earn 100 points, assists and saves 50, shots on goal 20.
 
 ## Folder setup
 
 ```
 turbo-kickoff/
-├── README.md                       this file
+├── turbo-kickoff.html            the whole game in one file (built from the files below)
+├── index.html                    the game page, for running from a web server
+├── css/style.css                 menus and HUD
+├── js/                           the game code
+│   ├── main.js                   renderer, menus, main loop
+│   ├── game.js                   a match: kickoffs, clock, goals, overtime, stats, boost pads
+│   ├── car.js                    car physics: driving, walls and ceiling, jumps, flips, boost, air control
+│   ├── ball.js                   ball physics and ball prediction
+│   ├── arena.js                  the arena's exact shape, used for collisions
+│   ├── ai.js                     the bots (easy / medium / hard)
+│   ├── camera.js                 chase camera and ball cam
+│   ├── effects.js                boost flames, particles, goal explosions, shadows
+│   ├── audio.js                  synthesised sounds
+│   ├── input.js                  keyboard and gamepad
+│   ├── ui.js                     scoreboard, boost meter, countdown, end screen
+│   ├── assets.js                 loads the models
+│   └── config.js                 tuning: physics, match length, bot difficulty
+├── assets/models/                the exported .glb models and arena_layout.json
 ├── blender/
-│   └── turbo_kickoff_assets.py     run this in Blender to make the models
-└── assets/
-    └── models/                     the exported .glb files go here
+│   └── turbo_kickoff_assets.py   makes the models in Blender (Part 1, below)
+├── tools/build-single.mjs        rebuilds turbo-kickoff.html
+└── vendor/                       three.js r186 (with the add-ons the game uses) and cannon-es 0.20
 ```
 
-Part 2 adds `index.html`, `css/` and `js/` next to these, plus instructions for running the game locally.
+## Run it locally (for working on the code)
 
-## Part 1: make the 3D models in Blender
+Browsers won't load ES modules from `file://`, so to run `index.html` serve the folder:
+
+```sh
+cd turbo-kickoff
+python3 -m http.server 8000
+# then open http://localhost:8000
+```
+
+`npx http-server` or any other static server works too. Edits to `js/` show up when you reload the page.
+
+After changing the code or the models, rebuild the one-file version from the repository root:
+
+```sh
+npm install
+npm run build:turbo
+```
+
+To use models you exported yourself from Blender, put them in `turbo-kickoff/assets/models/` (replacing the ones there) and rebuild.
+
+In the browser console, `turboKickoff.match` is the running match, which is handy for poking at things (`turboKickoff.match.ball.vel`, `turboKickoff.match.player.boost = 100`).
+
+### How the physics works
+
+cannon-es simulates the car hitboxes (Rocket League Octane sized boxes) and the ball, so car-ball and car-car hits bounce realistically. The arena is not a cannon-es mesh. `js/arena.js` describes its exact curved shape as maths, the same shape the Blender script builds, and the cars and ball collide against that. It's smooth, cheap and lets the cars drive up the walls and over the ceiling: a car on a surface lines itself up with it and sticks while it's fast enough. Hits get an extra Rocket League style kick on top of the physical bounce so you can shoot hard, and a flip adds 20% more.
+
+## Making the 3D models in Blender
+
+The models in `assets/models/` are already exported, so you only need this to change them.
 
 You need **Blender 4.2 or newer** (free from [blender.org](https://www.blender.org/download/)). The script has been tested with Blender 4.2 LTS and 5.0.
 
