@@ -26,9 +26,36 @@ WHERE THE FILES GO
       turbo-kickoff/assets/models/.
     - Otherwise into a "TurboKickoff/models" folder in your home folder.
 
-Units are metres (1 Blender unit = 1 m). Blender is Z-up; the .glb files
-are Y-up, so in three.js X is the arena's width, Y is up and Z is its length.
-Running the script again rebuilds everything from scratch.
+    If they didn't land in turbo-kickoff/assets/models/, copy all seven files
+    there; that is where the game loads them from.
+
+    Without opening Blender's window (writes next to this file's project):
+        blender --background --python turbo_kickoff_assets.py
+
+SIZES AND DIRECTIONS
+    Units are metres (1 Blender unit = 1 m). Blender is Z-up; the .glb files
+    are Y-up, so in three.js X is the arena's width, Y is up and Z is its length.
+    Car: 1.25 m long, 0.62 m tall, faces +Z. Ball: 1.86 m across.
+    Arena: 72 x 96 x 20 m. Blue goal at +Z (goal line z = 48), orange at -Z.
+
+NAMED PARTS (the game looks these up)
+    Cars:  Body, Wheel_FL, Wheel_FR, Wheel_RL, Wheel_RR, BoostExit_L, BoostExit_R
+    Pads:  BoostPad_Small_Glow, BoostPad_Big_Orb (hidden while recharging)
+    Arena: Arena_Floor, Arena_Walls, Arena_Ceiling, Arena_Goal_Blue,
+           Arena_Goal_Orange, Arena_Lines, Arena_Trim, Arena_Stands,
+           Arena_Crowd, Arena_Lights, Arena_Ground
+
+CHANGING THINGS
+    Edit the SETTINGS section below (team colours, arena and goal sizes, ball
+    size, crowd seed, export folder) and run the script again. Running it
+    again always rebuilds everything from scratch and overwrites the files.
+
+TROUBLESHOOTING
+    - Errors: see the system console (Windows: Window > Toggle System
+      Console; macOS/Linux: start Blender from a terminal).
+    - "Permission denied": set EXPORT_DIR to a folder you can write to.
+    - "Arena sizes don't fit together": an edited size clashes with another.
+    - Check a model: drag the .glb onto https://gltf-viewer.donmccurdy.com
 """
 
 import json
