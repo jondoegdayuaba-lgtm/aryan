@@ -90,6 +90,7 @@ canvas{image-rendering:pixelated;image-rendering:crisp-edges}
   <div id="title"></div>
   <div id="subtitle" style="margin-bottom:22px"></div>
   <div class="btn" id="bPlay"></div>
+  <div class="btn" id="bMap"></div>
   <div class="btn" id="bDiff"></div>
   <div class="btn" id="bControls"></div>
   <div id="menuHint" style="margin-top:18px;opacity:.85"></div>
@@ -292,8 +293,8 @@ const Sound = {
 /* =========================================================================
    Textures: block atlas, icons
    ========================================================================= */
-const TILE = 16, ATL = 4;
-const TL = { GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, STONE: 3, PLANKS: 4, LOG_SIDE: 5, LOG_TOP: 6, LEAVES: 7, GLASS: 8, CHEST_SIDE: 9, CHEST_FRONT: 10, CHEST_TOP: 11, COBBLE: 12, BRICKS: 13, WOOL: 14, GOLD: 15 };
+const TILE = 16, ATL = 8;
+const TL = { SNOW_TOP: 16, SNOW_SIDE: 17, ICE: 18, SPRUCE_LOG: 19, SPRUCE_LEAVES: 20, SAND: 21, SANDSTONE_SIDE: 22, SANDSTONE_TOP: 23, CACTUS_SIDE: 24, CACTUS_TOP: 25, REDROCK: 26, BASALT_SIDE: 27, BASALT_TOP: 28, LAVA: 29, OBSIDIAN: 30, MAGMA: 31, CHISELED: 32, GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, STONE: 3, PLANKS: 4, LOG_SIDE: 5, LOG_TOP: 6, LEAVES: 7, GLASS: 8, CHEST_SIDE: 9, CHEST_FRONT: 10, CHEST_TOP: 11, COBBLE: 12, BRICKS: 13, WOOL: 14, GOLD: 15 };
 const tileCanvas = [];
 const rgb = (r, g, b, a) => a === undefined ? `rgb(${r | 0},${g | 0},${b | 0})` : `rgba(${r | 0},${g | 0},${b | 0},${a})`;
 function vary(base, r, amt) { const k = 1 + (r() - 0.5) * amt; return rgb(base[0] * k, base[1] * k, base[2] * k); }
@@ -324,6 +325,29 @@ function makeTiles() {
   });
   tileCanvas[TL.BRICKS] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const row = y >> 3, off = row ? 4 : 0; let c = vary([124, 124, 124], rnd, .12); if (y % 8 === 7 || (x + off) % 8 === 7) c = rgb(84, 84, 84); else if (y % 8 === 0 || (x + off) % 8 === 0) c = rgb(146, 146, 146); P(x, y, c); } });
   tileCanvas[TL.WOOL] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) P(x, y, vary([232, 232, 232], rnd, .1)); });
+  // ---- Frozen Peaks ----
+  tileCanvas[TL.SNOW_TOP] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) P(x, y, rnd() < .1 ? rgb(200, 214, 230) : vary([226, 233, 242], rnd, .06)); });
+  tileCanvas[TL.SNOW_SIDE] = mk(P => { dirtFn(P); for (let x = 0; x < 16; x++) { const h = 3 + (rnd() < .5 ? 1 : 0) + (rnd() < .3 ? 2 : 0); for (let y = 0; y < h; y++) P(x, y, vary([226, 233, 242], rnd, .06)); } });
+  tileCanvas[TL.ICE] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) P(x, y, (x + y) % 11 === 0 || (x - y + 16) % 13 === 0 ? rgb(214, 236, 255) : vary([140, 186, 236], rnd, .07)); });
+  tileCanvas[TL.SPRUCE_LOG] = mk(P => { for (let x = 0; x < 16; x++) { const dark = x % 3 === 1 || x % 5 === 4; for (let y = 0; y < 16; y++) P(x, y, dark ? vary([46, 32, 20], rnd, .2) : vary([72, 52, 32], rnd, .2)); } });
+  tileCanvas[TL.SPRUCE_LEAVES] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const r = rnd(); P(x, y, r < .2 ? rgb(24, 48, 34) : r > .93 ? rgb(226, 236, 244) : vary([44, 82, 56], rnd, .35)); } });
+  // ---- Sandstone Ruins ----
+  tileCanvas[TL.SAND] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) P(x, y, rnd() < .1 ? rgb(196, 176, 120) : vary([224, 207, 152], rnd, .08)); });
+  tileCanvas[TL.SANDSTONE_SIDE] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { let c = vary([214, 196, 138], rnd, .07); if (y < 3) c = vary([228, 212, 158], rnd, .05); else if (y > 12) c = vary([188, 168, 108], rnd, .07); else if (y === 6 || y === 9) c = rgb(196, 176, 118); P(x, y, c); } });
+  tileCanvas[TL.SANDSTONE_TOP] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) P(x, y, vary([222, 205, 150], rnd, .05)); });
+  tileCanvas[TL.CACTUS_SIDE] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { let c = x % 4 === 1 ? vary([58, 112, 38], rnd, .1) : vary([86, 148, 54], rnd, .12); if (x === 0 || x === 15) c = rgb(40, 80, 28); if ((x === 2 || x === 9 || x === 13) && rnd() < .2) c = rgb(220, 230, 180); P(x, y, c); } });
+  tileCanvas[TL.CACTUS_TOP] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5)); P(x, y, d > 6.6 ? rgb(40, 80, 28) : d < 2 ? rgb(120, 170, 80) : vary([86, 148, 54], rnd, .12)); } });
+  tileCanvas[TL.CHISELED] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5)); let c = vary([216, 198, 140], rnd, .05); if (d > 6.6 || Math.floor(d) === 4 || (d < 1.6 && (x + y) % 2 === 0)) c = rgb(180, 158, 100); P(x, y, c); } });
+  // ---- Ember Isles ----
+  tileCanvas[TL.REDROCK] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const r = rnd(); P(x, y, r < .14 ? rgb(78, 22, 22) : r > .92 ? rgb(160, 66, 58) : vary([118, 40, 38], rnd, .25)); } });
+  tileCanvas[TL.BASALT_SIDE] = mk(P => { for (let x = 0; x < 16; x++) { const dark = x % 4 === 0; for (let y = 0; y < 16; y++) P(x, y, dark ? vary([42, 42, 50], rnd, .15) : vary([72, 72, 82], rnd, .15)); } });
+  tileCanvas[TL.BASALT_TOP] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 7.5); P(x, y, Math.floor(d) % 3 === 0 ? vary([52, 52, 60], rnd, .1) : vary([80, 80, 90], rnd, .12)); } });
+  tileCanvas[TL.LAVA] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const n = Math.sin(x * .9 + y * .4) + Math.cos(y * .8 - x * .3) + rnd() * .6; P(x, y, n > 1.2 ? rgb(255, 228, 110) : n > .2 ? rgb(250, 150, 30) : vary([214, 80, 14], rnd, .1)); } });
+  tileCanvas[TL.OBSIDIAN] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const r = rnd(); P(x, y, r < .1 ? rgb(78, 46, 120) : r < .2 ? rgb(46, 26, 72) : vary([22, 14, 34], rnd, .4)); } });
+  tileCanvas[TL.MAGMA] = mk(P => {
+    const pts = []; for (let i = 0; i < 9; i++) pts.push([rnd() * 16, rnd() * 16]);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { let d1 = 99, d2 = 99; for (const p of pts) for (let ox = -16; ox <= 16; ox += 16) for (let oy = -16; oy <= 16; oy += 16) { const d = Math.hypot(x - p[0] - ox, y - p[1] - oy); if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d; } P(x, y, d2 - d1 < 1.2 ? rgb(250, 130, 30) : vary([70, 30, 20], rnd, .25)); }
+  });
   tileCanvas[TL.GOLD] = mk(P => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { let c = vary([246, 208, 60], rnd, .12); if (x === 0 || y === 0) c = rgb(255, 246, 160); if (x === 15 || y === 15) c = rgb(186, 140, 20); P(x, y, c); } });
 }
 function rgba(r, g, b, a) { return `rgba(${r},${g},${b},${a})`; }
@@ -352,7 +376,8 @@ const crackTex = [];
 /* =========================================================================
    Blocks & items
    ========================================================================= */
-const B = { AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, PLANKS: 4, LOG: 5, LEAVES: 6, GLASS: 7, CHEST: 8, COBBLE: 9, BRICKS: 10, WOOL: 11, GOLD: 12 };
+const B = { AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, PLANKS: 4, LOG: 5, LEAVES: 6, GLASS: 7, CHEST: 8, COBBLE: 9, BRICKS: 10, WOOL: 11, GOLD: 12,
+  SNOWGRASS: 13, SNOW: 14, ICE: 15, SPRUCE_LOG: 16, SPRUCE_LEAVES: 17, SAND: 18, SANDSTONE: 19, CACTUS: 20, CHISELED: 21, REDROCK: 22, BASALT: 23, LAVA: 24, OBSIDIAN: 25, MAGMA: 26 };
 const BLOCKS = {
   [B.GRASS]: { faces: [1, 1, 0, 2, 1, 1], hard: .5, drop: 'dirt', cap: 5000 },
   [B.DIRT]: { faces: [2, 2, 2, 2, 2, 2], hard: .45, drop: 'dirt', cap: 9000 },
@@ -366,8 +391,22 @@ const BLOCKS = {
   [B.BRICKS]: { faces: [13, 13, 13, 13, 13, 13], hard: 1.0, drop: 'bricks', cap: 2000 },
   [B.WOOL]: { faces: [14, 14, 14, 14, 14, 14], hard: .4, drop: 'wool', cap: 6000 },
   [B.GOLD]: { faces: [15, 15, 15, 15, 15, 15], hard: 1.2, drop: 'gold', cap: 200 },
+  [B.SNOWGRASS]: { faces: [17, 17, 16, 2, 17, 17], hard: .5, drop: 'dirt', cap: 5000 },
+  [B.SNOW]: { faces: [16, 16, 16, 16, 16, 16], hard: .3, drop: 'snow', cap: 6000 },
+  [B.ICE]: { faces: [18, 18, 18, 18, 18, 18], hard: .5, drop: 'ice', cap: 6000 },
+  [B.SPRUCE_LOG]: { faces: [19, 19, 6, 6, 19, 19], hard: .8, drop: 'spruce', cap: 1000 },
+  [B.SPRUCE_LEAVES]: { faces: [20, 20, 20, 20, 20, 20], hard: .2, drop: null, cap: 3000 },
+  [B.SAND]: { faces: [21, 21, 21, 21, 21, 21], hard: .4, drop: 'sand', cap: 9000 },
+  [B.SANDSTONE]: { faces: [22, 22, 23, 23, 22, 22], hard: .8, drop: 'sandstone', cap: 12000 },
+  [B.CACTUS]: { faces: [24, 24, 25, 25, 24, 24], hard: .3, drop: null, cap: 400 },
+  [B.CHISELED]: { faces: [32, 32, 23, 23, 32, 32], hard: .8, drop: 'sandstone', cap: 400 },
+  [B.REDROCK]: { faces: [26, 26, 26, 26, 26, 26], hard: .6, drop: 'redrock', cap: 9000 },
+  [B.BASALT]: { faces: [27, 27, 28, 28, 27, 27], hard: 1.0, drop: 'basalt', cap: 12000 },
+  [B.LAVA]: { faces: [29, 29, 29, 29, 29, 29], hard: 999, drop: null, cap: 800, glow: true },
+  [B.OBSIDIAN]: { faces: [30, 30, 30, 30, 30, 30], hard: 3.0, drop: 'obsidian', cap: 3000 },
+  [B.MAGMA]: { faces: [31, 31, 31, 31, 31, 31], hard: .8, drop: 'redrock', cap: 3000, glow: true },
 };
-for (const t in BLOCKS) BLOCKS[t].colors = tileAvgColors(BLOCKS[t].faces[2] === 0 ? 1 : BLOCKS[t].faces[2]).concat(tileAvgColors(BLOCKS[t].faces[0]));
+for (const t in BLOCKS) BLOCKS[t].colors = tileAvgColors(BLOCKS[t].faces[2] === 0 ? 1 : BLOCKS[t].faces[2] === 16 ? 17 : BLOCKS[t].faces[2]).concat(tileAvgColors(BLOCKS[t].faces[0]));
 
 const ARMOR_PTS = { leather: [1, 3, 2, 1], iron: [2, 6, 5, 2], diamond: [3, 8, 6, 3] };
 const ITEMS = {
@@ -379,6 +418,14 @@ const ITEMS = {
   log: { name: 'Oak Log', block: B.LOG, stack: 64 },
   bricks: { name: 'Stone Bricks', block: B.BRICKS, stack: 64 },
   gold: { name: 'Gold Block', block: B.GOLD, stack: 64 },
+  snow: { name: 'Snow Block', block: B.SNOW, stack: 64 },
+  ice: { name: 'Packed Ice', block: B.ICE, stack: 64 },
+  spruce: { name: 'Spruce Log', block: B.SPRUCE_LOG, stack: 64 },
+  sand: { name: 'Sand', block: B.SAND, stack: 64 },
+  sandstone: { name: 'Sandstone', block: B.SANDSTONE, stack: 64 },
+  redrock: { name: 'Red Rock', block: B.REDROCK, stack: 64 },
+  basalt: { name: 'Basalt', block: B.BASALT, stack: 64 },
+  obsidian: { name: 'Obsidian', block: B.OBSIDIAN, stack: 64 },
   sword_wood: { name: 'Wooden Sword', type: 'sword', dmg: 4, stack: 1, tier: 'wood' },
   sword_stone: { name: 'Stone Sword', type: 'sword', dmg: 5, stack: 1, tier: 'stone' },
   sword_iron: { name: 'Iron Sword', type: 'sword', dmg: 6, stack: 1, tier: 'iron' },
@@ -493,8 +540,8 @@ scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 70, 210);
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 600);
 camera.rotation.order = 'YXZ';
-scene.add(new THREE.HemisphereLight(0xffffff, 0x7a8aa0, 0.5));
-scene.add(new THREE.AmbientLight(0xffffff, 0.16));
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x7a8aa0, 0.5); scene.add(hemiLight);
+const ambLight = new THREE.AmbientLight(0xffffff, 0.16); scene.add(ambLight);
 const sunLight = new THREE.DirectionalLight(0xfff6e0, 0.58); sunLight.position.set(0.45, 1, 0.3); scene.add(sunLight);
 // Sun & clouds
 const sun = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshBasicMaterial({ color: 0xfff7c8, fog: false }));
@@ -510,6 +557,7 @@ const atlasTex = new THREE.CanvasTexture(atlas);
 atlasTex.magFilter = THREE.NearestFilter; atlasTex.minFilter = THREE.NearestFilter; atlasTex.generateMipmaps = false;
 const blockMat = new THREE.MeshLambertMaterial({ map: atlasTex });
 const glassMat = new THREE.MeshLambertMaterial({ map: atlasTex, transparent: true, depthWrite: false });
+const glowMat = new THREE.MeshBasicMaterial({ map: atlasTex });
 const itemMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 
 // cube geometry with atlas UVs. faces: +x,-x,+y,-y,+z,-z
@@ -582,7 +630,7 @@ const world = {
     for (const t in BLOCKS) {
       const def = BLOCKS[t]; const geo = cubeGeo(def.faces, def.size || 1);
       if (def.size) geo.translate(0, -(1 - def.size) / 2, 0);
-      const m = new THREE.InstancedMesh(geo, def.glass ? glassMat : blockMat, def.cap);
+      const m = new THREE.InstancedMesh(geo, def.glass ? glassMat : def.glow ? glowMat : blockMat, def.cap);
       m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.userData.cap = def.cap;
       if (def.glass) m.renderOrder = 2;
       scene.add(m); this.inst[t] = m; this.keys[t] = [];
@@ -651,8 +699,9 @@ function makeIsland(cx, cz, r, depth, seed, center) {
       const d = Math.hypot(x, z), n = (hash2(cx + x, cz + z, seed + dy * 13) - .5) * (dy === 0 ? 1.0 : 2.4);
       if (d > r * f + n && !(x === 0 && z === 0)) continue;
       if (dy > 0 && !world.solid(cx + x, TOPY - dy + 1, cz + z)) continue;
-      let t = dy === 0 ? B.GRASS : dy <= 2 ? B.DIRT : B.STONE;
-      if (t === B.STONE && hash2(x, z, seed + dy * 7) < .18) t = B.COBBLE;
+      const M = MAPS[game.map];
+      let t = dy === 0 ? M.top : dy <= 2 ? M.mid : M.deep;
+      if (dy > 2 && hash2(x, z, seed + dy * 7) < M.altChance) t = M.alt;
       world.set(cx + x, TOPY - dy, cz + z, t);
     }
   }
@@ -666,27 +715,118 @@ function makeTree(x, z) {
   for (let i = 0; i < 5; i++) world.set(x, y + i, z, B.LOG);
 }
 function addChest(x, y, z, center) {
-  if (!world.solid(x, y - 1, z)) world.set(x, y - 1, z, B.GRASS);
+  if (!world.solid(x, y - 1, z)) world.set(x, y - 1, z, MAPS[game.map].top);
   world.set(x, y, z, B.CHEST);
   const ch = { key: K(x, y, z), x, y, z, center, items: new Array(27).fill(null) };
   world.chests.set(ch.key, ch); fillChest(ch); return ch;
 }
-function genWorld(seed) {
-  world.clear(); islands = [];
-  // center island
-  makeIsland(0, 0, 9.4, 11, seed, true);
-  for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) world.set(x, TOPY + 1, z, B.BRICKS);
-  world.set(0, TOPY + 2, 0, B.GOLD);
-  addChest(4, TOPY + 1, 0, true); addChest(-4, TOPY + 1, 0, true); addChest(0, TOPY + 1, 4, true); addChest(0, TOPY + 1, -4, true);
-  makeTree(5, 5); makeTree(-5, -5);
-  // 8 player islands
+// ---- decorations ----
+function ground(x, z) { if (!world.solid(x, TOPY, z)) world.set(x, TOPY, z, MAPS[game.map].top); }
+function spruce(x, z, h, big) {
+  ground(x, z); const y = TOPY + 1;
+  const layers = big ? [[2, 2], [3, 1], [4, 2], [5, 1], [6, 1]] : [[2, 1], [3, 1], [4, 1]];
+  for (const [dy, r] of layers) for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++) { if (r === 2 && Math.abs(dx) === 2 && Math.abs(dz) === 2) continue; world.set(x + dx, y + dy, z + dz, B.SPRUCE_LEAVES); }
+  world.set(x, y + h, z, B.SPRUCE_LEAVES); world.set(x, y + h + 1, z, B.SNOW);
+  for (let i = 0; i < h; i++) world.set(x, y + i, z, B.SPRUCE_LOG);
+}
+function iceSpike(x, z, h) {
+  for (let i = 0; i < h; i++) { world.set(x, TOPY + 1 + i, z, B.ICE); if (i < h / 2) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) world.set(x + dx, TOPY + 1 + i, z + dz, B.ICE); }
+}
+function cactus(x, z, h) { ground(x, z); for (let i = 0; i < h; i++) world.set(x, TOPY + 1 + i, z, B.CACTUS); }
+function palm(x, z) {
+  ground(x, z); const y = TOPY + 1;
+  for (let i = 0; i < 5; i++) world.set(x, y + i, z, B.LOG);
+  world.set(x, y + 5, z, B.LEAVES);
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { world.set(x + dx, y + 5, z + dz, B.LEAVES); world.set(x + dx * 2, y + 5, z + dz * 2, B.LEAVES); world.set(x + dx * 3, y + 4, z + dz * 3, B.LEAVES); }
+}
+function ruinPillar(x, z, h) { ground(x, z); for (let i = 0; i < h; i++) world.set(x, TOPY + 1 + i, z, i === h - 1 ? B.CHISELED : B.SANDSTONE); }
+// eight spawn islands in a ring; deco(isl, angle, awayX, awayZ) adds themed props on the far side
+function ringIslands(seed, radius, r, depth, deco) {
   for (let i = 0; i < 8; i++) {
-    const a = i / 8 * Math.PI * 2, cx = Math.round(Math.cos(a) * 31), cz = Math.round(Math.sin(a) * 31);
-    const isl = makeIsland(cx, cz, 4.4, 6, seed + i * 31 + 7, false);
+    const a = i / 8 * Math.PI * 2, cx = Math.round(Math.cos(a) * radius), cz = Math.round(Math.sin(a) * radius);
+    const isl = makeIsland(cx, cz, r, depth, seed + i * 31 + 7, false);
     isl.spawn = { x: cx, z: cz, angle: a };
-    const ox = Math.round(-Math.cos(a) * 2.6), oz = Math.round(-Math.sin(a) * 2.6);
-    isl.chest = addChest(cx + ox, TOPY + 1, cz + oz, false);
+    isl.chest = addChest(cx + Math.round(-Math.cos(a) * 2.6), TOPY + 1, cz + Math.round(-Math.sin(a) * 2.6), false);
+    if (deco) deco(isl, a, Math.cos(a), Math.sin(a));
   }
+}
+const MAPS = {
+  classic: {
+    name: 'SKY ISLANDS', genre: 'CLASSIC ADVENTURE', sky: 0x8fc9ff, fog: [70, 210], hemi: [0xffffff, 0x7a8aa0, .5], amb: .16, sunC: 0xfff6e0, sunI: .58, sunMesh: 0xfff7c8,
+    cloud: [0xffffff, .88, 0x666666], weather: null, top: B.GRASS, mid: B.DIRT, deep: B.STONE, alt: B.COBBLE, altChance: .18, loot: ['planks', 'planks', 'cobble', 'wool'], title: '#ffe14d',
+    build(seed) {
+      makeIsland(0, 0, 9.4, 11, seed, true);
+      for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) world.set(x, TOPY + 1, z, B.BRICKS);
+      world.set(0, TOPY + 2, 0, B.GOLD);
+      addChest(4, TOPY + 1, 0, true); addChest(-4, TOPY + 1, 0, true); addChest(0, TOPY + 1, 4, true); addChest(0, TOPY + 1, -4, true);
+      makeTree(5, 5); makeTree(-5, -5);
+      ringIslands(seed, 31, 4.4, 6);
+    }
+  },
+  frozen: {
+    name: 'FROZEN PEAKS', genre: 'WINTER SURVIVAL', sky: 0xc4dcef, fog: [45, 170], hemi: [0xf4f8ff, 0x8090b0, .58], amb: .2, sunC: 0xe8f0ff, sunI: .5, sunMesh: 0xf4f8ff,
+    cloud: [0xffffff, .93, 0x8090a0], weather: 'snow', top: B.SNOWGRASS, mid: B.DIRT, deep: B.STONE, alt: B.ICE, altChance: .3, loot: ['snow', 'ice', 'planks', 'wool'], title: '#bfe8ff',
+    build(seed) {
+      makeIsland(0, 0, 8.6, 11, seed, true);
+      for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) world.set(x, TOPY + 1, z, B.ICE);
+      iceSpike(0, 0, 7); iceSpike(-6, 3, 4); iceSpike(5, -5, 5);
+      addChest(4, TOPY + 1, 0, true); addChest(-4, TOPY + 1, 0, true); addChest(0, TOPY + 1, 4, true); addChest(0, TOPY + 1, -4, true);
+      spruce(5, 5, 6, true); spruce(-5, -5, 6, true);
+      // four supply islands as stepping stones between the spawns and the centre
+      for (let k = 0; k < 4; k++) {
+        const a = Math.PI / 8 + k * Math.PI / 2, cx = Math.round(Math.cos(a) * 18), cz = Math.round(Math.sin(a) * 18);
+        makeIsland(cx, cz, 2.6, 4, seed + 900 + k, false);
+        addChest(cx, TOPY + 1, cz, true);
+      }
+      ringIslands(seed, 32, 4.4, 6, (isl, a, ux, uz) => spruce(isl.cx + Math.round(ux * 3.6), isl.cz + Math.round(uz * 3.6), 4, false));
+    }
+  },
+  ember: {
+    name: 'EMBER ISLES', genre: 'VOLCANIC INFERNO', sky: 0x4a1a14, fog: [40, 160], hemi: [0xffc0a0, 0x401818, .62], amb: .2, sunC: 0xff9050, sunI: .55, sunMesh: 0xff5020,
+    cloud: [0x5a4040, .78, 0x201010], weather: 'ash', top: B.REDROCK, mid: B.REDROCK, deep: B.BASALT, alt: B.MAGMA, altChance: .2, loot: ['redrock', 'basalt', 'basalt', 'obsidian'], title: '#ff8a3a',
+    build(seed) {
+      makeIsland(0, 0, 10, 12, seed, true);
+      // the volcano: a basalt cone with a lava crater on top
+      const radii = [4.6, 4.1, 3.6, 3.1, 2.7, 2.3];
+      radii.forEach((r, L) => {
+        for (let x = -5; x <= 5; x++) for (let z = -5; z <= 5; z++) {
+          const d = Math.hypot(x, z) + (hash2(x, z, seed + L) - .5) * .5; if (d > r) continue;
+          const hollow = L >= 3 && d < r - 1.1;
+          if (hollow) { if (L === 3) world.set(x, TOPY + 1 + L, z, B.LAVA); continue; }
+          world.set(x, TOPY + 1 + L, z, hash2(x, z, seed + 50 + L) < .25 ? B.MAGMA : B.BASALT);
+        }
+      });
+      addChest(7, TOPY + 1, 0, true); addChest(-7, TOPY + 1, 0, true); addChest(0, TOPY + 1, 7, true); addChest(0, TOPY + 1, -7, true);
+      for (const [x, z] of [[6, 6], [-6, -6], [6, -6], [-6, 6]]) { world.set(x, TOPY + 1, z, B.OBSIDIAN); world.set(x, TOPY + 2, z, B.OBSIDIAN); world.set(x, TOPY + 3, z, B.MAGMA); }
+      ringIslands(seed, 30, 4.6, 6, (isl, a, ux, uz) => {
+        const x = isl.cx + Math.round(ux * 3.4), z = isl.cz + Math.round(uz * 3.4);
+        ground(x, z); world.set(x, TOPY + 1, z, B.OBSIDIAN); world.set(x, TOPY + 2, z, B.OBSIDIAN);
+        // lava dripping from the underside, purely decorative
+        for (let y = TOPY - 1; y > TOPY - 9; y--) if (world.solid(isl.cx, y, isl.cz) && !world.solid(isl.cx, y - 1, isl.cz)) { world.set(isl.cx, y - 1, isl.cz, B.LAVA); break; }
+      });
+    }
+  },
+  desert: {
+    name: 'SANDSTONE RUINS', genre: 'DESERT TEMPLE', sky: 0xf2d29a, fog: [60, 200], hemi: [0xfff4e0, 0xa08060, .55], amb: .16, sunC: 0xfff0c8, sunI: .66, sunMesh: 0xfffbe0,
+    cloud: [0xfff6e6, .7, 0x806040], weather: 'dust', top: B.SAND, mid: B.SAND, deep: B.SANDSTONE, alt: B.CHISELED, altChance: .06, loot: ['sandstone', 'sandstone', 'sand', 'planks'], title: '#ffd27a',
+    build(seed) {
+      makeIsland(0, 0, 10, 11, seed, true);
+      // stepped pyramid with a gold capstone
+      for (let L = 0; L < 4; L++) { const h = 3 - L; for (let x = -h; x <= h; x++) for (let z = -h; z <= h; z++) world.set(x, TOPY + 1 + L, z, (Math.abs(x) === h && Math.abs(z) === h) ? B.CHISELED : B.SANDSTONE); }
+      world.set(0, TOPY + 5, 0, B.GOLD);
+      addChest(6, TOPY + 1, 0, true); addChest(-6, TOPY + 1, 0, true); addChest(0, TOPY + 1, 6, true); addChest(0, TOPY + 1, -6, true);
+      palm(6, 6); palm(-6, -6); ruinPillar(-6, 6, 4); ruinPillar(6, -6, 2);
+      ringIslands(seed, 31, 4.4, 6, (isl, a, ux, uz) => {
+        const fx = isl.cx + Math.round(ux * 3.4), fz = isl.cz + Math.round(uz * 3.4);
+        if (isl.spawn.x % 2 === 0) cactus(fx, fz, RI(2, 3)); else ruinPillar(fx, fz, RI(2, 3));
+      });
+    }
+  }
+};
+const MAP_ORDER = ['classic', 'frozen', 'ember', 'desert'];
+function genWorld(seed) {
+  world.clear(); islands = []; applyMapLook(MAPS[game.map]);
+  MAPS[game.map].build(seed);
 }
 function buildCage(x, z) {
   for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
@@ -702,7 +842,7 @@ function buildCage(x, z) {
 function armorPiece(tier, slot) { return ARMOR_KEYS[slot] + '_' + tier; }
 function rollLoot(center) {
   const L = [];
-  const blockId = () => pick(['planks', 'planks', 'cobble', 'wool']);
+  const blockId = () => pick(MAPS[game.map].loot);
   if (!center) {
     const r = Math.random(); L.push([r < .5 ? 'sword_wood' : r < .93 ? 'sword_stone' : 'sword_iron', 1]);
     const n = RI(1, 2), used = new Set();
@@ -804,7 +944,52 @@ const clouds = { mesh: null, items: [] };
   }
   scene.add(clouds.mesh);
 }
+/* ---- per-map sky, light and weather ---- */
+const weather = { pts: null, vel: null, kind: null, N: 900 };
+{
+  const g = new THREE.BufferGeometry(), N = weather.N;
+  g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(N * 3), 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(N * 3), 3));
+  weather.pts = new THREE.Points(g, new THREE.PointsMaterial({ size: .16, vertexColors: true, transparent: true, opacity: .9, depthWrite: false }));
+  weather.pts.frustumCulled = false; weather.vel = new Float32Array(N * 3); scene.add(weather.pts);
+}
+function applyMapLook(m) {
+  scene.background.setHex(m.sky); scene.fog.color.setHex(m.sky); scene.fog.near = m.fog[0]; scene.fog.far = m.fog[1];
+  hemiLight.color.setHex(m.hemi[0]); hemiLight.groundColor.setHex(m.hemi[1]); hemiLight.intensity = m.hemi[2]; ambLight.intensity = m.amb;
+  sunLight.color.setHex(m.sunC); sunLight.intensity = m.sunI; sun.material.color.setHex(m.sunMesh);
+  const cm = clouds.mesh.material; cm.color.setHex(m.cloud[0]); cm.opacity = m.cloud[1]; cm.emissive.setHex(m.cloud[2]);
+  document.body.style.background = '#' + m.sky.toString(16).padStart(6, '0');
+  weather.kind = m.weather; weather.pts.visible = !!m.weather;
+  if (!m.weather) return;
+  const P = weather.pts.geometry.attributes.position.array, C = weather.pts.geometry.attributes.color.array, V = weather.vel;
+  const cols = { snow: [[1, 1, 1], [.9, .95, 1]], ash: [[1, .55, .15], [1, .8, .3], [.35, .32, .32], [.5, .45, .45]], dust: [[.92, .8, .55], [.85, .72, .48]] }[m.weather];
+  weather.pts.material.size = m.weather === 'snow' ? .16 : m.weather === 'ash' ? .12 : .09;
+  for (let i = 0; i < weather.N; i++) {
+    P[i * 3] = R(-35, 35); P[i * 3 + 1] = R(-20, 25); P[i * 3 + 2] = R(-35, 35);
+    const c = pick(cols); C[i * 3] = c[0]; C[i * 3 + 1] = c[1]; C[i * 3 + 2] = c[2];
+    if (m.weather === 'snow') { V[i * 3] = R(-.5, .5); V[i * 3 + 1] = R(-2.6, -1.4); V[i * 3 + 2] = R(-.5, .5); }
+    else if (m.weather === 'ash') { V[i * 3] = R(-.6, .6); V[i * 3 + 1] = R(.4, 1.6); V[i * 3 + 2] = R(-.6, .6); }
+    else { V[i * 3] = R(4, 7); V[i * 3 + 1] = R(-.3, .3); V[i * 3 + 2] = R(1, 2.5); }
+  }
+  weather.pts.geometry.attributes.color.needsUpdate = true;
+}
+function updateWeather(dt) {
+  if (!weather.kind) return;
+  const P = weather.pts.geometry.attributes.position.array, V = weather.vel, t = performance.now() / 1000;
+  const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
+  weather.pts.position.set(0, 0, 0);
+  for (let i = 0; i < weather.N; i++) {
+    const k = i * 3;
+    P[k] += (V[k] + (weather.kind === 'snow' ? Math.sin(t + i) * .4 : 0)) * dt; P[k + 1] += V[k + 1] * dt; P[k + 2] += V[k + 2] * dt;
+    // keep every flake in a box around the camera
+    if (P[k] < cx - 35) P[k] += 70; else if (P[k] > cx + 35) P[k] -= 70;
+    if (P[k + 1] < cy - 20) P[k + 1] += 45; else if (P[k + 1] > cy + 25) P[k + 1] -= 45;
+    if (P[k + 2] < cz - 35) P[k + 2] += 70; else if (P[k + 2] > cz + 35) P[k + 2] -= 70;
+  }
+  weather.pts.geometry.attributes.position.needsUpdate = true;
+}
 function updateClouds(dt) {
+  updateWeather(dt);
   const q = new THREE.Quaternion(), p = new V3(), s = new V3();
   clouds.items.forEach((c, i) => {
     c.x += c.sp * dt; if (c.x > 200) c.x -= 400;
@@ -893,6 +1078,17 @@ function applyMove(e, wx, wz, speed, dt) {
   const a = 1 - Math.exp(-k * dt);
   e.vel.x += (wx * speed - e.vel.x) * a; e.vel.z += (wz * speed - e.vel.z) * a;
 }
+function hazards(e, dt) {
+  e.hazT = (e.hazT || 0) - dt; if (e.hazT > 0) return;
+  const x0 = Math.floor(e.pos.x - W - .08), x1 = Math.floor(e.pos.x + W + .08), z0 = Math.floor(e.pos.z - W - .08), z1 = Math.floor(e.pos.z + W + .08);
+  const y0 = Math.floor(e.pos.y - .05), y1 = Math.floor(e.pos.y + H - .05);
+  let lava = false, cact = null;
+  for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) for (let y = y0; y <= y1; y++) {
+    const t = world.get(x, y, z); if (t === B.LAVA) lava = true; else if (t === B.CACTUS) cact = [x + .5, z + .5];
+  }
+  if (lava) { e.hazT = .5; hurtRaw(e, 3, 'lava'); e.vel.y = Math.max(e.vel.y, 7); particles.spawn(e.pos.x, e.pos.y + .5, e.pos.z, 10, [new THREE.Color(0xff8020), new THREE.Color(0xffd040), new THREE.Color(0x444444)], 2, .6, .1, -2); }
+  else if (cact) { e.hazT = .5; hurtRaw(e, 1, 'cactus'); const dx = e.pos.x - cact[0], dz = e.pos.z - cact[1], d = Math.hypot(dx, dz) || 1; e.vel.x += dx / d * 3; e.vel.z += dz / d * 3; }
+}
 function separateEntities() {
   for (let i = 0; i < ents.length; i++) for (let j = i + 1; j < ents.length; j++) {
     const a = ents[i], b = ents[j]; if (!a.alive || !b.alive) continue;
@@ -969,6 +1165,8 @@ function kill(e, cause, att) {
   if (voidDeath) msg = killer ? `${displayName(killer)} KNOCKED ${V} INTO THE VOID` : `${V} FELL INTO THE VOID`;
   else if (cause === 'fall') msg = killer ? `${displayName(killer)} ELIMINATED ${V}` : `${V} HIT THE GROUND TOO HARD`;
   else if (cause === 'orb') msg = `${V} WARPED TOO HARD`;
+  else if (cause === 'lava') msg = killer ? `${displayName(killer)} ELIMINATED ${V}` : `${V} TRIED TO SWIM IN LAVA`;
+  else if (cause === 'cactus') msg = killer ? `${displayName(killer)} ELIMINATED ${V}` : `${V} WAS PRICKED TO DEATH`;
   else msg = killer ? `${displayName(killer)} ELIMINATED ${V}` : `${V} WAS ELIMINATED`;
   let col = '#ffffff'; if (killer === player) col = '#ffe14d'; if (e === player) col = '#ff6060';
   addFeed(msg, col);
@@ -1003,7 +1201,7 @@ function placeBlock(e, x, y, z, slot) {
   return true;
 }
 function breakBlock(e, x, y, z) {
-  const t = world.get(x, y, z); if (!t || t === B.CHEST) return false;
+  const t = world.get(x, y, z); if (!t || t === B.CHEST || t === B.LAVA) return false;
   world.remove(x, y, z);
   particles.spawn(x + .5, y + .5, z + .5, 14, BLOCKS[t].colors, 2.4, .7, .11);
   Sound.play(t === B.GLASS ? 'glass' : 'break', new V3(x + .5, y + .5, z + .5));
@@ -1411,7 +1609,7 @@ function botUpdate(b, dt) {
 /* =========================================================================
    Game state
    ========================================================================= */
-const game = { phase: 'menu', time: 0, countdown: 0, lastCount: 0, refilled: false, sudden: false, diff: 'normal', paused: false, sdT: 0, endShown: false, menuT: 0, place: 0 };
+const game = { map: 'classic', phase: 'menu', time: 0, countdown: 0, lastCount: 0, refilled: false, sudden: false, diff: 'normal', paused: false, sdT: 0, endShown: false, menuT: 0, place: 0 };
 const REFILL_T = 180, SUDDEN_T = 360;
 function clearEntities() {
   for (const e of ents) if (e.mesh) { scene.remove(e.mesh); }
@@ -1426,7 +1624,7 @@ function startGame() {
   genWorld((Math.random() * 1e9) | 0);
   const order = [0, 1, 2, 3, 4, 5, 6, 7].sort(() => Math.random() - .5);
   for (let i = 0; i < 8; i++) {
-    const isl = islands.filter(s => !s.center)[order[i]];
+    const isl = islands.filter(s => s.spawn)[order[i]];
     const e = new Entity(i === 0 ? 'YOU' : 'BOT ' + i, i === 0);
     e.pos.set(isl.spawn.x + .5, TOPY + 1, isl.spawn.z + .5); e.fallStart = e.pos.y;
     e.yaw = Math.atan2(isl.spawn.x, isl.spawn.z); // face the center
@@ -1476,11 +1674,13 @@ function showEnd(win) {
     const k = player.killer;
     if (k) line('KILLED BY ' + k.name, '#ffb0b0');
     else if (player.deathCause === 'void') line('YOU FELL INTO THE VOID', '#ffb0b0');
+    else if (player.deathCause === 'lava') line('YOU TRIED TO SWIM IN LAVA', '#ffb0b0');
+    else if (player.deathCause === 'cactus') line('YOU WERE PRICKED TO DEATH', '#ffb0b0');
     else line('YOU DIED', '#ffb0b0');
     line('PLACE: #' + game.place);
   }
   line('KILLS: ' + player.kills); line('TIME: ' + fmtTime(game.time));
-  line('DIFFICULTY: ' + game.diff.toUpperCase(), '#c0c0ff');
+  line('MAP: ' + MAPS[game.map].name + '   DIFFICULTY: ' + game.diff.toUpperCase(), '#c0c0ff');
   showScreen('end');
 }
 function quitToMenu() {
@@ -1683,7 +1883,7 @@ function updatePlayer(dt) {
   const r = act ? raycastBlock(eyePos(p), lookDir(p.yaw, p.pitch), BUILD_REACH) : null;
   if (r) { highlight.visible = true; highlight.position.set(r.x + .5, r.y + .5, r.z + .5); const s = r.type === B.CHEST ? .88 : 1.004; highlight.scale.set(s, s, s); if (r.type === B.CHEST) highlight.position.y -= .06; }
   else highlight.visible = false;
-  if (act && mouse[0] && !pstate.charging && r && r.type !== B.CHEST && game.phase === 'playing') {
+  if (act && mouse[0] && !pstate.charging && r && r.type !== B.CHEST && r.type !== B.LAVA && game.phase === 'playing') {
     if (!breaking.active || breaking.x !== r.x || breaking.y !== r.y || breaking.z !== r.z) { breaking.active = true; breaking.x = r.x; breaking.y = r.y; breaking.z = r.z; breaking.t = 0; }
     breaking.t += dt / (BLOCKS[r.type].hard * 0.75);
     breaking.digT -= dt; if (breaking.digT <= 0) { breaking.digT = 0.22; Sound.play('dig'); vm.swing = 0.001; }
@@ -1750,8 +1950,7 @@ function flashHurt() { const h = $('hurt'); h.style.transition = 'none'; h.style
 function setupUI() {
   setText($('title'), 'SKY ISLANDS', 11, '#ffe14d');
   setText($('subtitle'), '8 PLAYERS. FLOATING ISLANDS. ONE SURVIVOR.', 3, '#ffffff');
-  setText($('bPlay'), 'PLAY', 3); updateDiffButton(); setText($('bControls'), 'CONTROLS', 3);
-  setText($('menuHint'), 'BRIDGE TO THE CENTER FOR BETTER LOOT - LAST ONE ALIVE WINS', 2, '#e8f4ff');
+  setText($('bPlay'), 'PLAY', 3); updateDiffButton(); updateMapButton(); setText($('bControls'), 'CONTROLS', 3);
   setText($('ctTitle'), 'CONTROLS', 4, '#3a3a3a', false);
   const lines = ['WASD - MOVE', 'MOUSE - LOOK AROUND', 'SPACE - JUMP', 'SHIFT - SNEAK (YOU WON\'T FALL OFF EDGES)', 'CTRL OR DOUBLE-TAP W - SPRINT', 'LEFT CLICK - ATTACK / HOLD TO BREAK BLOCKS', 'RIGHT CLICK - OPEN CHEST / PLACE / THROW / EQUIP', 'HOLD RIGHT CLICK - EAT / CHARGE BOW (RELEASE TO SHOOT)', 'MIDDLE CLICK - PICK BLOCK', '1-9 OR WHEEL - HOTBAR', 'E - INVENTORY', 'Q - DROP ITEM  (CTRL+Q - DROP STACK)', 'F1 - HIDE HUD   F3 - DEBUG   F5 - CAMERA VIEW', 'TAB - PLAYER LIST   ESC - PAUSE', 'TIP: SPRINT HITS KNOCK FURTHER, FALLING HITS CRIT'];
   lines.forEach(l => $('ctLines').appendChild(textCanvas(l, 2, '#3a3a3a', false)));
@@ -1787,6 +1986,7 @@ function setupUI() {
   // buttons
   const click = (id, fn) => $(id).addEventListener('click', () => { Sound.init(); Sound.play('click'); fn(); });
   click('bPlay', startGame);
+  click('bMap', () => { game.map = MAP_ORDER[(MAP_ORDER.indexOf(game.map) + 1) % MAP_ORDER.length]; updateMapButton(); genWorld(12345); });
   click('bDiff', () => { const o = ['easy', 'normal', 'hard']; game.diff = o[(o.indexOf(game.diff) + 1) % 3]; updateDiffButton(); });
   click('bControls', () => { ui.controlsFrom = 'menu'; showScreen('controls'); });
   click('bBack', () => showScreen(ui.controlsFrom || 'menu'));
@@ -1815,6 +2015,7 @@ function updateDebug(dt) {
    'BLOCK: ' + Math.floor(player.pos.x) + ' ' + Math.floor(player.pos.y) + ' ' + Math.floor(player.pos.z), 'FACING: ' + dirs[Math.round(a / 90) % 4],
    'BLOCKS: ' + world.map.size + '  ENTITIES: ' + aliveCount() + '  PARTICLES: ' + particles.list.length].forEach(t => el.appendChild(textCanvas(t, 2)));
 }
+function updateMapButton() { const m = MAPS[game.map]; setText($('bMap'), 'MAP: ' + m.name, 3, m.title); setText($('menuHint'), m.genre + ' - BRIDGE TO THE CENTER FOR BETTER LOOT', 2, '#e8f4ff'); }
 function updateDiffButton() { const c = { easy: '#9dff9d', normal: '#ffffff', hard: '#ff9d9d' }[game.diff]; setText($('bDiff'), 'DIFFICULTY: ' + game.diff.toUpperCase(), 3, c); }
 function renderStack(el, st, ghost) {
   el.innerHTML = '';
@@ -1968,7 +2169,7 @@ function update(dt) {
   if (game.phase === 'countdown') {
     game.countdown -= dt;
     const n = Math.ceil(game.countdown);
-    if (n !== game.lastCount && n > 0) { game.lastCount = n; bigMessage(String(n), n <= 3 ? '#ff6060' : '#ffe14d', 1.0); Sound.play('beep'); subMessage('CAGES OPEN SOON - GET READY!', '#ffffff', 1.2); }
+    if (n !== game.lastCount && n > 0) { game.lastCount = n; bigMessage(String(n), n <= 3 ? '#ff6060' : '#ffe14d', 1.0); Sound.play('beep'); subMessage(MAPS[game.map].name + ' - ' + MAPS[game.map].genre, MAPS[game.map].title, 1.2); }
     if (game.countdown <= 0) {
       game.phase = 'playing'; game.time = 0; breakCages(); bigMessage('GO!', '#7dff7d', 1.2); Sound.play('go');
       subMessage('RIGHT CLICK CHESTS, SHIFT TO SNEAK', '#ffffff', 4);
@@ -2000,6 +2201,7 @@ function update(dt) {
     }
     if (e.regenBoost > 0) e.regenBoost -= dt;
     if (e.pos.y < VOID_Y && e.alive) kill(e, 'void', null);
+    if (e.alive && game.phase === 'playing') hazards(e, dt);
   }
   separateEntities();
   for (const e of ents) if (e.mesh) animateHumanoid(e, dt);

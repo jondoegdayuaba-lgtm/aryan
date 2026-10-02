@@ -91,6 +91,11 @@ three.js is MIT licensed; see `vendor/three/LICENSE`.
 
 The whole game is that one HTML file. Open it in a browser (double-clicking works, no server needed). It loads three.js r128 from cdnjs, so it needs an internet connection; everything else is generated in code: textures, item icons, the pixel font and the sound effects.
 
+- **Maps:** pick one on the menu with the **Map** button:
+  - **Sky Islands** (classic adventure): grassy islands, oak trees and a brick plaza with a gold block in the center.
+  - **Frozen Peaks** (winter survival): snowy islands, spruce trees, ice spikes and falling snow, plus four small supply islands with chests as stepping stones.
+  - **Ember Isles** (volcanic): red rock and basalt under a dark red sky with drifting embers. The center is a volcano with a lava crater, and lava burns.
+  - **Sandstone Ruins** (desert temple): sand islands with palms, ruined pillars and cacti (which prick you), and a stepped pyramid with a gold capstone in the center.
 - **Match flow:** 5-second countdown in glass cages, chests refill at 3:00, and at 6:00 Sudden Death starts and the islands crumble inward from their edges.
 - **Loot:** wooden/stone/iron/crystal swords, leather/iron/crystal armor, bow and arrows, snowballs (knockback), golden apples (heal), warp orbs (throw to teleport) and building blocks. Center chests hold the better tiers.
 - **Combat:** 10 hearts, armor reduces damage, sprint hits knock further, and hits while falling are critical. Hold the bow to charge it, release to fire. Killed players drop their items.
