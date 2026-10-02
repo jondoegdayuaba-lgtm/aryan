@@ -7,8 +7,11 @@ A browser game. You guide a missile out of a launch hangar, across a test range 
 `blockwild/` is a second game: a blocky sandbox you explore, dig and build in. It has its own name, logo and code-drawn textures, so it's an original game that plays like the block-building games you know.
 
 - Endless generated terrain with plains, forests, pink cherry-blossom groves, beaches, lakes and snowy mountain peaks
-- **Survival**: hold left-click to mine (blocks crack and drop items you pick up), right-click to place, 10 hearts and a hunger bar, fall damage, apples from oak leaves, and a crafting list in the inventory (E)
-- **Creative**: unlimited blocks, instant breaking, a block palette in the inventory, and flying (double-tap Space)
+- **Survival**: hold left-click to mine (blocks crack and drop items you pick up), right-click to place, 10 hearts and a hunger bar, fall damage, and apples from oak leaves
+- **Crafting**: press E to make planks, sticks and a **crafting table**. Right-click the table for wooden and stone pickaxes, axes, shovels and swords, a **furnace** and stone bricks. Right-click the furnace to cook meat and smelt sand into glass. Stone-type blocks only drop when you mine them with a pickaxe, and the matching tool mines faster
+- **Animals**: cows, boars, sheep and chickens wander the grass, look at you, and run when hit. They drop meat (sheep drop wool)
+- **Monsters at night**: Gloomwalkers chase you and hit hard, and thorny Brambles hop after you. Both fade away when the sun comes up. Hit them with a sword
+- **Creative**: unlimited blocks, instant breaking, a palette with every block, tool and spawn egg, and flying (double-tap Space)
 - Day and night cycle, drifting clouds, smooth block shading, a hotbar with 1-9 and the mouse wheel, F3 debug info, and saving to the browser
 - Phone controls: a move stick, drag to look, tap to place, press and hold to break
 
@@ -18,8 +21,9 @@ Play it at `blockwild/index.html` (served the same way as below), or save `deskt
 | --- | --- |
 | `blockwild/js/main.js` | Game loop, sky, hand, inventory, HUD, menus and input |
 | `blockwild/js/world.js` | Chunks, terrain and trees, meshing, ray casting |
-| `blockwild/js/blocks.js` | Block list, pixel textures, icons and crack overlays |
+| `blockwild/js/blocks.js` | Blocks, items and tools, pixel textures, icons and crack overlays |
 | `blockwild/js/player.js` | Walking, jumping, swimming, flying and collisions |
+| `blockwild/js/mobs.js` | Animals and monsters: models, AI, spawning and combat |
 | `blockwild/js/noise.js` | Seeded noise for terrain |
 | `blockwild/js/audio.js` | Synthesised dig, place, step and hurt sounds |
 

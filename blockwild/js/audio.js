@@ -1,6 +1,7 @@
 // Small synthesised sound effects (Web Audio API, no sound files).
 let ctx = null, master = null, noiseBuf = null;
 let volume = 0.6;
+let level = 1; // per-sound loudness, e.g. for far-away animals
 
 export function initAudio() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
@@ -41,29 +42,54 @@ function noise(dur, material, gain, rate = 1) {
   f.frequency.value = freq * (0.9 + Math.random() * 0.2);
   f.Q.value = q;
   const g = ctx.createGain();
-  g.gain.setValueAtTime(gain, t);
+  g.gain.setValueAtTime(gain * level, t);
   g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   src.connect(f).connect(g).connect(master);
   src.start(t, Math.random() * 0.5, dur + 0.05);
 }
 
-function tone(type, f0, f1, dur, gain, delay = 0) {
+function tone(type, f0, f1, dur, gain, delay = 0, { vibrato = 0, lowpass = 0 } = {}) {
   const t = ctx.currentTime + delay;
   const o = ctx.createOscillator();
   o.type = type;
   o.frequency.setValueAtTime(f0, t);
   o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  if (vibrato) {
+    const lfo = ctx.createOscillator(), depth = ctx.createGain();
+    lfo.frequency.value = 9;
+    depth.gain.value = vibrato;
+    lfo.connect(depth).connect(o.frequency);
+    lfo.start(t);
+    lfo.stop(t + dur + 0.02);
+  }
   const g = ctx.createGain();
-  g.gain.setValueAtTime(gain, t);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain * level, t + Math.min(0.04, dur / 4));
   g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  o.connect(g).connect(master);
+  let out = o;
+  if (lowpass) {
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = lowpass;
+    out = o.connect(f);
+  }
+  out.connect(g).connect(master);
   o.start(t);
   o.stop(t + dur + 0.02);
 }
 
-export function sfx(name, material = 'stone') {
+export function sfx(name, material = 'stone', loud = 1) {
   if (!ctx || !volume) return;
+  level = loud;
   switch (name) {
+    case 'moo': tone('sawtooth', 150, 112, 0.9, 0.22, 0, { lowpass: 700 }); break;
+    case 'grunt': tone('square', 170, 120, 0.12, 0.12, 0, { lowpass: 900 }); tone('square', 150, 105, 0.14, 0.12, 0.16, { lowpass: 900 }); break;
+    case 'baa': tone('sawtooth', 340, 300, 0.55, 0.14, 0, { vibrato: 25, lowpass: 1600 }); break;
+    case 'cluck': tone('triangle', 950, 700, 0.06, 0.18); tone('triangle', 1100, 760, 0.07, 0.18, 0.11); break;
+    case 'groan': tone('sawtooth', 95, 70, 1.0, 0.25, 0, { vibrato: 6, lowpass: 420 }); break;
+    case 'rustle': noise(0.18, 'grass', 0.35, 0.7); break;
+    case 'mobhurt': tone('square', 420, 260, 0.12, 0.1); noise(0.06, 'dirt', 0.3); break;
+    case 'poof': noise(0.3, 'snow', 0.35, 0.5); break;
     case 'break':
       noise(0.22, material, 0.55);
       if (material === 'glass') for (let i = 0; i < 4; i++) tone('sine', 2500 + Math.random() * 2000, 1800, 0.12, 0.05, i * 0.03);

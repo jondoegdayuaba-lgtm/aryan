@@ -310,6 +310,7 @@ html, body {
 .inv-panel .slot:hover { background: rgba(255, 255, 255, 0.4); }
 .inv-panel .hotrow { margin-top: 8px; }
 #recipes { display: flex; flex-wrap: wrap; gap: 6px; width: calc(var(--s) * 9); }
+.craft-help { margin: 0; font-size: 18px; color: #555; align-self: flex-start; }
 .recipe {
   display: flex;
   align-items: center;

@@ -7,17 +7,26 @@ export const B = {
   AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, SAND: 4, WATER: 5, LOG: 6, LEAVES: 7,
   BLOSSOM: 8, PLANKS: 9, COBBLE: 10, SNOW: 11, TALLGRASS: 12, FLOWER_RED: 13,
   FLOWER_YELLOW: 14, BEDROCK: 15, GLASS: 16, CHERRY_LOG: 17, GRAVEL: 18, BRICK: 19,
+  CRAFTING_TABLE: 20, FURNACE: 21, WOOL: 22, STONE_BRICKS: 23,
 };
-export const ITEM = { APPLE: 100 };
+export const ITEM = {
+  APPLE: 100, STICK: 101, MEAT: 102, COOKED_MEAT: 103,
+  WOOD_PICK: 110, WOOD_AXE: 111, WOOD_SHOVEL: 112, WOOD_SWORD: 113,
+  STONE_PICK: 114, STONE_AXE: 115, STONE_SHOVEL: 116, STONE_SWORD: 117,
+  EGG_COW: 120, EGG_BOAR: 121, EGG_SHEEP: 122, EGG_CHICKEN: 123, EGG_GLOOM: 124, EGG_BRAMBLE: 125,
+};
 
 // Tile indices in the atlas.
 const T = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, STONE: 3, SAND: 4, WATER: 5, LOG_SIDE: 6, LOG_TOP: 7,
   LEAVES: 8, BLOSSOM: 9, PLANKS: 10, COBBLE: 11, SNOW: 12, SNOW_SIDE: 13, TALLGRASS: 14,
   FLOWER_RED: 15, FLOWER_YELLOW: 16, BEDROCK: 17, GLASS: 18, CHERRY_SIDE: 19, CHERRY_TOP: 20,
-  GRAVEL: 21, BRICK: 22, APPLE: 23,
+  GRAVEL: 21, BRICK: 22, APPLE: 23, TABLE_TOP: 24, TABLE_SIDE: 25, FURNACE_FRONT: 26, FURNACE_TOP: 27,
+  WOOL: 28, STONE_BRICKS: 29, STICK: 30, MEAT: 31, COOKED_MEAT: 32,
+  WOOD_PICK: 33, WOOD_AXE: 34, WOOD_SHOVEL: 35, WOOD_SWORD: 36,
+  STONE_PICK: 37, STONE_AXE: 38, STONE_SHOVEL: 39, STONE_SWORD: 40, EGG: 41, // 41..46
 };
-const COLS = 8, ROWS = 4, TS = 16;
+const COLS = 8, ROWS = 8, TS = 16;
 
 export const BLOCKS = [];
 function def(id, o) {
@@ -27,35 +36,63 @@ function def(id, o) {
   };
 }
 def(B.AIR, { name: 'Air', solid: false, opaque: false, occludes: false, hardness: 0, drop: 0 });
-def(B.GRASS, { name: 'Grass Block', tex: [T.GRASS_TOP, T.GRASS_SIDE, T.DIRT], hardness: 0.7, drop: B.DIRT, sound: 'grass' });
-def(B.DIRT, { name: 'Dirt', tex: [T.DIRT, T.DIRT, T.DIRT], hardness: 0.65, sound: 'dirt' });
-def(B.STONE, { name: 'Stone', tex: [T.STONE, T.STONE, T.STONE], hardness: 2.2, drop: B.COBBLE });
-def(B.SAND, { name: 'Sand', tex: [T.SAND, T.SAND, T.SAND], hardness: 0.6, sound: 'sand' });
+def(B.GRASS, { name: 'Grass Block', tex: [T.GRASS_TOP, T.GRASS_SIDE, T.DIRT], hardness: 0.7, drop: B.DIRT, sound: 'grass', tool: 'shovel' });
+def(B.DIRT, { name: 'Dirt', tex: [T.DIRT, T.DIRT, T.DIRT], hardness: 0.65, sound: 'dirt', tool: 'shovel' });
+def(B.STONE, { name: 'Stone', tex: [T.STONE, T.STONE, T.STONE], hardness: 2.2, drop: B.COBBLE, tool: 'pick', needsPick: true });
+def(B.SAND, { name: 'Sand', tex: [T.SAND, T.SAND, T.SAND], hardness: 0.6, sound: 'sand', tool: 'shovel' });
 def(B.WATER, { name: 'Water', tex: [T.WATER, T.WATER, T.WATER], solid: false, opaque: false, occludes: false, liquid: true, hardness: Infinity, drop: 0 });
-def(B.LOG, { name: 'Oak Log', tex: [T.LOG_TOP, T.LOG_SIDE, T.LOG_TOP], hardness: 2, sound: 'wood' });
+def(B.LOG, { name: 'Oak Log', tex: [T.LOG_TOP, T.LOG_SIDE, T.LOG_TOP], hardness: 2, sound: 'wood', tool: 'axe' });
 def(B.LEAVES, { name: 'Leaves', tex: [T.LEAVES, T.LEAVES, T.LEAVES], opaque: false, hardness: 0.3, drop: 0, sound: 'grass' });
 def(B.BLOSSOM, { name: 'Blossom Leaves', tex: [T.BLOSSOM, T.BLOSSOM, T.BLOSSOM], opaque: false, hardness: 0.3, drop: 0, sound: 'grass' });
-def(B.PLANKS, { name: 'Planks', tex: [T.PLANKS, T.PLANKS, T.PLANKS], hardness: 1.8, sound: 'wood' });
-def(B.COBBLE, { name: 'Cobblestone', tex: [T.COBBLE, T.COBBLE, T.COBBLE], hardness: 2.4 });
-def(B.SNOW, { name: 'Snowy Stone', tex: [T.SNOW, T.SNOW_SIDE, T.STONE], hardness: 1.2, drop: B.COBBLE, sound: 'snow' });
+def(B.PLANKS, { name: 'Planks', tex: [T.PLANKS, T.PLANKS, T.PLANKS], hardness: 1.8, sound: 'wood', tool: 'axe' });
+def(B.COBBLE, { name: 'Cobblestone', tex: [T.COBBLE, T.COBBLE, T.COBBLE], hardness: 2.4, tool: 'pick', needsPick: true });
+def(B.SNOW, { name: 'Snowy Stone', tex: [T.SNOW, T.SNOW_SIDE, T.STONE], hardness: 1.2, drop: B.COBBLE, sound: 'snow', tool: 'pick', needsPick: true });
 def(B.TALLGRASS, { name: 'Tall Grass', tex: [T.TALLGRASS, T.TALLGRASS, T.TALLGRASS], solid: false, opaque: false, occludes: false, cross: true, hardness: 0, drop: 0, sound: 'grass' });
 def(B.FLOWER_RED, { name: 'Red Flower', tex: [T.FLOWER_RED, T.FLOWER_RED, T.FLOWER_RED], solid: false, opaque: false, occludes: false, cross: true, hardness: 0, sound: 'grass' });
 def(B.FLOWER_YELLOW, { name: 'Yellow Flower', tex: [T.FLOWER_YELLOW, T.FLOWER_YELLOW, T.FLOWER_YELLOW], solid: false, opaque: false, occludes: false, cross: true, hardness: 0, sound: 'grass' });
 def(B.BEDROCK, { name: 'Bedrock', tex: [T.BEDROCK, T.BEDROCK, T.BEDROCK], hardness: Infinity });
 def(B.GLASS, { name: 'Glass', tex: [T.GLASS, T.GLASS, T.GLASS], opaque: false, occludes: false, hardness: 0.45, drop: 0, sound: 'glass' });
-def(B.CHERRY_LOG, { name: 'Cherry Log', tex: [T.CHERRY_TOP, T.CHERRY_SIDE, T.CHERRY_TOP], hardness: 2, sound: 'wood' });
-def(B.GRAVEL, { name: 'Gravel', tex: [T.GRAVEL, T.GRAVEL, T.GRAVEL], hardness: 0.7, sound: 'sand' });
-def(B.BRICK, { name: 'Bricks', tex: [T.BRICK, T.BRICK, T.BRICK], hardness: 2.6 });
+def(B.CHERRY_LOG, { name: 'Cherry Log', tex: [T.CHERRY_TOP, T.CHERRY_SIDE, T.CHERRY_TOP], hardness: 2, sound: 'wood', tool: 'axe' });
+def(B.GRAVEL, { name: 'Gravel', tex: [T.GRAVEL, T.GRAVEL, T.GRAVEL], hardness: 0.7, sound: 'sand', tool: 'shovel' });
+def(B.BRICK, { name: 'Bricks', tex: [T.BRICK, T.BRICK, T.BRICK], hardness: 2.6, tool: 'pick', needsPick: true });
+def(B.CRAFTING_TABLE, { name: 'Crafting Table', tex: [T.TABLE_TOP, T.TABLE_SIDE, T.PLANKS], hardness: 2, sound: 'wood', tool: 'axe', station: 'table' });
+def(B.FURNACE, { name: 'Furnace', tex: [T.FURNACE_TOP, T.FURNACE_FRONT, T.FURNACE_TOP], hardness: 3, tool: 'pick', needsPick: true, station: 'furnace' });
+def(B.WOOL, { name: 'Wool', tex: [T.WOOL, T.WOOL, T.WOOL], hardness: 0.6, sound: 'snow' });
+def(B.STONE_BRICKS, { name: 'Stone Bricks', tex: [T.STONE_BRICKS, T.STONE_BRICKS, T.STONE_BRICKS], hardness: 2.4, tool: 'pick', needsPick: true });
 
-export const ITEMS = { [ITEM.APPLE]: { name: 'Apple', tile: T.APPLE, food: 4 } };
+const tool = (name, tile, kind, tier) => ({ name, tile, stack: 1, tool: { kind, speed: tier === 'stone' ? 4.5 : 2.5, damage: (kind === 'sword' ? 4 : kind === 'axe' ? 3 : 2) + (tier === 'stone' ? 1 : 0) } });
+const egg = (type, name, i) => ({ name: `${name} Spawn Egg`, tile: T.EGG + i, spawns: type });
+export const ITEMS = {
+  [ITEM.APPLE]: { name: 'Apple', tile: T.APPLE, food: 4 },
+  [ITEM.STICK]: { name: 'Stick', tile: T.STICK },
+  [ITEM.MEAT]: { name: 'Raw Meat', tile: T.MEAT, food: 3 },
+  [ITEM.COOKED_MEAT]: { name: 'Cooked Meat', tile: T.COOKED_MEAT, food: 8 },
+  [ITEM.WOOD_PICK]: tool('Wooden Pickaxe', T.WOOD_PICK, 'pick', 'wood'),
+  [ITEM.WOOD_AXE]: tool('Wooden Axe', T.WOOD_AXE, 'axe', 'wood'),
+  [ITEM.WOOD_SHOVEL]: tool('Wooden Shovel', T.WOOD_SHOVEL, 'shovel', 'wood'),
+  [ITEM.WOOD_SWORD]: tool('Wooden Sword', T.WOOD_SWORD, 'sword', 'wood'),
+  [ITEM.STONE_PICK]: tool('Stone Pickaxe', T.STONE_PICK, 'pick', 'stone'),
+  [ITEM.STONE_AXE]: tool('Stone Axe', T.STONE_AXE, 'axe', 'stone'),
+  [ITEM.STONE_SHOVEL]: tool('Stone Shovel', T.STONE_SHOVEL, 'shovel', 'stone'),
+  [ITEM.STONE_SWORD]: tool('Stone Sword', T.STONE_SWORD, 'sword', 'stone'),
+  [ITEM.EGG_COW]: egg('cow', 'Cow', 0),
+  [ITEM.EGG_BOAR]: egg('boar', 'Boar', 1),
+  [ITEM.EGG_SHEEP]: egg('sheep', 'Sheep', 2),
+  [ITEM.EGG_CHICKEN]: egg('chicken', 'Chicken', 3),
+  [ITEM.EGG_GLOOM]: egg('gloom', 'Gloomwalker', 4),
+  [ITEM.EGG_BRAMBLE]: egg('bramble', 'Bramble', 5),
+};
 
 export const isBlock = (id) => id > 0 && id < 100 && !!BLOCKS[id];
 export const itemName = (id) => (isBlock(id) ? BLOCKS[id].name : ITEMS[id]?.name ?? '');
-// Blocks that show up in the creative palette.
+export const maxStack = (id) => ITEMS[id]?.stack ?? 64;
+// Blocks and items that show up in the creative palette.
 export const PLACEABLE = [
   B.GRASS, B.DIRT, B.STONE, B.COBBLE, B.SAND, B.GRAVEL, B.LOG, B.CHERRY_LOG, B.PLANKS,
-  B.LEAVES, B.BLOSSOM, B.GLASS, B.BRICK, B.SNOW, B.BEDROCK, B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW,
+  B.LEAVES, B.BLOSSOM, B.GLASS, B.BRICK, B.STONE_BRICKS, B.WOOL, B.SNOW, B.CRAFTING_TABLE, B.FURNACE,
+  B.BEDROCK, B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW,
 ];
+export const CREATIVE_ITEMS = [...PLACEABLE, ...Object.keys(ITEMS).map(Number)];
 
 // ---------------------------------------------------------------- painting
 
@@ -244,6 +281,121 @@ function drawTiles(ctx) {
     if ((y === 2 && (x === 9 || x === 10)) || (y === 1 && x === 10)) return [70, 150, 50];
     return null;
   });
+  drawMoreTiles(ctx);
+}
+
+// Pixel sprite with a dark outline: `fn` returns a colour or null.
+function sprite(ctx, tile, seed, fn) {
+  const rand = mulberry32(seed);
+  const px = [];
+  for (let y = 0; y < TS; y++) for (let x = 0; x < TS; x++) px.push(fn(x, y, rand));
+  const at = (x, y) => (x < 0 || y < 0 || x >= TS || y >= TS ? null : px[y * TS + x]);
+  paintTile(ctx, tile, seed, (x, y) => {
+    const c = at(x, y);
+    if (c) return c;
+    if (at(x - 1, y) || at(x + 1, y) || at(x, y - 1) || at(x, y + 1)) return [30, 22, 14];
+    return null;
+  });
+}
+
+const WOOD_HEAD = [168, 134, 82], STONE_HEAD = [136, 136, 138], HANDLE = [110, 80, 44];
+// Handle runs diagonally from bottom-left towards the top-right.
+const onHandle = (x, y, from = 2, to = 10) => x + y === 15 && x >= from && x <= to;
+
+function drawMoreTiles(ctx) {
+  const planks = (x, y, r) => {
+    const band = Math.floor(y / 4);
+    if (y % 4 === 3) return vary([104, 80, 48], r, 0.95, 1.05);
+    return vary([164, 131, 80], r, 0.9, 1.06).map((v) => v * (1 - (band % 2) * 0.05));
+  };
+  paintTile(ctx, T.TABLE_TOP, 50, (x, y, r) => {
+    if (x === 0 || y === 0 || x === 15 || y === 15) return vary([92, 66, 38], r, 0.9, 1.05);
+    if (x === 5 || x === 10 || y === 5 || y === 10) return vary([120, 90, 54], r, 0.92, 1.05);
+    return vary([184, 148, 92], r, 0.9, 1.05);
+  });
+  paintTile(ctx, T.TABLE_SIDE, 51, (x, y, r) => {
+    if (y < 3) return vary([92, 66, 38], r, 0.9, 1.05);
+    // A little saw (left) and hammer (right) hanging on the side.
+    if (x >= 2 && x <= 6 && y >= 5 && y <= 11 && x - 2 <= (y - 5) * 0.7) return vary([170, 170, 176], r, 0.95, 1.05);
+    if (x === 2 && y >= 4 && y <= 12) return [80, 56, 30];
+    if (x >= 9 && x <= 13 && y >= 5 && y <= 6) return vary([120, 120, 126], r, 0.95, 1.05);
+    if (x === 11 && y >= 7 && y <= 12) return [96, 68, 36];
+    return planks(x, y, r);
+  });
+  {
+    const cell = cells(mulberry32(60), 10);
+    const stoneish = (x, y, r) => {
+      const c = cell(x, y);
+      if (c.edge) return vary([78, 78, 80], r, 0.9, 1.1);
+      return vary([120, 120, 122], r, 0.93, 1.05).map((v) => v * c.shade);
+    };
+    paintTile(ctx, T.FURNACE_FRONT, 52, (x, y, r) => {
+      if (x >= 4 && x <= 11 && y >= 8 && y <= 13) {
+        if (y >= 11 && r() < 0.6) return vary([255, 140, 30], r, 0.8, 1.05);
+        return vary([28, 24, 22], r, 0.9, 1.1);
+      }
+      if ((x === 3 || x === 12) && y >= 7 && y <= 14) return [70, 70, 72];
+      if (y === 7 && x >= 3 && x <= 12) return [70, 70, 72];
+      if (y >= 2 && y <= 3 && x >= 4 && x <= 11) return vary([90, 90, 92], r, 0.9, 1.05);
+      return stoneish(x, y, r);
+    });
+    paintTile(ctx, T.FURNACE_TOP, 53, (x, y, r) => {
+      if (x === 0 || y === 0 || x === 15 || y === 15) return vary([86, 86, 88], r, 0.9, 1.05);
+      return vary([132, 132, 134], r, 0.92, 1.05);
+    });
+  }
+  paintTile(ctx, T.WOOL, 54, (x, y, r) => {
+    const curl = ((x * 3 + y * 5) % 7 === 0) || ((x * 5 + y * 3) % 11 === 0);
+    return vary(curl ? [214, 212, 205] : [238, 236, 230], r, 0.95, 1.03);
+  });
+  paintTile(ctx, T.STONE_BRICKS, 55, (x, y, r) => {
+    const row = Math.floor(y / 8);
+    if (y % 8 === 7 || (x % 16 === (row % 2 ? 8 : 0))) return vary([84, 84, 86], r, 0.92, 1.05);
+    if (y % 8 === 0 || x % 8 === (row % 2 ? 1 : 1)) return vary([150, 150, 152], r, 0.95, 1.03);
+    return vary([124, 124, 126], r, 0.93, 1.05);
+  });
+  sprite(ctx, T.STICK, 56, (x, y, r) => (onHandle(x, y, 3, 12) ? vary(HANDLE, r, 0.9, 1.1) : null));
+  const meat = (base, fat) => (x, y, r) => {
+    const dx = x - 7, dy = y - 7.5;
+    if (x >= 11 && x <= 13 && y >= 11 && y <= 13) return [236, 230, 214];
+    if (dx * dx / 30 + dy * dy / 20 < 1 && !(x > 10 && y > 10)) {
+      if (dx * dx / 30 + dy * dy / 20 > 0.7) return vary(fat, r, 0.95, 1.05);
+      return vary(base, r, 0.85, 1.08);
+    }
+    return null;
+  };
+  sprite(ctx, T.MEAT, 57, meat([214, 82, 82], [244, 196, 190]));
+  sprite(ctx, T.COOKED_MEAT, 58, meat([138, 78, 40], [196, 140, 88]));
+  const tools = {
+    pick: (x, y) => x - y === 4 && x >= 6 && x <= 14 ? 'h' : (x - y === 3 && x >= 7 && x <= 12) ? 'h' : null,
+    axe: (x, y) => ((x - 10.5) ** 2 + (y - 4.5) ** 2 < 8 && x + y <= 17 && x + y >= 13 && x >= 8) ? 'h' : null,
+    shovel: (x, y) => ((x - 11.5) ** 2 + (y - 3.5) ** 2 < 6.5) ? 'h' : null,
+    sword: (x, y) => ((x + y === 15 || x + y === 16) && x >= 6 && x <= 14 && y >= 1) ? 'h' : (x - y === -5 && x >= 2 && x <= 7) ? 'g' : null,
+  };
+  const order = [['WOOD', WOOD_HEAD], ['STONE', STONE_HEAD]];
+  let seed = 60;
+  for (const [tier, head] of order) {
+    for (const kind of ['pick', 'axe', 'shovel', 'sword']) {
+      const tile = T[`${tier}_${kind === 'pick' ? 'PICK' : kind.toUpperCase()}`];
+      sprite(ctx, tile, seed++, (x, y, r) => {
+        const part = tools[kind](x, y);
+        if (part === 'h') return vary(head, r, 0.85, 1.1);
+        if (part === 'g') return vary([90, 64, 36], r, 0.95, 1.05);
+        if (kind === 'sword' ? onHandle(x, y, 1, 4) : onHandle(x, y, 2, kind === 'shovel' ? 10 : 9)) return vary(HANDLE, r, 0.9, 1.1);
+        return null;
+      });
+    }
+  }
+  const eggs = [[[94, 61, 39], [233, 228, 218]], [[122, 90, 64], [194, 138, 114]], [[235, 232, 225], [143, 133, 124]],
+    [[244, 241, 234], [214, 51, 46]], [[59, 53, 82], [255, 201, 58]], [[47, 90, 42], [205, 184, 140]]];
+  eggs.forEach(([base, spot], i) => {
+    sprite(ctx, T.EGG + i, 70 + i, (x, y, r) => {
+      const dx = x - 7.5, dy = y - 8.5;
+      if (dx * dx / 22 + dy * dy / 36 >= 1) return null;
+      if (r() < 0.22) return spot;
+      return vary(base, r, 0.92, 1.05);
+    });
+  });
 }
 
 // ---------------------------------------------------------------- atlas
@@ -318,7 +470,7 @@ export function buildIcons(atlas) {
     }
     return c.toDataURL();
   };
-  for (const id of [...PLACEABLE, ...Object.keys(ITEMS).map(Number)]) icons[id] = make(id);
+  for (const id of CREATIVE_ITEMS) icons[id] = make(id);
   return icons;
 }
 

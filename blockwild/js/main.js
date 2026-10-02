@@ -1,11 +1,12 @@
 // Blockwild: game loop, rendering, input, inventory, HUD and menus.
 import * as THREE from 'three';
 import {
-  B, ITEM, BLOCKS, ITEMS, PLACEABLE, TILES, isBlock, itemName, isFlatItem, itemTile,
+  B, ITEM, BLOCKS, ITEMS, PLACEABLE, CREATIVE_ITEMS, TILES, isBlock, itemName, isFlatItem, itemTile, maxStack,
   buildAtlas, buildIcons, buildCrackTextures, buildHudIcons,
 } from './blocks.js';
 import { World, CH } from './world.js';
 import { Player } from './player.js';
+import { Mobs } from './mobs.js';
 import { initAudio, sfx, setVolume } from './audio.js';
 import { seedFrom } from './noise.js';
 
@@ -262,11 +263,12 @@ function addItem(id, count) {
   for (let pass = 0; pass < 2 && count > 0; pass++) {
     for (let i = 0; i < 36 && count > 0; i++) {
       const s = inv[i];
-      if (pass === 0 && s && s.id === id && s.count < STACK) {
-        const n = Math.min(count, STACK - s.count);
+      const max = maxStack(id);
+      if (pass === 0 && s && s.id === id && s.count < max) {
+        const n = Math.min(count, max - s.count);
         s.count += n; count -= n;
       } else if (pass === 1 && !s) {
-        const n = Math.min(count, STACK);
+        const n = Math.min(count, max);
         inv[i] = { id, count: n }; count -= n;
       }
     }
@@ -294,13 +296,30 @@ function useSelected() {
   invVersion++;
 }
 
+// Where each recipe can be made: by hand (inventory), at a crafting table
+// (which also does hand recipes) or in a furnace.
 const RECIPES = [
-  { out: B.PLANKS, n: 4, need: [[B.LOG, 1]] },
-  { out: B.PLANKS, n: 4, need: [[B.CHERRY_LOG, 1]] },
-  { out: B.GLASS, n: 1, need: [[B.SAND, 2]] },
-  { out: B.STONE, n: 1, need: [[B.COBBLE, 2]] },
-  { out: B.BRICK, n: 2, need: [[B.GRAVEL, 1], [B.SAND, 1]] },
+  { at: 'hand', out: B.PLANKS, n: 4, need: [[B.LOG, 1]] },
+  { at: 'hand', out: B.PLANKS, n: 4, need: [[B.CHERRY_LOG, 1]] },
+  { at: 'hand', out: ITEM.STICK, n: 4, need: [[B.PLANKS, 2]] },
+  { at: 'hand', out: B.CRAFTING_TABLE, n: 1, need: [[B.PLANKS, 4]] },
+  { at: 'table', out: ITEM.WOOD_PICK, n: 1, need: [[B.PLANKS, 3], [ITEM.STICK, 2]] },
+  { at: 'table', out: ITEM.WOOD_AXE, n: 1, need: [[B.PLANKS, 3], [ITEM.STICK, 2]] },
+  { at: 'table', out: ITEM.WOOD_SHOVEL, n: 1, need: [[B.PLANKS, 1], [ITEM.STICK, 2]] },
+  { at: 'table', out: ITEM.WOOD_SWORD, n: 1, need: [[B.PLANKS, 2], [ITEM.STICK, 1]] },
+  { at: 'table', out: ITEM.STONE_PICK, n: 1, need: [[B.COBBLE, 3], [ITEM.STICK, 2]] },
+  { at: 'table', out: ITEM.STONE_AXE, n: 1, need: [[B.COBBLE, 3], [ITEM.STICK, 2]] },
+  { at: 'table', out: ITEM.STONE_SHOVEL, n: 1, need: [[B.COBBLE, 1], [ITEM.STICK, 2]] },
+  { at: 'table', out: ITEM.STONE_SWORD, n: 1, need: [[B.COBBLE, 2], [ITEM.STICK, 1]] },
+  { at: 'table', out: B.FURNACE, n: 1, need: [[B.COBBLE, 8]] },
+  { at: 'table', out: B.STONE_BRICKS, n: 4, need: [[B.STONE, 4]] },
+  { at: 'furnace', out: ITEM.COOKED_MEAT, n: 1, need: [[ITEM.MEAT, 1]] },
+  { at: 'furnace', out: B.GLASS, n: 1, need: [[B.SAND, 1]] },
+  { at: 'furnace', out: B.STONE, n: 1, need: [[B.COBBLE, 1]] },
+  { at: 'furnace', out: B.BRICK, n: 2, need: [[B.GRAVEL, 1], [B.SAND, 1]] },
 ];
+const STATION_TITLE = { hand: 'Crafting', table: 'Crafting Table', furnace: 'Furnace' };
+let station = 'hand';
 
 // ------------------------------------------------------------ HUD
 
@@ -428,6 +447,7 @@ function refreshPlayMenu() {
 }
 
 function clearEntities() {
+  mobs.clear();
   for (const it of items) scene.remove(it.mesh);
   for (const p of particles) { scene.remove(p.mesh); p.mesh.material.dispose(); }
   items = []; particles = [];
@@ -545,7 +565,7 @@ function clickSlot(i, right) {
     if (right) { inv[i] = { id: held.id, count: 1 }; if (!--held.count) held = null; }
     else { inv[i] = held; held = null; }
   } else if (s.id === held.id) {
-    const n = Math.min(right ? 1 : held.count, STACK - s.count);
+    const n = Math.min(right ? 1 : held.count, maxStack(s.id) - s.count);
     s.count += n; held.count -= n;
     if (!held.count) held = null;
   } else {
@@ -561,14 +581,19 @@ function renderInventory() {
   hr.replaceChildren(...Array.from({ length: 9 }, (_, k) => makeSlot(inv[k], (r) => clickSlot(k, r))));
   $('inv-creative').hidden = mode !== 'creative';
   $('inv-crafting').hidden = mode === 'creative';
+  $('craft-title').textContent = STATION_TITLE[station];
+  $('craft-help').textContent = station === 'hand'
+    ? 'Place a crafting table and right-click it for tools and more.'
+    : station === 'table' ? '' : 'Cook food and smelt blocks.';
   if (mode === 'creative') {
-    $('palette').replaceChildren(...[...PLACEABLE, ITEM.APPLE].map((id) => makeSlot({ id, count: 1 }, () => {
-      held = held && held.id !== id ? null : { id, count: STACK };
+    $('palette').replaceChildren(...CREATIVE_ITEMS.map((id) => makeSlot({ id, count: 1 }, () => {
+      held = held && held.id !== id ? null : { id, count: maxStack(id) };
       sfx('click');
       renderInventory();
     })));
   } else {
-    $('recipes').replaceChildren(...RECIPES.map((r) => {
+    const list = RECIPES.filter((r) => r.at === station || (station === 'table' && r.at === 'hand'));
+    $('recipes').replaceChildren(...list.map((r) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'recipe';
@@ -580,7 +605,7 @@ function renderInventory() {
         r.need.forEach(([id, n]) => take(id, n));
         const left = addItem(r.out, r.n);
         if (left) dropStack(r.out, left);
-        sfx('place', 'wood');
+        sfx('place', station === 'furnace' ? 'stone' : 'wood');
         renderInventory();
       });
       return b;
@@ -592,8 +617,9 @@ function renderInventory() {
     cursorEl.querySelector('span').textContent = held.count > 1 ? held.count : '';
   }
 }
-function openInventory() {
+function openInventory(at = 'hand') {
   if (state !== 'playing') return;
+  station = typeof at === 'string' ? at : 'hand';
   state = 'inventory';
   keys.clear(); mouseL = mouseR = false;
   if (document.pointerLockElement) document.exitPointerLock();
@@ -651,6 +677,51 @@ function dropStack(id, count) {
   spawnItem(id, count, player.pos.x + dir.x * 0.4, player.eyeY() - 0.3, player.pos.z + dir.z * 0.4, dir.multiplyScalar(5).add(new THREE.Vector3(0, 1.5, 0)), 1.5);
 }
 
+// Grey or white puff of smoke (mob deaths, monsters fading in sunlight).
+function puff(pos, hex) {
+  const mat = new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity: 0.85 });
+  mat.color.multiplyScalar(materials.solid.color.r);
+  mat.userData.n = 0;
+  for (let i = 0; i < 10; i++) {
+    const m = new THREE.Mesh(particleGeo, mat);
+    m.scale.setScalar(0.12 + Math.random() * 0.12);
+    m.position.set(pos.x + (Math.random() - 0.5) * 0.6, pos.y + (Math.random() - 0.5) * 0.6, pos.z + (Math.random() - 0.5) * 0.6);
+    scene.add(m);
+    mat.userData.n++;
+    particles.push({ mesh: m, vel: new THREE.Vector3((Math.random() - 0.5) * 1.5, 1 + Math.random() * 1.5, (Math.random() - 0.5) * 1.5), life: 0.5 + Math.random() * 0.4, float: true });
+  }
+}
+
+const mobs = new Mobs(scene, {
+  sound(name, pos) {
+    const d = Math.hypot(pos.x - player.pos.x, pos.y - player.pos.y, pos.z - player.pos.z);
+    if (d < 24) sfx(name, 'stone', Math.max(0.1, 1 - d / 24));
+  },
+  hurtPlayer(n, why, from) {
+    if (mode !== 'survival' || state !== 'playing') return;
+    hurt(n, why);
+    const dx = player.pos.x - from.x, dz = player.pos.z - from.z, len = Math.hypot(dx, dz) || 1;
+    player.vel.x += (dx / len) * 7;
+    player.vel.z += (dz / len) * 7;
+    player.vel.y = Math.max(player.vel.y, 5);
+  },
+  puff,
+  drop(id, n, pos) { spawnItem(id, n, pos.x, pos.y, pos.z); },
+});
+let mobTarget = null, attackCd = 0;
+
+function heldTool() {
+  return ITEMS[inv[selected]?.id]?.tool ?? null;
+}
+function attack(hit) {
+  if (attackCd > 0) return;
+  const t = heldTool();
+  const dmg = mode === 'creative' ? 20 : t ? t.damage : 1;
+  mobs.hit(hit.mob, dmg, player.pos);
+  attackCd = t?.kind === 'sword' ? 0.45 : 0.6;
+  swingT = 0;
+}
+
 const swing = () => { if (swingT >= 0.5) swingT = 0; };
 const isWaterAround = (x, y, z) => [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0]].some(([a, b, c]) => world.get(x + a, y + b, z + c) === B.WATER);
 
@@ -669,7 +740,7 @@ function breakBlock(t) {
   sfx('break', BLOCKS[id].sound);
   swing();
   if (mode === 'survival') {
-    const drop = BLOCKS[id].drop;
+    const drop = BLOCKS[id].needsPick && heldTool()?.kind !== 'pick' ? 0 : BLOCKS[id].drop;
     if (drop) spawnItem(drop, 1, x + 0.5, y + 0.5, z + 0.5);
     if (id === B.LEAVES && Math.random() < 0.1) spawnItem(ITEM.APPLE, 1, x + 0.5, y + 0.5, z + 0.5);
   }
@@ -677,6 +748,14 @@ function breakBlock(t) {
 
 function useAction() {
   const s = inv[selected];
+  if (target && BLOCKS[target.id].station && !player.sneaking) { openInventory(BLOCKS[target.id].station); return; }
+  if (s && ITEMS[s.id]?.spawns) {
+    if (!target) return;
+    mobs.spawn(ITEMS[s.id].spawns, target.x + 0.5 + target.normal[0], target.y + Math.max(0, target.normal[1]) + (target.normal[1] < 0 ? -2 : 0), target.z + 0.5 + target.normal[2]);
+    swing();
+    useSelected();
+    return;
+  }
   if (s && ITEMS[s.id]?.food) {
     if (mode === 'survival' && hunger < 20) {
       hunger = Math.min(20, hunger + ITEMS[s.id].food);
@@ -710,7 +789,7 @@ function pickBlock() {
   const at = inv.slice(0, 9).findIndex((s) => s && s.id === id);
   if (at >= 0) { select(at); return; }
   if (mode === 'creative' && PLACEABLE.includes(id)) {
-    inv[selected] = { id, count: STACK };
+    inv[selected] = { id, count: maxStack(id) };
     invVersion++;
     select(selected);
   }
@@ -775,7 +854,11 @@ canvas.addEventListener('mousedown', (e) => {
   initAudio();
   if (performance.now() - lastTouch < 800 || state !== 'playing') return;
   if (!locked) { requestLock(); return; }
-  if (e.button === 0) { mouseL = true; if (mode === 'creative' && target) { breakBlock(target); breakCooldown = 0.25; } }
+  if (e.button === 0) {
+    mouseL = true;
+    if (mobTarget) attack(mobTarget);
+    else if (mode === 'creative' && target) { breakBlock(target); breakCooldown = 0.25; }
+  }
   else if (e.button === 1) { e.preventDefault(); pickBlock(); }
   else if (e.button === 2) { mouseR = true; useAction(); useCooldown = 0.25; }
 });
@@ -821,7 +904,10 @@ const endLook = (e) => {
   const l = looks.get(e.pointerId);
   if (!l) return;
   looks.delete(e.pointerId);
-  if (!l.breaking && l.moved < 14 && performance.now() - l.t0 < 300 && state === 'playing') useAction();
+  if (!l.breaking && l.moved < 14 && performance.now() - l.t0 < 300 && state === 'playing') {
+    if (mobTarget) attack(mobTarget);
+    else useAction();
+  }
 };
 canvas.addEventListener('pointerup', endLook);
 canvas.addEventListener('pointercancel', endLook);
@@ -1045,6 +1131,9 @@ function updatePlay(dt) {
   // Target block.
   camera.getWorldDirection(dirV);
   target = world.raycast(camera.position, dirV, mode === 'creative' ? 6 : 4.5);
+  mobTarget = mobs.raycast(camera.position, dirV, 3.5);
+  if (mobTarget && target && target.dist < mobTarget.dist) mobTarget = null;
+  if (mobTarget) target = null;
   selection.visible = !!target;
   if (target) {
     const d = BLOCKS[target.id];
@@ -1061,7 +1150,9 @@ function updatePlay(dt) {
     if (!l.breaking && l.moved < 14 && performance.now() - l.t0 > 300) l.breaking = true;
     if (l.breaking) breakHeld = true;
   }
-  if (breakHeld && target) {
+  attackCd -= dt;
+  if (breakHeld && mobTarget) { attack(mobTarget); breaking = null; }
+  else if (breakHeld && target) {
     if (mode === 'creative') {
       if (breakCooldown <= 0) { breakBlock(target); breakCooldown = 0.25; }
       breaking = null;
@@ -1069,7 +1160,8 @@ function updatePlay(dt) {
       if (!breaking || breaking.x !== target.x || breaking.y !== target.y || breaking.z !== target.z) {
         breaking = { x: target.x, y: target.y, z: target.z, progress: 0 };
       }
-      const hard = BLOCKS[target.id].hardness;
+      const bd = BLOCKS[target.id], tool = heldTool();
+      const hard = bd.hardness / (tool && tool.kind === bd.tool ? tool.speed : 1);
       breaking.progress += hard === 0 ? 1 : dt / hard;
       swingT = swingT >= 1 ? 0 : swingT;
       hitSoundT -= dt;
@@ -1085,6 +1177,12 @@ function updatePlay(dt) {
   if (mouseR && useCooldown <= 0) { useAction(); useCooldown = 0.22; }
 
   updateEntities(dt);
+  const sunH = Math.sin(timeOfDay * Math.PI * 2);
+  mobs.update(dt, world, player, {
+    daylight: smooth(-0.18, 0.25, sunH),
+    targetable: mode === 'survival',
+    brightness: materials.solid.color.r,
+  });
   world.update(player.pos.x, player.pos.z, settings.rd, 5, 2);
 
   $('water-tint').hidden = !player.headInWater;
@@ -1143,7 +1241,7 @@ function updateEntities(dt) {
   for (let i = particles.length - 1; i >= 0; i--) {
     const pt = particles[i];
     pt.life -= dt;
-    pt.vel.y -= 18 * dt;
+    if (!pt.float) pt.vel.y -= 18 * dt;
     pt.mesh.position.addScaledVector(pt.vel, dt);
     const m = pt.mesh.position;
     if (BLOCKS[world.get(Math.floor(m.x), Math.floor(m.y), Math.floor(m.z))].solid) {
@@ -1212,6 +1310,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     get state() { return state; }, get world() { return world; }, get target() { return target; }, get inv() { return inv; },
     get health() { return health; }, player, breakTarget: () => target && breakBlock(target), use: useAction,
     setMode: (m) => { mode = m; }, hold: (b) => { mouseL = b; }, openInventory, closeInventory,
+    mobs, attackAhead: () => mobTarget && attack(mobTarget), setTime: (t) => { timeOfDay = t; }, addItem,
   };
 }
 
