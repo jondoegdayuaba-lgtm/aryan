@@ -99,6 +99,7 @@ function withColor(geometry, color, keep) {
   const col = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) { col[i * 3] = color.r; col[i * 3 + 1] = color.g; col[i * 3 + 2] = color.b; }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  if (keep.includes('uv') && !g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2));
   for (const k of Object.keys(g.attributes)) if (!keep.includes(k)) g.deleteAttribute(k);
   return g;
 }
@@ -108,14 +109,14 @@ export function bakedGeometry(parts) {
   return mergeGeometries(parts.map(({ geometry, material }) => withColor(geometry, materialColor(material), ['position', 'normal', 'color'])));
 }
 
-const SKIN_KEEP = ['position', 'normal', 'color', 'skinIndex', 'skinWeight'];
-let skinMat = null;
+const SKIN_KEEP = ['position', 'normal', 'uv', 'color', 'skinIndex', 'skinWeight'];
+const skinMats = new Map();
 
-// Merge a rigged model's visible skinned pieces into one vertex-coloured
-// SkinnedMesh (plus one per name in `separate`, which stay toggleable).
-// Cuts a character from ~20 draw calls to a handful.
+// Merge a rigged model's visible skinned pieces into one SkinnedMesh per
+// texture atlas (plus one per name in `separate`, which stay toggleable).
+// Each material's colour moves into vertex colours, multiplied by the shared
+// atlas in the shader. Cuts a character from ~20 draw calls to a handful.
 export function mergeSkinned(root, separate = []) {
-  skinMat ||= new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide });
   const groups = new Map();
   const drop = [];
   root.traverse((o) => {
@@ -135,9 +136,15 @@ export function mergeSkinned(root, separate = []) {
     groups.get(key).meshes.push(o);
   });
   for (const { meshes, parent } of groups.values()) {
-    const merged = mergeGeometries(meshes.map((m) => withColor(m.geometry, materialColor(m.material), SKIN_KEEP)));
+    const map = meshes[0].material.map || null;
+    const merged = mergeGeometries(meshes.map((m) => withColor(m.geometry, map ? m.material.color : materialColor(m.material), SKIN_KEEP)));
     if (!merged) continue;
-    const sm = new THREE.SkinnedMesh(merged, skinMat);
+    let mat = skinMats.get(map);
+    if (!mat) {
+      mat = new THREE.MeshStandardMaterial({ map, vertexColors: true, roughness: 0.78, side: THREE.DoubleSide });
+      skinMats.set(map, mat);
+    }
+    const sm = new THREE.SkinnedMesh(merged, mat);
     sm.bind(meshes[0].skeleton, meshes[0].bindMatrix);
     sm.castShadow = true;
     sm.receiveShadow = true;

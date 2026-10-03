@@ -9,22 +9,29 @@ const UPPER = new Set(['spine', 'chest', 'neck', 'head', 'upperarmL', 'upperarmR
 const PARTS = ['Body', 'Hat', 'Mask', 'Beard', 'Coat', 'Jacket', 'Vest', 'Suspenders', 'Satchel', 'GunBelt', 'Badge',
   'Revolver', 'RifleHand', 'HolsterGun', 'RifleBack'];
 
+const SKIN_BASE = new THREE.Color('#b67d5c');     // the tone char_textures.py paints
+const SKIN_MATS = ['Face', 'Skin', 'Hands'];
+
 export const OUTFITS = {
   player: {
     show: ['Body', 'Hat', 'GunBelt', 'HolsterGun', 'Suspenders', 'Satchel', 'RifleBack', 'Beard'],
-    colors: { Shirt: '#4f6b8e', Pants: '#5a4b3c', Hat: '#3b2b1f', Hair: '#3a2a1e', Skin: '#b97f5c', Hands: '#b97f5c' },
+    colors: { Shirt: '#4f6b8e', Pants: '#5a4b3c', Hat: '#3b2b1f', Hair: '#3a2a1e', Beard: '#4a3424' },
+    skin: '#b97f5c',
   },
   gus: {
     show: ['Body', 'Hat', 'Vest', 'Beard', 'GunBelt', 'HolsterGun'],
-    colors: { Shirt: '#cbbfa4', Pants: '#3c3a36', Hat: '#5b4a3a', Hair: '#a19b90', Vest: '#3a2d26', Skin: '#c29072', Hands: '#c29072' },
+    colors: { Shirt: '#cbbfa4', Pants: '#3c3a36', Hat: '#5b4a3a', Hair: '#a19b90', Vest: '#3a2d26' },
+    skin: '#c99a7c',
   },
   sheriff: {
     show: ['Body', 'Hat', 'Vest', 'Badge', 'GunBelt', 'HolsterGun'],
-    colors: { Shirt: '#d8d2c2', Pants: '#45403a', Hat: '#cdbb94', Vest: '#2d2a2a', Hair: '#5a4632', Skin: '#c9946f', Hands: '#c9946f' },
+    colors: { Shirt: '#d8d2c2', Pants: '#45403a', Hat: '#cdbb94', Vest: '#2d2a2a', Hair: '#5a4632' },
+    skin: '#c9946f',
   },
   farmer: {
     show: ['Body', 'Hat', 'Suspenders', 'Beard'],
-    colors: { Shirt: '#8b3b2f', Pants: '#4a5468', Hat: '#9c8a64', Hair: '#7a6a5a', Skin: '#c08a66', Hands: '#c08a66' },
+    colors: { Shirt: '#8b3b2f', Pants: '#4a5468', Hat: '#9c8a64', Hair: '#7a6a5a' },
+    skin: '#c08a66',
   },
   outlaw: {
     show: ['Body', 'Hat', 'Mask', 'Coat', 'GunBelt', 'HolsterGun'],
@@ -84,6 +91,15 @@ export class Character {
     if (outfit.vary) {
       for (const [k, list] of Object.entries(outfit.vary)) colors[k] = list[Math.floor(factory.rand() * list.length)];
     }
+    if (colors.Hair && !colors.Beard) colors.Beard = colors.Hair;
+    // Skin tone: the face texture is painted in one tone, so every skin
+    // material is scaled by target / base rather than replaced.
+    const tone = outfit.skin ? new THREE.Color(outfit.skin) : null;
+    if (tone) {
+      tone.r /= SKIN_BASE.r;
+      tone.g /= SKIN_BASE.g;
+      tone.b /= SKIN_BASE.b;
+    }
     for (const name of PARTS) {
       const o = this.model.getObjectByName(name);
       if (o) o.visible = outfit.show.includes(name);
@@ -94,13 +110,16 @@ export class Character {
         o.castShadow = true;
         o.receiveShadow = true;
         o.frustumCulled = false;
-        const c = colors[o.material.name];
-        if (c) {
-          if (!cache[o.material.name]) {
-            cache[o.material.name] = o.material.clone();
-            cache[o.material.name].color.set(c);
+        const name = o.material.name;
+        const c = colors[name];
+        const skin = tone && SKIN_MATS.includes(name) && !c;
+        if (c || skin) {
+          if (!cache[name]) {
+            cache[name] = o.material.clone();
+            if (c) cache[name].color.set(c);
+            else cache[name].color.multiply(tone);
           }
-          o.material = cache[o.material.name];
+          o.material = cache[name];
         }
       }
     });

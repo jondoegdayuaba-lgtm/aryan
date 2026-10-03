@@ -3,7 +3,7 @@
 // gzipped, as base64.
 //   npm install && npm run build:western
 import { build } from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -34,7 +34,9 @@ const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 
 const assets = ['assets/cowboy.glb', 'assets/horse.glb', 'assets/deer.glb', 'assets/props.glb', 'assets/mountains.glb',
   'assets/world.json', 'assets/terrain.bin', 'assets/map.jpg',
-  ...readdirSync(resolve(game, 'assets/textures')).map((f) => 'assets/textures/' + f)];
+  // only the textures the game loads itself; the models carry their own
+  ...[...readFileSync(resolve(game, 'js/assets.js'), 'utf8').matchAll(/tex\('(\w+)'\)/g)]
+    .map((m) => `assets/textures/${m[1]}.jpg`)];
 const embedded = {};
 let raw = 0;
 for (const a of assets) {

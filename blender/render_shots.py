@@ -518,6 +518,17 @@ def mountains():
 # ---------------------------------------------------------------------------
 # Characters
 # ---------------------------------------------------------------------------
+def set_base_color(m, hex_color):
+    """Recolour a character material: the colour the atlas is multiplied by, or the plain base colour."""
+    rgba = (*srgb(hex_color), 1)
+    m.diffuse_color = rgba
+    for n in m.node_tree.nodes:
+        if n.bl_idname == 'ShaderNodeMix' and n.blend_type == 'MULTIPLY':
+            [i for i in n.inputs if i.type == 'RGBA'][1].default_value = rgba
+            return
+    m.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = rgba
+
+
 def cowboy(outfit, colors, at, yaw, action=None, frame=0, pose=None):
     """A posed cowboy. outfit: visible part names; colors: material name -> hex."""
     col = bpy.data.collections.new('Char')
@@ -533,7 +544,7 @@ def cowboy(outfit, colors, at, yaw, action=None, frame=0, pose=None):
             base = m.name.split('.')[0]
             if base in colors:
                 mm = m.copy()
-                mm.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (*srgb(colors[base]), 1)
+                set_base_color(mm, colors[base])
                 slot.material = mm
     rig.location = at
     rig.rotation_euler = (0, 0, yaw)

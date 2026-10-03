@@ -77,7 +77,8 @@ python blender/render_shots.py farm --samples 32 --size 960x540
 
 | File | What it builds |
 | --- | --- |
-| `characters.py` | The cowboy: skeleton, body, clothing pieces (hat, bandana, duster, jacket, vest, suspenders, satchel, gun belt), revolver and rifle, and the idle, walk, run, aim, ride, die, kneel and hands-up animations |
+| `characters.py` | The cowboy: skeleton; a body grown from a stick figure with the Skin modifier, then shaped and weighted; a sculpted head with eyes, lids and ears; hands with fingers; hair, beard and bandana layers clipped along smooth edges; fitted clothing (hat, duster, jacket, vest, suspenders, satchel, gun belt, boots); revolver and rifle; and the idle, walk, run, aim, ride, die, kneel and hands-up animations |
+| `char_textures.py` | The character texture atlas: cotton, canvas, denim, wool, leather, felt, bandana, hair and skin tiles, and the painted face |
 | `animals.py` | The horse (with saddle, blanket, bedroll and bridle) and the deer, from one four-legged rig with walk, trot, gallop, graze and die animations |
 | `buildings.py` | Brick and wooden storefronts with signs, the farmhouse, barn, cabin, water tower, tents, wagon, campfire, fences, bridge and props |
 | `nature.py` | Pines, oaks, a dead tree, bushes, rocks, rock slabs, tobacco plants and grass clumps |
