@@ -1,3 +1,110 @@
+# Outlaw Frontier
+
+An open-world western in the browser, inspired by Red Dead Redemption 2. Ride across a river valley, hunt deer, and take on the masked Lockhart gang over five story missions. Every model, rig, animation, texture and the terrain itself is built by a Blender Python script (`blender/`), and the game runs on [three.js](https://threejs.org).
+
+It's an original homage: none of Rockstar's art, names or logos are used.
+
+| | |
+| --- | --- |
+| ![Shootout at the bank](blender/renders/shootout.jpg) | ![Pause menu](blender/renders/pause.jpg) |
+| ![Hilltop above the valley](blender/renders/hilltop.jpg) | ![The burning farm](blender/renders/farm.jpg) |
+| ![On horseback above the river](blender/renders/vista.jpg) | These five stills were rendered in Blender (Cycles) by `blender/render_shots.py`, from the same models and terrain the game uses. |
+
+## Play it
+
+- **From your desktop:** save `desktop/outlaw-frontier.html` and double-click it. It's the whole game in one file (about 6 MB) and works offline, except the fonts, which fall back to system fonts.
+- **Locally:** serve the repository root, then open `/western/`:
+
+  ```sh
+  python3 -m http.server 8000
+  # then open http://localhost:8000/western/
+  ```
+
+- **On a website:** upload the repository (at least `western/` and `vendor/`) to any static host, such as GitHub Pages, and open `/western/`.
+
+Click **Start**, then click the game to lock the mouse. Progress saves in your browser.
+
+## Controls
+
+| Action | Keys |
+| --- | --- |
+| Move / steer the horse | W A S D (camera-relative) |
+| Run, gallop | Hold Shift |
+| Walk slowly | Hold C or Alt |
+| Look | Mouse (or drag with a button held if the mouse won't lock) |
+| Aim, shoot | Hold right mouse, left click |
+| Reload | R |
+| Revolver, rifle, holster | 1, 2, 3 (or the mouse wheel) |
+| Dead Eye | Q while aiming, click targets to mark them, Q again to fire at all of them |
+| Mount, dismount, talk, skin, loot | E |
+| Whistle for your horse | H |
+| Map | M |
+| Pause menu | Esc or P |
+| Mute | N |
+
+Phones get an on-screen stick and buttons.
+
+## The story
+
+You're Cole Brennan, riding with Gus Hale's outfit, camped on the west bank of the Dakota River. Mission givers show as yellow letters on the minimap and map; walk up and press E.
+
+1. **Morning Ride** (Gus): mount your horse and ride up to the lookout on the bluff for a view of the valley.
+2. **Fresh Meat** (Gus): take your rifle to the meadow below Eagle Ridge, hunt two deer and skin them.
+3. **Trouble in Copper Bluff** (Gus): masked outlaws are robbing the brick bank. Drive them off in two waves.
+4. **Smoke on the Horizon** (Sheriff Dawes): raiders have set the Hollis farm alight at sunset. Clear the tobacco field and find Eli Hollis.
+5. **Dead or Alive** (Sheriff Dawes): clear out the Lockhart hideout in the northern pines and bring down Red Lockhart.
+
+If you die during a mission, it restarts from its last checkpoint. After the last mission the valley is yours to roam.
+
+## What's in the world
+
+- A 2.4 km square valley with a winding river, grassy western hills, a pine forest under snowy northern peaks, and a ring of distant mountains.
+- Copper Bluff, with a brick bank, general store and sheriff's office, a saloon, hotel, gunsmith, barber, livery and houses; the Hollis farm with its tobacco field and red barn; your camp with tents, a covered wagon and a campfire; a log cabin hideout.
+- About 13,000 trees, rocks and plants, plus grass that grows around you as you move.
+- A day and night cycle (24 minutes per day), a horse with gaits and stamina, deer that spook, townsfolk who run from gunfire, and outlaws who flank and shoot back.
+- The HUD from the screenshots: health, stamina and Dead Eye rings above a rotating minimap. The pause menu is a red panel with a pocket watch over a frozen black-and-white frame, with Map, Help, Progress, Player, Story and Settings pages.
+
+## The Blender side
+
+`blender/` holds the Python that makes every asset. It runs with Blender 4.5, either installed or as the `bpy` module:
+
+```sh
+pip install bpy==4.5.4               # or use: blender -b -P blender/build_assets.py
+python blender/build_assets.py       # about 15 s; writes western/assets/
+python blender/render_shots.py       # the five Cycles stills, a few minutes each
+python blender/render_shots.py farm --samples 32 --size 960x540
+```
+
+| File | What it builds |
+| --- | --- |
+| `characters.py` | The cowboy: skeleton, body, clothing pieces (hat, bandana, duster, jacket, vest, suspenders, satchel, gun belt), revolver and rifle, and the idle, walk, run, aim, ride, die, kneel and hands-up animations |
+| `animals.py` | The horse (with saddle, blanket, bedroll and bridle) and the deer, from one four-legged rig with walk, trot, gallop, graze and die animations |
+| `buildings.py` | Brick and wooden storefronts with signs, the farmhouse, barn, cabin, water tower, tents, wagon, campfire, fences, bridge and props |
+| `nature.py` | Pines, oaks, a dead tree, bushes, rocks, rock slabs, tobacco plants and grass clumps |
+| `textures.py` | Tileable brick, clapboard, planks, shingles, barn boards, canvas, bark and ground textures |
+| `terrain.py` | The heightmap, river, roads, flattened building sites, and where every building, tree and rock goes |
+| `worldmesh.py` | The distant mountain ring and the parchment map |
+| `build_assets.py` | Runs all of the above and exports `cowboy.glb`, `horse.glb`, `deer.glb`, `props.glb`, `mountains.glb`, `terrain.bin`, `world.json` and `map.jpg` |
+| `render_shots.py` | The five stills above |
+
+## The game code
+
+| File | What it does |
+| --- | --- |
+| `western/js/main.js` | Startup, game loop, pause, death and respawn, saving, settings |
+| `western/js/env.js` | Terrain mesh and shader, river, sky, sun, fog, time of day, grass |
+| `western/js/world.js` | Places buildings, props and instanced vegetation from `world.json` |
+| `western/js/player.js` | Player movement, riding, the third-person camera, shooting, Dead Eye |
+| `western/js/animals.js` | Horses and deer |
+| `western/js/npc.js` | Outlaws, townsfolk and mission characters |
+| `western/js/missions.js` | The five story missions |
+| `western/js/hud.js`, `menu.js` | HUD, minimap, pause menu, title screen |
+| `western/js/combat.js`, `effects.js`, `audio.js` | Bullets and damage, smoke and fire, synthesised sound |
+
+After changing the game code, rebuild the one-file version with `npm install` then `npm run build:western`.
+
+---
+
 # Missile Run
 
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.

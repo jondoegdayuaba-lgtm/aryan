@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:desktop": "node tools/build-desktop.mjs"
+    "build:desktop": "node tools/build-desktop.mjs",
+    "build:western": "node tools/build-western.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

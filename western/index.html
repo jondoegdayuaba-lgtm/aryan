@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Outlaw Frontier</title>
+  <meta name="description" content="An open-world western: ride across a river valley, hunt, and take on the Lockhart gang in five story missions.">
+  <meta name="theme-color" content="#120d0a">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23a3120f'/%3E%3Cpath d='M10 38c4-3 12-5 22-5s18 2 22 5c-4 2-12 3-22 3s-18-1-22-3z' fill='%23f1e6cf'/%3E%3Cpath d='M22 34c0-9 3-16 10-16s10 7 10 16' fill='%23f1e6cf'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Oswald:wght@400;500;600&family=Rye&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js", "three/addons/": "../vendor/three/addons/" } }</script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+  <div id="screen-fx" aria-hidden="true"><div class="hurt"></div><div class="deadeye"></div><div class="grain"></div></div>
+
+  <div id="hud" hidden>
+    <div class="hud-bl">
+      <div class="cores">
+        <div class="core" id="core-health" title="Health"><svg viewBox="0 0 40 40"><circle class="ring-bg" cx="20" cy="20" r="17"/><circle class="ring" cx="20" cy="20" r="17"/><path class="icon" d="M20 29s-8-5-8-10.5A4.5 4.5 0 0 1 20 16a4.5 4.5 0 0 1 8 2.5C28 24 20 29 20 29z"/></svg></div>
+        <div class="core" id="core-stamina" title="Stamina"><svg viewBox="0 0 40 40"><circle class="ring-bg" cx="20" cy="20" r="17"/><circle class="ring" cx="20" cy="20" r="17"/><path class="icon" d="M22 11l-8 11h5l-2 8 8-11h-5z"/></svg></div>
+        <div class="core" id="core-deadeye" title="Dead Eye"><svg viewBox="0 0 40 40"><circle class="ring-bg" cx="20" cy="20" r="17"/><circle class="ring" cx="20" cy="20" r="17"/><path class="icon" d="M11 20s3.5-5.5 9-5.5 9 5.5 9 5.5-3.5 5.5-9 5.5S11 20 11 20z"/><circle class="icon-dot" cx="20" cy="20" r="2.4"/></svg></div>
+        <div class="core horse" id="core-horse" title="Horse stamina" hidden><svg viewBox="0 0 40 40"><circle class="ring-bg" cx="20" cy="20" r="17"/><circle class="ring" cx="20" cy="20" r="17"/><path class="icon" d="M14 28l1-7 3-5 2-4 3 3 4 1-1 3-3-1-1 3 1 7h-2l-1-5-3 1-1 4z"/></svg></div>
+      </div>
+      <div class="minimap-wrap"><canvas id="minimap" width="220" height="220"></canvas><div class="minimap-n">N</div></div>
+    </div>
+    <div class="hud-tr">
+      <div id="money">$0.00</div>
+      <div id="weapon"><span id="weapon-name">Revolver</span><span id="ammo">6</span><span class="sep">|</span><span id="ammo-res">48</span></div>
+      <div id="clock">7:00</div>
+    </div>
+    <div id="crosshair" aria-hidden="true"><i></i></div>
+    <div id="hitmarker" aria-hidden="true"></div>
+    <div id="marks" aria-hidden="true"></div>
+    <div id="objective" aria-live="polite"></div>
+    <div id="subtitle" aria-live="polite"></div>
+    <div id="prompts"></div>
+    <div id="toasts"></div>
+    <div id="title-card" aria-live="polite"><div class="tc-small"></div><div class="tc-big"></div><div class="tc-sub"></div></div>
+    <div id="touch" hidden>
+      <div id="stick"><i></i></div>
+      <button id="t-aim" type="button">Aim</button>
+      <button id="t-fire" type="button">Fire</button>
+      <button id="t-act" type="button">E</button>
+      <button id="t-sprint" type="button">Run</button>
+      <button id="t-pause" type="button" aria-label="Pause">II</button>
+    </div>
+  </div>
+
+  <div id="pause" hidden>
+    <div class="pause-shade"></div>
+    <aside class="pause-panel">
+      <svg class="watch" viewBox="0 0 100 120" aria-hidden="true">
+        <circle cx="50" cy="12" r="6" /><rect x="45" y="17" width="10" height="9" rx="2"/>
+        <circle cx="50" cy="68" r="40"/><circle cx="50" cy="68" r="34" class="thin"/>
+        <g class="ticks"></g>
+        <line id="watch-h" x1="50" y1="68" x2="50" y2="48"/><line id="watch-m" x1="50" y1="68" x2="66" y2="68"/>
+        <circle cx="50" cy="68" r="2.5" class="dot"/>
+      </svg>
+      <nav id="pause-nav">
+        <button type="button" data-page="map">Map</button>
+        <button type="button" data-page="help">Help</button>
+        <button type="button" data-page="progress">Progress</button>
+        <button type="button" data-page="player">Player</button>
+        <button type="button" data-page="story">Story</button>
+        <button type="button" data-page="settings">Settings</button>
+        <button type="button" data-page="resume">Resume</button>
+        <button type="button" data-page="quit" class="dim">Quit to Title</button>
+      </nav>
+    </aside>
+    <section class="pause-page" id="page-map" hidden>
+      <div class="map-frame"><div id="bigmap"><img id="bigmap-img" alt="Map of the valley"><canvas id="bigmap-over"></canvas></div></div>
+      <div class="map-legend"><span><i class="lg-you"></i>You</span><span><i class="lg-horse"></i>Horse</span><span><i class="lg-mission"></i>Mission</span><span><i class="lg-obj"></i>Objective</span></div>
+    </section>
+    <section class="pause-page" id="page-help" hidden>
+      <h2>Help</h2>
+      <div class="cols">
+        <dl>
+          <dt>Move</dt><dd>W A S D</dd>
+          <dt>Run / gallop</dt><dd>Hold Shift</dd>
+          <dt>Look</dt><dd>Mouse</dd>
+          <dt>Aim</dt><dd>Hold right mouse</dd>
+          <dt>Shoot</dt><dd>Left mouse</dd>
+          <dt>Reload</dt><dd>R</dd>
+          <dt>Weapons</dt><dd>1 revolver &middot; 2 rifle &middot; 3 holster</dd>
+        </dl>
+        <dl>
+          <dt>Dead Eye</dt><dd>Q while aiming, click to mark, Q to fire</dd>
+          <dt>Mount / interact</dt><dd>E</dd>
+          <dt>Call horse</dt><dd>H</dd>
+          <dt>Map</dt><dd>M</dd>
+          <dt>Pause</dt><dd>Esc or P</dd>
+          <dt>Mute</dt><dd>N</dd>
+        </dl>
+      </div>
+      <p>Mission givers show on your map as yellow letters. Walk up to them and press E. On horseback, hold Shift to gallop; your horse tires, so ease off when its ring runs low. Dead Eye slows time: mark targets, then fire them all at once.</p>
+    </section>
+    <section class="pause-page" id="page-progress" hidden><h2>Progress</h2><div id="progress-body"></div></section>
+    <section class="pause-page" id="page-player" hidden><h2>Player</h2><div id="player-body"></div></section>
+    <section class="pause-page" id="page-story" hidden><h2>Story</h2><div id="story-body"></div></section>
+    <section class="pause-page" id="page-settings" hidden>
+      <h2>Settings</h2>
+      <div class="settings">
+        <label>Graphics<select id="set-quality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+        <label>Mouse sensitivity<input id="set-sens" type="range" min="0.3" max="2.5" step="0.1"></label>
+        <label>Field of view<input id="set-fov" type="range" min="50" max="80" step="1"></label>
+        <label>Volume<input id="set-vol" type="range" min="0" max="1" step="0.05"></label>
+        <label class="check"><input id="set-invert" type="checkbox"> Invert look</label>
+      </div>
+    </section>
+    <div class="pause-hints"><span><kbd>Click</kbd> Select</span><span><kbd>Esc</kbd> Back</span></div>
+  </div>
+
+  <div id="title-screen" hidden>
+    <div class="title-inner">
+      <div class="title-pre">A western in five chapters</div>
+      <h1>Outlaw <span>Frontier</span></h1>
+      <div class="title-buttons">
+        <button type="button" id="btn-play" class="big">Continue</button>
+        <button type="button" id="btn-new">New Game</button>
+      </div>
+      <p class="title-tip">Mouse and keyboard recommended. Click to look around once you start.</p>
+    </div>
+  </div>
+
+  <div id="loading">
+    <div class="ld-title">Outlaw <span>Frontier</span></div>
+    <div class="ld-bar"><i id="ld-fill"></i></div>
+    <div class="ld-text" id="ld-text">Saddling up&hellip;</div>
+  </div>
+
+  <div id="death" hidden><div class="dead-text">You died</div><div class="dead-sub" id="dead-sub"></div></div>
+  <div id="fade"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
