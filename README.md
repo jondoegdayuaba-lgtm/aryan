@@ -1,5 +1,7 @@
 # Missile Run
 
+> **Also in this repository: [Sunken Gold](sunken-gold/README.md)**, a 3D underwater treasure-diving game built with Blender and three.js. Explore a coral reef, a sunken galleon and a deep trench for gold and five lost relics before your air runs out. Play the one-file version at [`desktop/sunken-gold.html`](desktop/sunken-gold.html).
+
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.
 
 ## How the flying works

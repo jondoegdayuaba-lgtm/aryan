@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Sunken Gold</title>
+  <meta name="description" content="A 3D underwater treasure-diving game: explore a coral reef, a sunken galleon and a deep trench for gold and five lost relics, before your air runs out.">
+  <meta name="theme-color" content="#04202e">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2304202e'/%3E%3Ccircle cx='32' cy='34' r='15' fill='%23f2b705'/%3E%3Ccircle cx='32' cy='34' r='10' fill='none' stroke='%23b07d00' stroke-width='3'/%3E%3Ccircle cx='17' cy='15' r='4' fill='none' stroke='%239fe8ff' stroke-width='2'/%3E%3Ccircle cx='24' cy='8' r='2.5' fill='none' stroke='%239fe8ff' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js", "three/addons/": "../vendor/three/addons/" } }</script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+
+  <div id="hud" hidden>
+    <div class="compass" aria-hidden="true"><div id="compass-strip"></div><div class="compass-mark"></div></div>
+    <div id="zone" class="zone" aria-live="polite"></div>
+
+    <div class="hud-tl">
+      <div class="bag"><span class="label">Bag</span><span id="bag" class="num">0</span><span class="coin-ico" aria-hidden="true"></span></div>
+      <div class="banked"><span class="label">Banked</span><span id="banked" class="num">0</span></div>
+    </div>
+
+    <div class="hud-tr">
+      <div id="relics" class="relics" aria-label="Relics found"></div>
+      <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+    </div>
+
+    <div class="computer" aria-label="Dive computer">
+      <div class="air-ring">
+        <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-bg" cx="50" cy="50" r="42"/><circle id="air-arc" class="ring" cx="50" cy="50" r="42"/></svg>
+        <div class="air-text"><span id="air-pct" class="num">100</span><span class="label">Air %</span></div>
+      </div>
+      <div class="readouts">
+        <div><span class="label">Depth</span><span id="depth" class="num big">0.0</span><span class="unit">m</span></div>
+        <div><span class="label">Air left</span><span id="air-time" class="num">--</span></div>
+        <div class="battery"><span class="label">Boost</span><div class="bar"><div id="battery-fill"></div></div></div>
+      </div>
+    </div>
+
+    <div class="hud-br">
+      <div id="strobe" class="tool"><span class="key">Q</span><span>Strobe</span><div class="cool"><div id="strobe-fill"></div></div></div>
+      <div id="lamp" class="tool"><span class="key">F</span><span>Lamp</span></div>
+    </div>
+
+    <div id="dot" aria-hidden="true"></div>
+    <div id="prompt" class="prompt" hidden><span id="prompt-text"></span><div class="hold"><div id="hold-fill"></div></div></div>
+    <div id="popups" aria-live="polite"></div>
+    <div id="warning" class="warning" hidden></div>
+    <div id="hint" class="hint" hidden></div>
+
+    <div class="touch-pad" aria-hidden="true">
+      <div id="stick" class="stick" hidden><div id="stick-knob"></div></div>
+      <div class="touch-buttons">
+        <button type="button" class="tbtn" data-hold="Up">Up</button>
+        <button type="button" class="tbtn" data-hold="Down">Down</button>
+        <button type="button" class="tbtn big" data-hold="Boost">Boost</button>
+        <button type="button" class="tbtn big gold" data-hold="Grab">Grab</button>
+        <button type="button" class="tbtn" data-hold="Lamp">Lamp</button>
+        <button type="button" class="tbtn" data-hold="Strobe">Strobe</button>
+      </div>
+    </div>
+  </div>
+
+  <section id="menu" class="screen" aria-labelledby="title">
+    <h1 id="title" class="title"><span id="title-a"></span> <span id="title-b" class="accent"></span></h1>
+    <p id="tagline" class="tagline"></p>
+    <div class="menu-progress">
+      <div><span class="label">Banked gold</span><strong id="menu-gold" class="num">0</strong></div>
+      <div><span class="label">Relics</span><strong id="menu-relics" class="num">0 / 5</strong></div>
+    </div>
+    <button id="btn-dive" class="big-btn" type="button">Dive</button>
+    <dl class="controls controls-desktop">
+      <div><dt>Mouse</dt><dd>Look</dd></div>
+      <div><dt>W A S D</dt><dd>Swim with the scooter</dd></div>
+      <div><dt>Space / C</dt><dd>Rise / sink</dd></div>
+      <div><dt>Shift</dt><dd>Boost</dd></div>
+      <div><dt>E (hold)</dt><dd>Grab, open chests</dd></div>
+      <div><dt>F / Q</dt><dd>Lamp / shark strobe</dd></div>
+    </dl>
+    <dl class="controls controls-touch">
+      <div><dt>Left thumb</dt><dd>Swim</dd></div>
+      <div><dt>Drag right</dt><dd>Look</dd></div>
+      <div><dt>Grab</dt><dd>Take treasure</dd></div>
+    </dl>
+    <div class="menu-foot">
+      <button id="btn-sound" class="text-btn" type="button">Sound on</button>
+      <button id="btn-reset" class="text-btn" type="button">New game</button>
+    </div>
+  </section>
+
+  <section id="boat" class="screen screen-boat" hidden aria-labelledby="boat-title">
+    <div class="boat-card">
+      <h2 id="boat-title" class="title small">On the boat</h2>
+      <div id="boat-report" class="report"></div>
+      <div class="bank-line"><span class="label">Banked gold</span><strong id="boat-gold" class="num">0</strong></div>
+      <h3 class="sub">Upgrades</h3>
+      <div id="shop" class="shop"></div>
+      <h3 class="sub">Captain's log</h3>
+      <ul id="journal" class="journal"></ul>
+      <button id="btn-redive" class="big-btn" type="button">Dive again</button>
+      <button id="btn-boat-menu" class="text-btn" type="button">Title screen</button>
+    </div>
+  </section>
+
+  <section id="paused" class="screen screen-center" hidden>
+    <h2 class="title small">Paused</h2>
+    <button id="btn-resume" class="big-btn" type="button">Resume</button>
+    <button id="btn-surface" class="text-btn" type="button">Abort dive (lose the bag)</button>
+    <button id="btn-pause-sound" class="text-btn" type="button">Sound on</button>
+  </section>
+
+  <section id="blackout" class="screen screen-center" hidden>
+    <h2 id="blackout-title" class="title small">You blacked out</h2>
+    <p id="blackout-text" class="tagline"></p>
+    <button id="btn-blackout" class="big-btn" type="button">Back to the boat</button>
+  </section>
+
+  <section id="win" class="screen screen-center" hidden>
+    <h2 class="title">Legend of the <span class="accent">Deep</span></h2>
+    <p class="tagline">All five relics are safe aboard. The San Aurelio's treasure is yours.</p>
+    <div id="win-stats" class="result-stats"></div>
+    <button id="btn-win" class="big-btn" type="button">Keep diving</button>
+  </section>
+
+  <div id="flash" aria-hidden="true"></div>
+  <div id="loading" class="loading">
+    <div class="load-title">SUNKEN <span class="accent">GOLD</span></div>
+    <div class="load-bar"><div id="load-fill"></div></div>
+    <div id="load-text">Filling tanks…</div>
+  </div>
+  <noscript><p class="loading">This game needs JavaScript turned on.</p></noscript>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
