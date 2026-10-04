@@ -100,8 +100,8 @@ export class HUD {
     if (html === this.lastObjective) return;
     this.lastObjective = html;
     this.objectiveEl.classList.remove('show');
+    clearTimeout(this._objT);       // an objective set and cleared at once never shows
     if (!html) return;
-    clearTimeout(this._objT);
     this._objT = setTimeout(() => {
       this.objectiveEl.innerHTML = html;
       this.objectiveEl.classList.add('show');

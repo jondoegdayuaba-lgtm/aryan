@@ -367,7 +367,7 @@ class Game {
       let at = t.at;
       if (!at) {
         const d = new THREE.Vector3(t.to.x - p.pos.x, 0, t.to.z - p.pos.z).normalize();
-        at = new THREE.Vector3(t.to.x - d.x * 30, 0, t.to.z - d.z * 30);
+        at = new THREE.Vector3(t.to.x - d.x * 14, 0, t.to.z - d.z * 14);
       }
       const v = free(at.x, at.z, 1.4);
       const yaw = Math.atan2(t.to.x - v.x, t.to.z - v.z);

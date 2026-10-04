@@ -169,6 +169,7 @@ class Run {
         if (w.wait > 0) return;
       } else if (w.until && !w.until()) return;
     }
+    this.travel = null;             // a trip only lasts until the step that set it is over
     const r = this.gen.next();
     if (r.done) this.missions.complete(this);
     else this.wait = r.value || null;
