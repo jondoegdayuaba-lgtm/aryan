@@ -48,6 +48,11 @@ export const OUTFITS = {
     show: ['Body', 'Hat', 'Mask', 'Coat', 'GunBelt', 'HolsterGun', 'Beard'],
     colors: { Shirt: '#2a2626', Pants: '#211f1e', Coat: '#1a1818', Mask: '#9a1c16', Hat: '#151313', Hands: '#201814', Hair: '#7a2a1a' },
   },
+  gunslinger: {
+    show: ['Body', 'Hat', 'Coat', 'GunBelt', 'HolsterGun', 'Beard'],
+    colors: { Shirt: '#d9d2c2', Pants: '#1f1d1c', Coat: '#151414', Hat: '#111010', Hair: '#1a1410', Hands: '#1c1612' },
+    skin: '#c08d6c',
+  },
   townsman: {
     show: ['Body', 'Hat', 'Vest'],
     colors: { Shirt: '#c8bda6', Pants: '#4a4440', Vest: '#3c3430', Hat: '#6a5a48' },

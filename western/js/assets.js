@@ -5,6 +5,10 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // The one-file desktop build (tools/build-western.mjs) embeds every asset as
 // gzipped base64 in window.__EMBEDDED_ASSETS; otherwise they're fetched.
+export async function loadBytes(path) {
+  return bytes(path);
+}
+
 async function bytes(path) {
   const emb = window.__EMBEDDED_ASSETS?.[path];
   if (emb) {

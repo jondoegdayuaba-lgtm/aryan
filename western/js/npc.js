@@ -53,6 +53,8 @@ export class NPC {
       this.char.setWeapon(this.weapon);
       this.timer = 0;
       this.shootTimer = 0.6 + rand() * 1.4;
+      this.tauntTimer = 5 + rand() * 8;
+      if (rand() < 0.7) this.game.voices.bark(this, 'spot');
     }
   }
 
@@ -66,6 +68,7 @@ export class NPC {
       this.kill(dir);
       return true;
     }
+    if (this.role === 'outlaw' && rand() < 0.45) this.game.voices.bark(this, 'hurt');
     return false;
   }
 
@@ -179,7 +182,13 @@ export class NPC {
       if (this.clip <= 0) {
         this.reload = 2.4;
         this.clip = this.weapon === 'rifle' ? 8 : 6;
+        if (rand() < 0.5) g.voices.bark(this, 'reload');
       }
+    }
+    this.tauntTimer = (this.tauntTimer ?? 6) - dt;
+    if (this.tauntTimer <= 0) {
+      this.tauntTimer = 7 + rand() * 9;
+      if (rand() < 0.55 && dist < 60) g.voices.bark(this, 'taunt');
     }
   }
 

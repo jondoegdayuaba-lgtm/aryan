@@ -16,6 +16,7 @@ import { Input } from './input.js';
 import { HUD } from './hud.js';
 import { Menu } from './menu.js';
 import { Missions } from './missions.js';
+import { Voices } from './voice.js';
 import { QUALITY, CAMERA } from './config.js';
 import { store, damp, clamp, rng } from './util.js';
 
@@ -52,6 +53,7 @@ class Game {
     this.input.invert = this.settings.invert;
     this.audio = new Audio();
     this.audio.setVolume(this.settings.volume);
+    this.voices = new Voices(this);
     this.events = new Events();
     this.state = 'loading';
     this.time = 0;
@@ -70,10 +72,11 @@ class Game {
   async init() {
     const fill = $('ld-fill');
     const text = $('ld-text');
-    const assets = (this.assets = await loadAssets((f, label) => {
+    const [assets] = await Promise.all([loadAssets((f, label) => {
       fill.style.width = `${Math.round(f * 100)}%`;
       text.textContent = label + '…';
-    }));
+    }), this.voices.load()]);
+    this.assets = assets;
     text.textContent = 'Building the valley…';
     await new Promise((res) => setTimeout(res, 30));
     this.terrain = new Terrain(assets.world, assets.terrain);
@@ -107,6 +110,7 @@ class Game {
     this.player.char.setWeapon(null);
     this.events.on('npcKilled', (n) => {
       if (n.role === 'civilian') this.hud.toast('A bystander was killed.', 'Careful');
+      this.voices.onKill(n);
     });
     this.input.onUnlock = () => {
       if (this.state === 'playing' && !this.player.dead) this.pause();

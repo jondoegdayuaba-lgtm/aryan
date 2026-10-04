@@ -58,6 +58,7 @@ class World:
             ('hideout', 'circle', (232, -862, 38), 55),
             ('ridge', 'circle', (-640, 30, 22), 40),
             ('lookout', 'circle', (-410, -240, 4), 16),
+            ('thieves', 'circle', (625, 700, 20), 30),
         ]
         self.flatten_zones()
         self.make_roads()
@@ -65,6 +66,7 @@ class World:
         self.place_farm()
         self.place_camp()
         self.place_hideout()
+        self.place_thieves()
         self.place_nature()
         self.make_river()
         self.pick_points()
@@ -348,6 +350,32 @@ class World:
         self.add('LogSeat', cx - 2, cz + 7.5, 0.0)
         self.points['hideout'] = [cx, cz]
 
+    # -- horse thieves' camp, east of the Hollis farm ----------------------------
+    def place_thieves(self):
+        cx, cz = 625.0, 700.0
+        self.add('Campfire', cx, cz, 0.0)
+        self.add('Tent', cx - 9, cz - 4, 1.1, 'building', 'ttent1')
+        self.add('Tent', cx - 6, cz + 8, 2.2, 'building', 'ttent2')
+        self.add('Wagon', cx + 4, cz - 11, -0.4, 'building', 'twagon')
+        self.add('LogSeat', cx + 2.5, cz + 2, 0.6)
+        for i in range(3):
+            self.add(('Crate', 'Barrel', 'Crate')[i], cx - 3 + i * 1.1, cz - 9, i * 0.7)
+        # A rail corral for the stolen horses, gate on the west side
+        kx, kz, hx, hz = cx + 14, cz + 2, 6.4, 4.8
+        x = kx - hx
+        while x < kx + hx - 0.1:
+            self.add('Fence', x + 1.6, kz - hz, 0.0)
+            self.add('Fence', x + 1.6, kz + hz, 0.0)
+            x += 3.2
+        z = kz - hz
+        while z < kz + hz - 0.1:
+            if not abs(z + 1.6 - kz) < 1.7:
+                self.add('Fence', kx - hx, z + 1.6, math.pi / 2)
+            self.add('Fence', kx + hx, z + 1.6, math.pi / 2)
+            z += 3.2
+        self.points['thieves'] = [cx, cz]
+        self.points['corral'] = [kx, kz]
+
     # -- trees, rocks ------------------------------------------------------------
     def blocked(self, x, z, clearance=6.0):
         if abs(x) > PLAY + 80 or abs(z) > PLAY + 80:
@@ -466,6 +494,9 @@ class World:
         return [float(self.X[rs, cs][i, j]), float(self.Z[rs, cs][i, j])]
 
     def pick_points(self):
+        north = next(r for r in self.roads if r['name'] == 'north')
+        cp = min(north['points'], key=lambda p: abs(p[1] + 140))
+        self.points['coach'] = [cp[0], cp[1]]
         b = self.bridges[0]
         self.points.update({
             'bridge': [round(b['x'], 1), round(b['z'], 1)],

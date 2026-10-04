@@ -1,6 +1,6 @@
 # Outlaw Frontier
 
-An open-world western in the browser, inspired by Red Dead Redemption 2. Ride across a river valley, hunt deer, and take on the masked Lockhart gang over five story missions. Every model, rig, animation, texture and the terrain itself is built by a Blender Python script (`blender/`), and the game runs on [three.js](https://threejs.org).
+An open-world western in the browser, inspired by Red Dead Redemption 2. Ride across a river valley, hunt deer, and take on the masked Lockhart gang over nine voiced story missions. Every model, rig, animation, texture and the terrain itself is built by a Blender Python script (`blender/`), and the game runs on [three.js](https://threejs.org).
 
 It's an original homage: none of Rockstar's art, names or logos are used.
 
@@ -12,7 +12,7 @@ It's an original homage: none of Rockstar's art, names or logos are used.
 
 ## Play it
 
-- **From your desktop:** save `desktop/outlaw-frontier.html` and double-click it. It's the whole game in one file (about 6 MB) and works offline, except the fonts, which fall back to system fonts.
+- **From your desktop:** save `desktop/outlaw-frontier.html` and double-click it. It's the whole game in one file (about 9 MB) and works offline, except the fonts, which fall back to system fonts.
 - **Locally:** serve the repository root, then open `/western/`:
 
   ```sh
@@ -38,6 +38,7 @@ Click **Start**, then click the game to lock the mouse. Progress saves in your b
 | Dead Eye | Q while aiming, click targets to mark them, Q again to fire at all of them |
 | Mount, dismount, talk, skin, loot | E |
 | Whistle for your horse | H |
+| Go to the next mission, or skip a long ride in one | J |
 | Map | M |
 | Pause menu | Esc or P |
 | Mute | N |
@@ -46,13 +47,17 @@ Phones get an on-screen stick and buttons.
 
 ## The story
 
-You're Cole Brennan, riding with Gus Hale's outfit, camped on the west bank of the Dakota River. Mission givers show as yellow letters on the minimap and map; walk up and press E.
+You're Cole Brennan, riding with Gus Hale's outfit, camped on the west bank of the Dakota River. Mission givers show as yellow letters on the minimap and map; walk up and press E, or press J anywhere to go straight to the next mission. Every line of dialogue is voiced, and outlaws shout to each other in a fight.
 
 1. **Morning Ride** (Gus): mount your horse and ride up to the lookout on the bluff for a view of the valley.
 2. **Fresh Meat** (Gus): take your rifle to the meadow below Eagle Ridge, hunt two deer and skin them.
 3. **Trouble in Copper Bluff** (Gus): masked outlaws are robbing the brick bank. Drive them off in two waves.
-4. **Smoke on the Horizon** (Sheriff Dawes): raiders have set the Hollis farm alight at sunset. Clear the tobacco field and find Eli Hollis.
-5. **Dead or Alive** (Sheriff Dawes): clear out the Lockhart hideout in the northern pines and bring down Red Lockhart.
+4. **The Mail Coach** (Sheriff Dawes): the Fort Clay coach carrying the mine payroll is being robbed on the north road. Save the driver and bring the strongbox back.
+5. **Smoke on the Horizon** (Sheriff Dawes): raiders have set the Hollis farm alight at sunset. Clear the tobacco field and find Eli Hollis.
+6. **Horse Thieves** (Eli Hollis): track his stolen horses to the thieves' camp at Coyote Flats, clear it and open the corral.
+7. **Night Raid** (Gus): Lockhart's men attack the camp after dark. Hold them off through three waves.
+8. **High Noon** (Sheriff Dawes): Lockhart's hired gun, Jack Mercer, calls you out. Wait for him to draw, then outdraw him.
+9. **Dead or Alive** (Sheriff Dawes): clear out the Lockhart hideout in the northern pines and bring down Red Lockhart.
 
 If you die during a mission, it restarts from its last checkpoint. After the last mission the valley is yours to roam.
 
@@ -98,11 +103,24 @@ python blender/render_shots.py farm --samples 32 --size 960x540
 | `western/js/player.js` | Player movement, riding, the third-person camera, shooting, Dead Eye |
 | `western/js/animals.js` | Horses and deer |
 | `western/js/npc.js` | Outlaws, townsfolk and mission characters |
-| `western/js/missions.js` | The five story missions |
+| `western/js/missions.js` | The nine story missions |
+| `western/js/voice.js`, `barks.js` | Plays the recorded dialogue and the fight shouts |
 | `western/js/hud.js`, `menu.js` | HUD, minimap, pause menu, title screen |
 | `western/js/combat.js`, `effects.js`, `audio.js` | Bullets and damage, smoke and fire, synthesised sound |
 
 After changing the game code, rebuild the one-file version with `npm install` then `npm run build:western`.
+
+### Voice acting
+
+The voices are recorded ahead of time with the open [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) text-to-speech model. `tools/voices/generate.py` reads every line of dialogue in `missions.js` and every shout in `barks.js`, speaks it in that character's voice (a blend of Kokoro voices, set in the script's `CAST` table), and saves `western/assets/voice/<hash>.mp3` plus an `index.json` of clip lengths. After you add or change a line, run it again; it only records what's new:
+
+```sh
+pip install kokoro-onnx soundfile        # also needs ffmpeg
+# kokoro-v1.0.onnx and voices-v1.0.bin from https://github.com/thewh1teagle/kokoro-onnx/releases
+python tools/voices/generate.py --model kokoro-v1.0.onnx --voices voices-v1.0.bin
+```
+
+A line with no recording still shows its subtitle.
 
 ---
 

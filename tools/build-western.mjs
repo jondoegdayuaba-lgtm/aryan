@@ -3,7 +3,7 @@
 // gzipped, as base64.
 //   npm install && npm run build:western
 import { build } from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -36,7 +36,9 @@ const assets = ['assets/cowboy.glb', 'assets/horse.glb', 'assets/deer.glb', 'ass
   'assets/world.json', 'assets/terrain.bin', 'assets/map.jpg',
   // only the textures the game loads itself; the models carry their own
   ...[...readFileSync(resolve(game, 'js/assets.js'), 'utf8').matchAll(/tex\('(\w+)'\)/g)]
-    .map((m) => `assets/textures/${m[1]}.jpg`)];
+    .map((m) => `assets/textures/${m[1]}.jpg`),
+  // the recorded dialogue (tools/voices/generate.py)
+  ...readdirSync(resolve(game, 'assets/voice')).map((f) => 'assets/voice/' + f)];
 const embedded = {};
 let raw = 0;
 for (const a of assets) {

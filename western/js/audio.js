@@ -31,6 +31,30 @@ export class Audio {
     this.startAmbience();
   }
 
+  // Recorded speech (see voice.js): a decoded clip with gain, pan and a touch of echo.
+  playVoice(buf, { gain = 1, pan = 0, verb = 0.08 } = {}) {
+    const ctx = this.ctx;
+    if (!ctx) return null;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const g = ctx.createGain();
+    g.gain.value = gain * 1.35;
+    const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    let out = src.connect(g);
+    if (p) {
+      p.pan.value = pan;
+      out = out.connect(p);
+    }
+    out.connect(this.master);
+    if (verb > 0) {
+      const vg = ctx.createGain();
+      vg.gain.value = verb;
+      out.connect(vg).connect(this.verb);
+    }
+    src.start();
+    return src;
+  }
+
   setVolume(v) {
     this.volume = v;
     if (this.master) this.master.gain.value = this.muted ? 0 : v;
