@@ -53,6 +53,10 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 .compass .marker { position: absolute; top: 0; transform: translateX(-50%); font-size: 16px; line-height: 1; filter: drop-shadow(0 1px 2px #000a); }
 .compass .marker.boat { color: #ffe08a; }
 .compass .marker.vent { color: #9fe8ff; font-size: 13px; top: 2px; }
+.compass .marker.chest { color: var(--gold); font-size: 17px; }
+.compass .marker.relic { color: #fff1b8; font-size: 17px; text-shadow: 0 0 8px #f2c14e; }
+.compass .marker.fish { color: #ffd34a; font-size: 12px; top: 3px; }
+.compass .marker.coin { color: #ffcf4a; font-size: 10px; top: 5px; }
 .compass-mark { position: absolute; left: 50%; bottom: 0; width: 2px; height: 7px; background: var(--gold); transform: translateX(-50%); }
 
 .zone {
@@ -67,6 +71,15 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 .bag .label { font-size: 13px; }
 .coin-ico { width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff3b0, var(--gold) 45%, var(--gold-deep)); box-shadow: 0 0 10px #f2c14e88; }
 .banked { display: flex; gap: 8px; align-items: baseline; font-size: 16px; color: var(--dim); }
+.combo { justify-self: start; padding: 2px 10px; border-radius: 10px; background: linear-gradient(180deg, #ffe08a, var(--gold)); color: #3a2800; font-size: 20px; box-shadow: 0 0 16px #f2c14e88; animation: pop 0.3s ease-out; }
+@keyframes pop { from { transform: scale(1.5); } to { transform: none; } }
+.missions { position: absolute; top: calc(62px + var(--safe-t)); right: 14px; list-style: none; margin: 0; padding: 8px 10px; display: grid; gap: 4px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); width: min(240px, 36vw); }
+.missions li { display: grid; grid-template-columns: 16px 1fr auto; gap: 6px; align-items: baseline; font-size: 14px; font-weight: 600; }
+.missions .tick { color: var(--ok); }
+.missions .mp { color: var(--dim); font-size: 13px; }
+.missions li.done .mt { color: var(--dim); text-decoration: line-through; }
+.missions li.done .mp { color: var(--gold); }
+.popup.combo em { font-size: 28px; }
 
 .hud-tr { position: absolute; top: calc(12px + var(--safe-t)); right: 14px; display: flex; gap: 10px; align-items: center; }
 .relics { display: flex; gap: 6px; }
@@ -127,7 +140,7 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 
 .warning { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); font-size: 20px; font-weight: 700; color: var(--danger); text-shadow: 0 2px 8px #000; letter-spacing: 0.06em; text-transform: uppercase; animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: 0.4; } }
-.hint { position: absolute; left: 50%; top: calc(92px + var(--safe-t)); transform: translateX(-50%); max-width: min(560px, 90vw); text-align: center; padding: 8px 14px; border-radius: 10px; background: var(--panel); font-size: 16px; color: var(--dim); }
+.hint { position: absolute; left: 50%; top: calc(92px + var(--safe-t)); transform: translateX(-50%); max-width: min(420px, 48vw); text-align: center; padding: 8px 14px; border-radius: 10px; background: var(--panel); font-size: 16px; color: var(--dim); }
 .hint b { color: var(--ink); }
 
 #flash { position: fixed; inset: 0; pointer-events: none; background: #fff; opacity: 0; }
@@ -207,6 +220,10 @@ body.touch .controls-touch { display: grid; }
 
 @media (max-width: 900px) {
   .compass { width: 42vw; }
+}
+@media (max-height: 500px) {
+  .missions { padding: 5px 8px; gap: 2px; }
+  .missions li { font-size: 12px; }
 }
 @media (max-width: 640px) {
   .controls { grid-template-columns: repeat(2, auto); }

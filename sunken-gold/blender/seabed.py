@@ -408,8 +408,79 @@ def build(models):
         if pts:
             tanks.append(ground(*pts[0], 0.1))
 
+    # ---- coin trails: floating lines of gold that lead from the boat to every
+    # site, so a new diver always has something shiny to follow.
+    def catmull(points, step):
+        P = [np.array(p, float) for p in points]
+        P = [P[0] * 2 - P[1]] + P + [P[-1] * 2 - P[-2]]
+        dense = []
+        for i in range(1, len(P) - 2):
+            p0, p1, p2, p3 = P[i - 1], P[i], P[i + 1], P[i + 2]
+            for t in np.linspace(0, 1, 24, endpoint=False):
+                t2, t3 = t * t, t * t * t
+                dense.append(0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3))
+        dense.append(P[-2])
+        out, acc = [dense[0]], 0.0
+        for a, b in zip(dense, dense[1:]):
+            acc += np.linalg.norm(b - a)
+            if acc >= step:
+                out.append(b)
+                acc = 0.0
+        return out
+
+    def lift(p, hover, fixed=None):
+        x, z = float(p[0]), float(p[1])
+        y = fixed if fixed is not None else field.at(x, z) + hover
+        return [round(x, 2), round(min(y, -1.6), 2), round(z, 2)]
+
+    ax, az = ARCH['x'], ARCH['z']
+    adx, adz = math.sin(ARCH['yaw']), math.cos(ARCH['yaw'])
+    wb = [wreck_point(13.0, -1.5, 3.2), wreck_point(6.5, -1.5, 2.6), wreck_point(1.2, -1.5, 2.6)]
+    tz = float(trench_center(np.array([-60.0]))[0])
+    TRAILS = [
+        # name, control points (x, z), hover height, current rings along it
+        ('Reef loop', [(3, 4), (14, -4), (26, -18), (24, -38), (6, -48), (-16, -40), (-30, -22), (-34, 0), (-22, 18), (-4, 22), (6, 12)], 1.2, False),
+        ('To the wreck', [(-2, -6), (-6, -30), (-10, -52), (-13, -66), (-14, -80), (-12, -92), (wb[0][0], wb[0][2])], 1.5, True),
+        ('Into the hold', None, None, False),
+        ('To the arch', [(8, 2), (40, -4), (75, 8), (ax + adx * 30, az + adz * 30), (ax, az), (ax - adx * 14, az - adz * 14)], 2.0, True),
+        ('To the kelp', [(-6, 8), (-40, 22), (-80, 38), (-112, 46), (-136, 46)], 1.6, True),
+        ('To the meadow', [(6, 14), (16, 50), (28, 90), (38, 125), (50, 152)], 1.3, True),
+        ('Along the wall', [(-10, -84), (18, -86), (44, -84), (58, -82)], 1.3, False),
+        ('Down the trench', [(-48, -130), (-50, -160), (-55, -190), (-58, -215), (-60, tz)], 1.8, True),
+    ]
+    trails = []
+    for name, ctrl, hover, rings_on in TRAILS:
+        if ctrl is None:
+            # Through the breach in the hull to the treasure in the hold.
+            pts = [np.array(a) + (np.array(b) - np.array(a)) * t for a, b in zip(wb, wb[1:]) for t in np.linspace(0, 1, 4, endpoint=False)] + [np.array(wb[-1])]
+            coins_t = [[round(float(p[0]), 2), round(float(p[1]), 2), round(float(p[2]), 2)] for p in pts]
+            trails.append({'name': name, 'coins': coins_t, 'rings': []})
+            continue
+        path = catmull(ctrl, 2.6)
+        coins_t = [lift(p, hover) for p in path]
+        rings = []
+        if rings_on:
+            ring_path = catmull(ctrl, 1.0)
+            for k in range(14, len(ring_path) - 14, 18):
+                a, b = ring_path[k - 1], ring_path[k + 1]
+                pa, pb = lift(a, hover + 0.3), lift(b, hover + 0.3)
+                d = np.array(pb) - np.array(pa)
+                d /= np.linalg.norm(d) + 1e-9
+                c = lift(ring_path[k], hover + 0.3)
+                rings.append(c + [round(float(v), 3) for v in d])
+        trails.append({'name': name, 'coins': coins_t, 'rings': rings})
+    print('  trails:', ', '.join(f"{t['name']} {len(t['coins'])} coins/{len(t['rings'])} rings" for t in trails))
+
+    # An easy chest near the boat for the first dive (added last so saved chest ids don't shift).
+    pts = scatter(rng, 1, lambda x, z: near(x, z, 20, -28, 7) and field.slope(x, z) < 0.35)
+    if pts:
+        chests.append(ground(*pts[0]))
+
+    golden = [ground(*p, 2.5) for p in ((18.0, -14.0), (-26.0, 10.0), (10.0, -40.0), (-20.0, -70.0), (WRECK['x'] + 14, WRECK['z'] + 6),
+                                        (ARCH['x'] - 10, ARCH['z'] + 10), (KELP[0] + 10, KELP[1] - 6), (MEADOW[0], MEADOW[1] - 10))]
+
     # ---- creature zones
-    life = {
+    life = {'golden': golden,
         'schools': [
             {'species': 'chromis', 'count': 110, 'center': ground(12, -8, 3.0), 'radius': 12},
             {'species': 'chromis', 'count': 90, 'center': ground(-40, 20, 3.0), 'radius': 12},
@@ -458,7 +529,7 @@ def build(models):
         'scenery': scenery,
         'debris': debris,
         'treasure': {'coins': coins, 'clams': clams, 'chests': chests, 'artifacts': artifacts, 'relics': relics,
-                     'vents': vents, 'tanks': tanks},
+                     'vents': vents, 'tanks': tanks, 'trails': trails},
         'life': life,
     }
 

@@ -242,11 +242,37 @@ export class Sound {
     }
   }
 
-  coin(i = 0) {
+  // Coins ring higher the longer your combo runs.
+  coin(i = 0, combo = 1) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime + i * 0.035;
-    this.tone(t, 1900 + Math.random() * 200, 0.25, 0.08, 'sine');
-    this.tone(t + 0.02, 2850, 0.18, 0.04, 'sine');
+    const up = Math.pow(1.122, Math.min(12, combo - 1));
+    this.tone(t, (1500 + Math.random() * 120) * up, 0.25, 0.08, 'sine');
+    this.tone(t + 0.02, 2250 * up, 0.18, 0.04, 'sine');
+  }
+
+  ring() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const w = this.noiseBurst(t, 1.1, 'bandpass', 500, 1.2, 0.5, this.master, 0.05);
+    w.f.frequency.exponentialRampToValueAtTime(2600, t + 0.9);
+    this.tone(t, 300, 0.6, 0.08, 'sine', this.master, 2.2);
+  }
+
+  golden() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    [1047, 1319, 1568, 2093, 2637].forEach((f, i) => this.tone(t + i * 0.06, f, 0.5, 0.08, 'triangle'));
+    for (let i = 0; i < 10; i++) this.tone(t + 0.3 + i * 0.04, 2000 + Math.random() * 1500, 0.25, 0.03);
+  }
+
+  mission() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    [[523, 0], [659, 0.12], [784, 0.24], [1047, 0.36], [784, 0.52], [1047, 0.62]].forEach(([f, d]) => {
+      this.tone(t + d, f, 0.45, 0.09, 'square', this.water);
+      this.tone(t + d, f / 2, 0.45, 0.06, 'triangle');
+    });
   }
 
   pearl() {

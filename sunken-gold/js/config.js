@@ -23,8 +23,8 @@ export const DIVE = {
 // Air is measured in surface-seconds. At depth you breathe faster:
 // each breath takes (1 + depth / pressureDepth) times more air.
 export const AIR = {
-  tank: 150,               // tank size at level 0
-  pressureDepth: 22,
+  tank: 210,               // tank size at level 0
+  pressureDepth: 26,
   boostCost: 1.25,         // breathing harder while boosting
   ventRefill: 14,          // surface-seconds per second while inside a bubble vent
   spareTank: 45,           // spare air tank pickup
@@ -52,12 +52,29 @@ export const SHARK = {
   fleeTime: 10,
 };
 
+// Arcade extras: coin trails, combos, current rings and golden fish.
+export const FUN = {
+  trailCoinScale: 3.2,     // trail coins are big, upright, spinning doubloons
+  trailCoinValue: 5,
+  comboWindow: 1.8,        // seconds between coins to keep a combo going
+  comboStep: 8,            // coins per extra multiplier step
+  comboMax: 5,
+  ringRadius: 1.6,
+  ringSpeed: 10,           // a current ring flings you along at this speed (m/s)
+  ringTime: 1.5,
+  goldenScale: 2.4,
+  goldenFear: 10,          // golden fish bolt when you get this close
+  goldenSpeed: 3.9,        // faster than cruising, slower than boosting
+  goldenCatch: 1.4,
+  goldenValue: 150,
+};
+
 // Strobe: a camera flash that scares sharks away.
 export const STROBE = { range: 20, cooldown: 14 };
 
 // Upgrades bought on the boat. Each level's cost and the value it sets.
 export const UPGRADES = [
-  { id: 'tank', name: 'Bigger tank', unit: 's of air', levels: [150, 210, 280, 360, 460], cost: [250, 600, 1200, 2400] },
+  { id: 'tank', name: 'Bigger tank', unit: 's of air', levels: [210, 280, 360, 460, 600], cost: [250, 600, 1200, 2400] },
   { id: 'scooter', name: 'Scooter motor', unit: 'm/s', levels: [2.6, 3.1, 3.6, 4.1, 4.7], cost: [200, 500, 1000, 2000] },
   { id: 'battery', name: 'Boost battery', unit: 's of boost', levels: [8, 12, 17, 23, 30], cost: [150, 400, 900, 1800] },
   { id: 'lamp', name: 'Dive lamp', unit: 'm beam', levels: [16, 24, 32, 42, 55], cost: [150, 400, 900, 1800] },

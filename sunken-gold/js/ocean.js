@@ -438,7 +438,8 @@ export function makeMarineSnow(count = 1800) {
           lamp = smoothstep(0.8, 0.97, dot(L / ld, uLampDir)) * smoothstep(uLampRange, 1.0, ld) * 4.0;
         }
         vA = (0.12 + lamp) * smoothstep(0.3, 2.0, d) * (1.0 - smoothstep(12.0, 20.0, d)) * (p.y < 0.0 ? 1.0 : 0.0);
-        gl_PointSize = (0.02 + aSeed * 0.04) * uScale / max(d, 0.1);
+        gl_PointSize = min((0.02 + aSeed * 0.04) * uScale / max(d, 0.1), 64.0);
+        if (vA < 0.002) gl_PointSize = 0.0;
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: `varying float vA;
@@ -472,7 +473,7 @@ export class Bubbles {
         uniform float uScale; attribute float aSize; varying float vA;
         void main(){ vec4 mv = viewMatrix * vec4(position, 1.0); float d = -mv.z;
           vA = smoothstep(0.05, 0.4, d) * (1.0 - smoothstep(25.0, 45.0, d)) * (position.y < -0.05 ? 1.0 : 0.0);
-          gl_PointSize = aSize * uScale / max(d, 0.05); gl_Position = projectionMatrix * mv; }`,
+          gl_PointSize = min(aSize * uScale / max(d, 0.05), 160.0); gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `varying float vA;
         void main(){ vec2 c = gl_PointCoord - 0.5; float r = length(c);
           if (r > 0.5) discard;

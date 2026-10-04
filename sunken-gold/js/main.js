@@ -4,7 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { GAME_TITLE, TAGLINE, DIVE, AIR, SHARK, UPGRADES } from './config.js';
+import { GAME_TITLE, TAGLINE, DIVE, AIR, SHARK, UPGRADES, FUN } from './config.js';
 import { loadAssets } from './assets.js';
 import { U, makeEnvironment, makeBackdrop, makeSurface, GodRays, makeMarineSnow, Bubbles, makeLampBeam } from './ocean.js';
 import { Seabed } from './seabed.js';
@@ -12,6 +12,7 @@ import { Colliders } from './collide.js';
 import { prepareMaterials, buildScenery } from './scenery.js';
 import { SeaLife } from './life.js';
 import { Treasure } from './treasure.js';
+import { CoinTrails, CurrentRings, GoldenFish, Missions } from './fun.js';
 import { Diver } from './player.js';
 import { Sound } from './audio.js';
 import { Input } from './input.js';
@@ -66,7 +67,7 @@ $('title-a').textContent = GAME_TITLE[0];
 $('title-b').textContent = GAME_TITLE[1];
 $('tagline').textContent = TAGLINE;
 
-let A, seabed, colliders, world, life, treasure, diver, godRays, snow, bubbles, beam, sun, vmSun, composer, post, bloom, vmPass;
+let A, seabed, colliders, world, life, treasure, trails, rings, golden, diver, godRays, snow, bubbles, beam, sun, vmSun, composer, post, bloom, vmPass;
 const sound = new Sound();
 sound.setMuted(save.muted);
 const input = new Input(canvas, {
@@ -118,6 +119,9 @@ async function boot() {
   world.built = built;
   life = new SeaLife(scene, A, seabed, colliders);
   treasure = new Treasure(scene, A, seabed, save);
+  trails = new CoinTrails(scene, A.models, world.treasure.trails);
+  rings = new CurrentRings(scene, world.treasure.trails);
+  golden = new GoldenFish(scene, A.models, world.life.golden, seabed);
   diver = new Diver(camera, seabed, colliders, A.models);
   vmScene.add(diver.view);
   godRays = new GodRays(quality === 'high' ? 24 : 12);
@@ -203,8 +207,11 @@ const S = {
   hintUntil: 0,
 };
 
+const missions = new Missions();
+
 function newDive() {
-  return { air: S.airMax, bag: 0, coins: 0, pearls: 0, chests: 0, artifacts: 0, relics: [], pending: [], lostToShark: 0, time: 0, maxDepth: 0 };
+  return { air: S.airMax, bag: 0, coins: 0, pearls: 0, chests: 0, artifacts: 0, relics: [], pending: [], lostToShark: 0, time: 0, maxDepth: 0,
+    golden: 0, rings: 0, missionGold: 0, missionsDone: 0, bestCombo: 1, combo: 0, comboAt: -9 };
 }
 
 function level(id) { return save.upgrades[id] || 0; }
@@ -272,7 +279,18 @@ function setupUI() {
     strip.appendChild(el);
     return el;
   });
-  S.compass = { marks, boatMark, ventMarks };
+  const mk = (cls, txt) => {
+    const el = document.createElement('div');
+    el.className = `marker ${cls}`;
+    el.textContent = txt;
+    strip.appendChild(el);
+    return el;
+  };
+  const chestMarks = treasure.items.filter((i) => i.kind === 'chest').map((it) => ({ it, el: mk('chest', '★') }));
+  const relicMarks = treasure.items.filter((i) => i.kind === 'relic').map((it) => ({ it, el: mk('relic', '✦') }));
+  const fishMarks = golden.fish.map((f) => ({ f, el: mk('fish', '◆') }));
+  const coinMark = mk('coin', '●');
+  S.compass = { marks, boatMark, ventMarks, chestMarks, relicMarks, fishMarks, coinMark };
 
   $('btn-dive').addEventListener('click', () => { sound.init(); startDive(); });
   $('btn-redive').addEventListener('click', () => { sound.init(); startDive(); });
@@ -355,8 +373,13 @@ function toMenu() {
 function startDive() {
   sound.splash();
   treasure.resetDive();
+  trails.reset();
+  rings.reset();
+  golden.reset();
   applyUpgrades();
   S.dive = newDive();
+  missions.roll(save.dives, treasure.items.filter((i) => i.kind === 'chest' && !i.taken).length);
+  renderMissions();
   S.lamp = false;
   S.strobeCool = 0;
   S.damage = 0;
@@ -372,8 +395,8 @@ function startDive() {
   bubbles.emit(diver.pos.clone().add(new THREE.Vector3(0, -0.6, 0)), 120, 1.2, [0.01, 0.06], 0.3);
   if (!save.dives) {
     hint('start', input.usingTouch
-      ? '<b>Left thumb</b> to swim, <b>drag</b> to look. Swim over glinting coins to grab them. Watch your <b>air</b> and come back to the boat to bank your loot.'
-      : '<b>W</b> to swim, <b>mouse</b> to look, <b>Space / C</b> to rise and sink. Swim over glinting coins to grab them. Watch your <b>air</b> and come back to the boat to bank your loot.', 12);
+      ? '<b>Follow the trails of floating gold coins!</b> Left thumb to swim, drag to look. Bank your loot back at the boat before your <b>air</b> runs out.'
+      : '<b>Follow the trails of floating gold coins!</b> W to swim, mouse to look, Space / C to rise and sink. Bank your loot back at the boat before your <b>air</b> runs out.', 12);
   }
 }
 
@@ -409,6 +432,9 @@ function board() {
   if (d.artifacts) rows.push(['Artifacts', `${d.artifacts}`]);
   for (const r of d.relics) rows.push(['Relic', treasure.items.find((i) => i.id === r).name]);
   if (d.lostToShark) rows.push(['Lost to sharks', `−${fmt(d.lostToShark)}`, 'lost']);
+  if (d.golden) rows.push(['Golden fish', `${d.golden}`]);
+  if (d.missionsDone) rows.push(['Missions', `${d.missionsDone} (+${fmt(d.missionGold)})`]);
+  if (d.bestCombo > 1) rows.push(['Best combo', `x${d.bestCombo}`]);
   rows.push(['Deepest point', `${d.maxDepth.toFixed(1)} m`]);
   $('boat-report').innerHTML = `<div class="row"><span>Banked this dive</span><b>+${fmt(d.bag)}</b></div>` +
     rows.map(([k, v, c]) => `<div class="row ${c || ''}"><span>${k}</span><span>${v}</span></div>`).join('');
@@ -507,7 +533,10 @@ function strobe() {
   $('flash').style.opacity = '0.55';
   sound.strobe();
   const n = life.strobe(diver, diver.forward, 20);
-  if (n) popup(`Shark <em>scared off</em>`);
+  if (n) {
+    popup(`Shark <em>scared off</em>`);
+    completeMissions(missions.bump('strobe'));
+  }
 }
 
 function exhale() {
@@ -523,10 +552,12 @@ function grab(it) {
   d.bag += it.value;
   if (it.kind === 'pearl') {
     d.pearls++;
+    completeMissions(missions.bump('pearl'));
     sound.pearl();
     popup(`Pearl <em>+${it.value}</em>`);
   } else if (it.kind === 'chest') {
     d.chests++;
+    completeMissions(missions.bump('chest'));
     sound.chest();
     popup(`Treasure chest <em>+${it.value}</em>`, 'big');
     const p = it.pos.clone();
@@ -543,6 +574,23 @@ function grab(it) {
     const names = { amphora: 'Amphora', goblet: 'Golden goblet', ingot: 'Gold bar', gem: 'Gemstone' };
     popup(`${names[it.kind] || 'Treasure'} <em>+${it.value}</em>`);
   }
+}
+
+function completeMissions(done) {
+  for (const m of done) {
+    const d = S.dive;
+    d.bag += m.reward;
+    d.missionGold += m.reward;
+    d.missionsDone++;
+    sound.mission();
+    popup(`Mission complete! <em>+${m.reward}</em>`, 'big');
+  }
+  if (done.length) renderMissions();
+}
+
+function renderMissions() {
+  $('missions').innerHTML = missions.list.map((m) => `<li class="${m.done ? 'done' : ''}"><span class="tick">${m.done ? '✓' : ''}</span>` +
+    `<span class="mt">${m.text}</span><span class="mp num">${m.done ? `+${m.reward}` : m.n > 1 ? `${m.have}/${m.n}` : ''}</span></li>`).join('');
 }
 
 function bite(shark) {
@@ -593,12 +641,31 @@ function diveUpdate(dt) {
 
   // Pickups and vents.
   let inVent = false;
-  for (const e of treasure.update(dt, S.time, diver, S.magnet)) {
+  const events = treasure.update(dt, S.time, diver, S.magnet);
+  trails.update(dt, S.time, diver.pos, Math.max(S.magnet, 1.9), events);
+  golden.update(dt, S.time, diver, events);
+  completeMissions(missions.bump('depth', Math.floor(diver.depth), true));
+  for (const e of events) {
     if (e.type === 'coin') {
-      d.bag += e.value;
+      // Grab coins quickly one after another to build a combo multiplier.
+      d.combo = S.time - d.comboAt < FUN.comboWindow ? d.combo + 1 : 1;
+      d.comboAt = S.time;
+      const mult = Math.min(FUN.comboMax, 1 + Math.floor((d.combo - 1) / FUN.comboStep));
+      d.bestCombo = Math.max(d.bestCombo, mult);
+      d.bag += e.value * mult;
       d.coins++;
-      sound.coin(Math.random() * 2);
-      if (d.coins % 5 === 1) popup(`Doubloons <em>+${e.value}</em>`);
+      sound.coin(Math.random() * 2, d.combo);
+      if (mult > (d.lastMult || 1)) popup(`Combo <em>x${mult}</em>`, 'combo');
+      d.lastMult = mult;
+      completeMissions(missions.bump('coins'));
+      completeMissions(missions.bump('combo', mult, true));
+    } else if (e.type === 'golden') {
+      d.bag += e.value;
+      d.golden++;
+      sound.golden();
+      popup(`Golden fish! <em>+${e.value}</em>`, 'big');
+      bubbles.emit(e.pos, 50, 0.5, [0.01, 0.04], 0.6);
+      completeMissions(missions.bump('golden'));
     } else if (e.type === 'tank') {
       d.air = Math.min(S.airMax, d.air + AIR.spareTank);
       sound.air();
@@ -606,6 +673,17 @@ function diveUpdate(dt) {
     } else if (e.type === 'vent') {
       inVent = true;
     }
+  }
+  if (S.time - d.comboAt > FUN.comboWindow) { d.combo = 0; d.lastMult = 1; }
+  // Current rings fling you along the route.
+  const ring = rings.update(dt, diver.pos);
+  if (ring) {
+    diver.surge(ring.dir, FUN.ringSpeed, FUN.ringTime);
+    d.rings++;
+    sound.ring();
+    bubbles.emit(ring.c, 40, FUN.ringRadius, [0.01, 0.05], 0.4);
+    completeMissions(missions.bump('rings'));
+    if (d.rings === 1) hint('ring', 'Current rings shoot you along the trail. Line up the next one!', 6);
   }
   if (inVent && d.air < S.airMax) {
     d.air = Math.min(S.airMax, d.air + AIR.ventRefill * dt);
@@ -666,6 +744,14 @@ const sharkEvents = {
 function hud() {
   const d = S.dive;
   text($('bag'), fmt(d.bag));
+  const mult = d.combo ? Math.min(FUN.comboMax, 1 + Math.floor((d.combo - 1) / FUN.comboStep)) : 0;
+  $('combo').hidden = mult < 2;
+  if (mult >= 2) text($('combo'), `x${mult}`);
+  if (S.missionsAt === undefined || S.time - S.missionsAt > 0.25) {
+    S.missionsAt = S.time;
+    const shown = $('missions').querySelectorAll('.mp');
+    missions.list.forEach((m, i) => { if (shown[i] && !m.done && m.n > 1) text(shown[i], `${m.have}/${m.n}`); });
+  }
   text($('banked'), fmt(save.gold));
   const frac = clamp(d.air / S.airMax, 0, 1);
   $('air-arc').style.strokeDashoffset = `${264 * (1 - frac)}`;
@@ -696,6 +782,23 @@ function hud() {
   for (const m of S.compass.marks) place(m.el, m.deg);
   const bdx = world.boat[0] - diver.pos.x, bdz = world.boat[2] - diver.pos.z;
   place(S.compass.boatMark, (Math.atan2(bdx, -bdz) * 180 / Math.PI + 360) % 360);
+  const bearing = (p) => (Math.atan2(p.x - diver.pos.x, -(p.z - diver.pos.z)) * 180 / Math.PI + 360) % 360;
+  const within = (p, r) => Math.hypot(p.x - diver.pos.x, p.z - diver.pos.z) < r;
+  for (const { it, el } of S.compass.chestMarks) {
+    if (it.taken || !within(it.pos, 90)) el.style.display = 'none';
+    else place(el, bearing(it.pos));
+  }
+  for (const { it, el } of S.compass.relicMarks) {
+    if (it.taken || save.relics.includes(it.id) || !within(it.pos, 70)) el.style.display = 'none';
+    else place(el, bearing(it.pos));
+  }
+  for (const { f, el } of S.compass.fishMarks) {
+    if (f.caught || !within(f.pos, 45)) el.style.display = 'none';
+    else place(el, bearing(f.pos));
+  }
+  const nc = trails.nearest(diver.pos, 160);
+  if (nc) place(S.compass.coinMark, bearing(nc.home));
+  else S.compass.coinMark.style.display = 'none';
   treasure.vents.forEach((v, i) => {
     const dx = v.x - diver.pos.x, dz = v.z - diver.pos.z;
     const el = S.compass.ventMarks[i];
@@ -765,6 +868,7 @@ function envUpdate(dt) {
   const h = renderer.getDrawingBufferSize(tmpV).y;
   const scale = h / (2 * Math.tan((camera.fov * Math.PI) / 360));
   snow.material.uniforms.uScale.value = scale;
+  trails.glowMat.uniforms.uScale.value = scale;
   bubbles.mat.uniforms.uScale.value = scale;
   const lampOn = S.mode === 'diving' && S.lamp;
   U.uLampOn.value = lampOn ? 1 : 0;
@@ -817,7 +921,13 @@ function frame(now) {
   if (S.mode !== 'paused') {
     const watcher = S.mode === 'diving' ? diver : { pos: camera.position, vel: new THREE.Vector3(), underwater: false, safe: true };
     life.update(dt, t, watcher, sharkEvents);
-    if (S.mode !== 'diving') treasure.update(dt, t, { pos: new THREE.Vector3(1e5, 0, 0) }, 0);
+    if (S.mode !== 'diving') {
+      const far = new THREE.Vector3(1e5, 0, 0);
+      treasure.update(dt, t, { pos: far }, 0);
+      trails.update(dt, t, far, 0, []);
+      golden.update(dt, t, { pos: far }, []);
+      rings.update(dt, far);
+    }
     // Vents bubble continuously near the camera.
     ventTimer += dt;
     if (ventTimer > 0.05) {
@@ -850,5 +960,6 @@ function frame(now) {
 // Expose a few handles for automated testing (?debug in the URL).
 if (params.has('debug')) {
   window.SG = { get S() { return S; }, get diver() { return diver; }, get life() { return life; }, get treasure() { return treasure; },
-    save, startDive: () => startDive(), board: () => board(), camera, renderer, U, scene, get sun() { return sun; } };
+    save, startDive: () => startDive(), board: () => board(), camera, renderer, U, scene, get sun() { return sun; },
+    get trails() { return trails; }, get rings() { return rings; }, get golden() { return golden; }, missions };
 }

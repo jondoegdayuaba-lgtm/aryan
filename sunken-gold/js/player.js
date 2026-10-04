@@ -29,6 +29,9 @@ export class Diver {
     this.forward = new THREE.Vector3(0, 0, -1);
     this.right = new THREE.Vector3(1, 0, 0);
     this._n = new THREE.Vector3();
+    this.surgeDir = new THREE.Vector3();
+    this.surgeSpeed = 0;
+    this.surgeT = 0;
     this._t = new THREE.Vector3();
 
     // View model: scooter held in front, hands on the grips.
@@ -53,9 +56,16 @@ export class Diver {
     });
   }
 
+  surge(dir, speed, time) {
+    this.surgeDir.copy(dir).normalize();
+    this.surgeSpeed = speed;
+    this.surgeT = time;
+  }
+
   spawn(p, yaw = Math.PI) {
     this.pos.fromArray(p);
     this.vel.set(0, 0, 0);
+    this.surgeT = 0;
     this.yaw = yaw;
     this.pitch = -0.25;
   }
@@ -87,7 +97,14 @@ export class Diver {
     want.addScaledVector(this.right, move.x * speed * 0.7);
     want.y += move.y * DIVE.verticalSpeed;
     if (want.lengthSq() > speed * speed) want.setLength(speed);
-    const k = 1 - Math.exp(-dt * (moving ? DIVE.accel : DIVE.accel * 0.6));
+    let k = 1 - Math.exp(-dt * (moving ? DIVE.accel : DIVE.accel * 0.6));
+    // A current ring carries you along whatever you do, easing off at the end.
+    if (this.surgeT > 0) {
+      this.surgeT -= dt;
+      const f = Math.min(1, this.surgeT / 0.5);
+      want.multiplyScalar(0.35).addScaledVector(this.surgeDir, this.surgeSpeed * f);
+      k = 1 - Math.exp(-dt * 6);
+    }
     this.vel.lerp(want, k);
     // Slight negative buoyancy at depth, slight float near the surface.
     if (!moving) this.vel.y += (this.pos.y > -3 ? 0.05 : -0.02) * dt;

@@ -6,6 +6,11 @@ Every 3D model, texture and the whole dive site were built with **Blender**: the
 
 ## How to play
 
+- **Follow the gold.** Trails of big floating coins lead from the boat to every site: around the reef, down the wall to the wreck (and in through the hole in its hull), out to the arch, the kelp forest, the meadow and down into the trench. Your compass shows the nearest coins (●), treasure chests (★), relics (✦) and golden fish (◆).
+- **Combos:** grab coins quickly one after another and they're worth more, up to x5.
+- **Current rings:** the glowing rings along the trails shoot you forward. Line up the next one!
+- **Golden fish:** they bolt when you get close and they're faster than your scooter, so hold boost to catch one.
+- **Missions:** every dive gives you three missions (collect coins, ride rings, open a chest...). Each one you finish adds bonus gold to your bag.
 - Your **air** drains faster the deeper you go. At the surface you breathe for free.
 - Loot goes into your **bag**. It only counts once you surface next to the boat and climb aboard to **bank** it. Black out from lack of air and the bag sinks back to the bottom.
 - **Bubble vents** (◎ on your compass) top up your air, and **spare tanks** lie around the deeper sites.
@@ -58,7 +63,7 @@ or, with Blender installed: `blender -b -P sunken-gold/blender/build.py`. It tak
 | `wreck.py` | The galleon, plank by plank: a raked bow, high stern castle, a breach in the hull, gunports, ribs, decks, the captain's cabin and snapped masts. Plus cannons, an admiralty anchor and cargo barrels |
 | `treasure.py` | Doubloons, a chest with a hinged lid, a giant clam and pearl, amphora, goblet, gold bar, gems, a spare tank and the five relics |
 | `gear.py` | The underwater scooter, gloved hands with a dive computer, and the dive boat |
-| `seabed.py` | The dive site's height field, the material splat map, every placement (corals, fish schools, treasure, sharks' patrol routes) and ambient occlusion baked with Cycles so things sit in soft contact shadows |
+| `seabed.py` | The dive site's height field, the material splat map, every placement (corals, fish schools, treasure, coin trails and current rings, sharks' patrol routes) and ambient occlusion baked with Cycles so things sit in soft contact shadows |
 | `build.py` | Runs everything, computes collision distance fields for solid models and exports `models.glb` |
 | `preview.py` | Renders contact sheets of models with Cycles, for checking them |
 
@@ -72,6 +77,7 @@ or, with Blender installed: `blender -b -P sunken-gold/blender/build.py`. It tak
 | `scenery.js` | Puts the Blender models in the world, instanced and culled in chunks; swaying kelp, seagrass and fans |
 | `life.js` | Schooling fish (boids), turtles, rays, jellyfish and shark behaviour |
 | `treasure.js` | Coins, clams, chests, artifacts, relics, tanks and vents |
+| `fun.js` | Coin trails, current rings, golden fish and dive missions |
 | `player.js` | Swimming, collisions, the view model and the lamp |
 | `collide.js` | Collision against the Blender-baked distance fields |
 | `audio.js` | Synthesised sound: regulator breathing, bubbles, snapping shrimp, the scooter motor, alarms and shark tension |
@@ -82,6 +88,6 @@ There are no image or sound files beyond what Blender produced: every sound is s
 
 ## Customise
 
-Everything you might want to tweak is in `js/config.js`. For example, `AIR.tank` and `AIR.pressureDepth` set how long you can stay down, `UPGRADES` sets prices and levels, `SHARK` sets how dangerous sharks are, and `WATER` sets the water's colour and clarity. To change the dive site itself (where the wreck lies, how deep the trench is, how many corals there are), edit `blender/seabed.py` and rebuild the assets.
+Everything you might want to tweak is in `js/config.js`. For example, `AIR.tank` and `AIR.pressureDepth` set how long you can stay down, `UPGRADES` sets prices and levels, `SHARK` sets how dangerous sharks are, `FUN` sets coin values, combos, ring speed and how hard golden fish are to catch, and `WATER` sets the water's colour and clarity. To change the dive site itself (where the wreck lies, how deep the trench is, how many corals there are), edit `blender/seabed.py` and rebuild the assets.
 
 three.js is MIT licensed; see `../vendor/three/LICENSE`.
