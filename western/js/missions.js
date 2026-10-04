@@ -365,6 +365,7 @@ export class Missions {
     if (this.active) {
       const t = this.active.travel;
       if (!t || Math.hypot(t.to.x - p.x, t.to.z - p.z) < 80) return null;
+      if (t.at && Math.hypot(t.at.x - p.x, t.at.z - p.z) < 30) return null;     // already there
       return { label: 'Travel to objective', ...t };
     }
     const next = this.available();
@@ -750,7 +751,7 @@ function* mailCoach(m) {
   const C = P.coach;
   const ahead = new THREE.Vector3(road[ci + 1][0] - road[ci - 1][0], 0, road[ci + 1][1] - road[ci - 1][1]).normalize();
   const side = new THREE.Vector3(ahead.z, 0, -ahead.x);
-  const approach = new THREE.Vector3(road[Math.max(0, ci - 18)][0], 0, road[Math.max(0, ci - 18)][1]);
+  const approach = new THREE.Vector3(road[Math.max(0, ci - 13)][0], 0, road[Math.max(0, ci - 13)][1]);
   if (m.from <= 0) {
     yield* m.talk([
       ['Sheriff Dawes', 'The mail coach from Fort Clay should have rolled in at noon. It hasn\'t.'],
