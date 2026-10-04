@@ -292,8 +292,18 @@ function setupUI() {
     renderSound();
   }));
   renderSound();
+  // Two taps to wipe progress (a confirm() dialog isn't available everywhere the game runs).
+  let resetArmed = 0;
   $('btn-reset').addEventListener('click', () => {
-    if (!confirm('Start a new game? Your gold, upgrades and relics will be reset.')) return;
+    const b = $('btn-reset');
+    if (performance.now() - resetArmed > 4000) {
+      resetArmed = performance.now();
+      b.textContent = 'Tap again to erase all progress';
+      setTimeout(() => { if (performance.now() - resetArmed >= 3900) b.textContent = 'New game'; }, 4000);
+      return;
+    }
+    resetArmed = 0;
+    b.textContent = 'New game';
     Object.assign(save, freshSave(), { muted: save.muted });
     storeSave();
     applyUpgrades();

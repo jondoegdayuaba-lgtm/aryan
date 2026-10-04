@@ -31,6 +31,14 @@ export async function loadAssets(renderer, onProgress) {
   const report = () => onProgress?.(Object.keys(parts).reduce((s, k) => s + parts[k] * weights[k], 0));
 
   async function fetchBuf(url, key) {
+    if (url.startsWith('data:')) {
+      // Embedded asset: decode it here rather than fetch() it, which some page security policies block.
+      const bin = atob(url.slice(url.indexOf(',') + 1));
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      parts[key] = 1; report();
+      return out.buffer;
+    }
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Could not load ${url} (${res.status})`);
     const total = Number(res.headers.get('content-length')) || 0;
