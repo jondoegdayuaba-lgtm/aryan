@@ -699,9 +699,9 @@ function* deadOrAlive(m) {
     ], sheriff);
     g.env.hazeTarget = 0;
     m.objective('Ride to the <b>Lockhart hideout</b>');
-    m.go(P.hideout, P.hideout.clone().add(new THREE.Vector3(30, 0, 160)));
+    m.go(P.hideout, P.hideout.clone().add(new THREE.Vector3(25, 0, 138)));
     yield m.until(() => m.near(P.hideout, 150));
-    m.setCheckpoint(1, P.hideout.clone().add(new THREE.Vector3(30, 0, 160)));
+    m.setCheckpoint(1, P.hideout.clone().add(new THREE.Vector3(25, 0, 138)));
   }
   const H = P.hideout;
   const gang = [];
@@ -844,7 +844,7 @@ function* horseThieves(m) {
   const g = m.g;
   const P = m.pts;
   const hollis = m.missions.givers.hollis;
-  const start = P.thieves.clone().add(new THREE.Vector3(-150, 0, -15));
+  const start = P.thieves.clone().add(new THREE.Vector3(-112, 0, -12));
   if (m.from <= 0) {
     yield* m.talk([
       ['Eli Hollis', 'They took every horse I own, Cole. Four good animals.'],
@@ -1012,11 +1012,11 @@ function* highNoon(m) {
   }
   g.env.hour = 12;
   const D = new THREE.Vector3(P.saloon_door.x, 0, P.town.z);
-  const mercer = m.spawn({ outfit: 'gunslinger', x: D.x + 9, z: D.z, yaw: -Math.PI / 2, name: 'Jack Mercer', accuracy: 0.9, aggro: 1.4, health: 90 });
+  const mercer = m.spawn({ outfit: 'gunslinger', x: D.x + 7, z: D.z, yaw: -Math.PI / 2, name: 'Jack Mercer', accuracy: 0.9, aggro: 1.4, health: 90 });
   mercer.char.setWeapon(null);
   m.objective('Meet <b>Jack Mercer</b> in the street');
-  m.marker(D.clone().add(new THREE.Vector3(-9, 0, 0)));
-  yield m.until(() => m.near(D.clone().add(new THREE.Vector3(-9, 0, 0)), 6) && !g.player.mounted);
+  m.marker(D.clone().add(new THREE.Vector3(-7, 0, 0)));
+  yield m.until(() => m.near(D.clone().add(new THREE.Vector3(-7, 0, 0)), 6) && !g.player.mounted);
   m.markers = [];
   m.objective('');
   m.setCheckpoint(1, D.clone().add(new THREE.Vector3(-22, 0, 0)));
@@ -1024,10 +1024,10 @@ function* highNoon(m) {
   const p = g.player;
   m.lock(true);
   p.setWeapon(null);
-  p.place(D.x - 9, D.z, Math.PI / 2);
+  p.place(D.x - 7, D.z, Math.PI / 2);
   p.deadEye = PLAYER.deadEyeMax;
-  const from = new THREE.Vector3(D.x - 13.5, p.pos.y + 1.5, D.z + 1.6);
-  g.camRig.cinematic = { from, to: from.clone().add(new THREE.Vector3(1.4, -0.1, -0.3)), look: new THREE.Vector3(D.x + 9, p.pos.y + 1.4, D.z), t: 0, dur: 14, ease: true, fov: 40 };
+  const from = new THREE.Vector3(D.x - 10.5, p.pos.y + 1.55, D.z + 1.3);
+  g.camRig.cinematic = { from, to: from.clone().add(new THREE.Vector3(1.4, -0.1, -0.3)), look: new THREE.Vector3(D.x + 7, p.pos.y + 1.4, D.z), t: 0, dur: 14, ease: true, fov: 40 };
   yield* m.say([
     ['Jack Mercer', 'So you\'re the one who\'s been burying my friends.'],
     ['Cole', 'They weren\'t much, as friends go.'],
