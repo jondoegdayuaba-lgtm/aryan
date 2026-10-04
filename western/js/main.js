@@ -225,9 +225,9 @@ class Game {
     const next = this.missions.available();
     if (next && next.id === 'ride') {
       this.hud.titleCard('Chapter I', 'Outlaw Frontier', 'The Dakota River valley, 1899', 5);
-      setTimeout(() => this.hud.toast('Talk to <b>Gus</b> by the campfire. He\'s the yellow <b>G</b> on your map.', 'Story'), 5500);
+      setTimeout(() => this.hud.toast('Talk to <b>Gus</b> by the campfire (the yellow <b>G</b> on your map), or press <kbd>J</kbd> to start the mission right away.', 'Story'), 5500);
     } else if (next) {
-      this.hud.toast(`Next: <b>${next.title}</b>. Talk to ${next.giverName} ${next.where}.`, 'Story');
+      this.hud.toast(`Next: <b>${next.title}</b>. Talk to ${next.giverName} ${next.where}, or press <kbd>J</kbd> to start it now.`, 'Story');
     }
     this.save();
   }
@@ -322,6 +322,68 @@ class Game {
       if (n.role === 'outlaw' && d < radius) n.engage();
     }
     for (const a of this.animals) if (!a.dead && a.position.distanceTo(pos) < radius) a.alarm(pos);
+  }
+
+  // J: skip the walk or ride to the next mission (and start it), or the long
+  // ride inside one. A short fade covers the jump.
+  quickTravel() {
+    const p = this.player;
+    const t = this.missions.travelTarget();
+    if (!t || this.traveling || this.lockControls || p.dead || p.mounting) return;
+    const fight = this.npcs.some((n) => !n.dead && n.role === 'outlaw' && n.state === 'combat' && n.pos.distanceTo(p.pos) < 150);
+    if (fight) {
+      this.hud.toast('Not in the middle of a fight.');
+      return;
+    }
+    this.traveling = true;
+    $('fade').classList.add('on');
+    setTimeout(() => {
+      this.travelTo(t);
+      $('fade').classList.remove('on');
+      this.traveling = false;
+      if (t.start && !this.missions.active) this.missions.start(t.start);
+    }, 700);
+  }
+
+  travelTo(t) {
+    const p = this.player;
+    const h = this.horse;
+    const free = (x, z, r) => {
+      const v = new THREE.Vector3(x, this.collision.groundY(x, z), z);
+      for (let i = 0; i < 4; i++) this.collision.resolve(v, r, 2);
+      return v;
+    };
+    if (t.npc) {
+      // On foot, a couple of steps in front of them, horse close by
+      if (p.mounted) p.dismount();
+      const n = t.npc;
+      const v = free(n.pos.x + Math.sin(n.yaw) * 2.4, n.pos.z + Math.cos(n.yaw) * 2.4, 0.5);
+      const yaw = Math.atan2(n.pos.x - v.x, n.pos.z - v.z);
+      p.place(v.x, v.z, yaw);
+      const hv = free(v.x + Math.sin(yaw + 2.3) * 5, v.z + Math.cos(yaw + 2.3) * 5, 1.4);
+      h.position.set(hv.x, this.collision.groundY(hv.x, hv.z), hv.z);
+      h.yaw = yaw;
+    } else {
+      let at = t.at;
+      if (!at) {
+        const d = new THREE.Vector3(t.to.x - p.pos.x, 0, t.to.z - p.pos.z).normalize();
+        at = new THREE.Vector3(t.to.x - d.x * 30, 0, t.to.z - d.z * 30);
+      }
+      const v = free(at.x, at.z, 1.4);
+      const yaw = Math.atan2(t.to.x - v.x, t.to.z - v.z);
+      h.position.set(v.x, this.collision.groundY(v.x, v.z), v.z);
+      h.yaw = yaw;
+      if (p.mounted) {
+        p.syncToHorse();
+        this.camRig.yaw = yaw;
+      } else {
+        const pv = free(v.x + Math.sin(yaw + 1.6) * 2.2, v.z + Math.cos(yaw + 1.6) * 2.2, 0.5);
+        p.place(pv.x, pv.z, yaw);
+      }
+    }
+    h.speed = 0;
+    h.mode = 'idle';
+    this.camRig.pitch = -0.12;
   }
 
   onPlayerDeath() {
@@ -449,6 +511,7 @@ class Game {
     if (input.pressed('Escape') || input.pressed('KeyP')) return this.pause();
     if (input.pressed('KeyM')) return this.pause('map');
     if (input.pressed('KeyN')) this.hud.toast(this.audio.toggleMute() ? 'Sound off' : 'Sound on');
+    if (input.pressed('KeyJ')) this.quickTravel();
 
     // Interaction prompt + E
     this.interaction = this.interactionPrompt();
@@ -509,6 +572,10 @@ class Game {
     if (p.aiming && !p.deadEyeOn && p.deadEye > 15) prompts.push(['Q', 'Dead Eye']);
     if (p.deadEyeOn) prompts.push(['Click', 'Mark target'], ['Q', 'Fire']);
     if (p.weapon && p.ammo[p.weapon].clip === 0 && p.ammo[p.weapon].reserve > 0) prompts.push(['R', 'Reload']);
+    if (!this.interaction && !this.lockControls && !this.traveling && !p.dead) {
+      const t = this.missions.travelTarget();
+      if (t) prompts.push(['J', t.label]);
+    }
     this.hud.prompts(prompts);
     this.hud.aimTarget = p.aiming && this.aimingAtTarget();
     if (!this.hudSkip) this.hud.update(dt);

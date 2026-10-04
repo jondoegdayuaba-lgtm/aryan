@@ -167,6 +167,9 @@ body.paused #title-card, body.paused #subtitle, body.paused #objective { visibil
 .mission-list .locked { opacity: .45; }
 .mission-list .active h3 { color: var(--gold); }
 .mission-list p { margin: 0; font-size: 17px; }
+.mission-list .go-btn { margin-top: 10px; padding: 6px 14px; font: inherit; font-size: 16px; letter-spacing: .06em; text-transform: uppercase;
+  color: #fff; background: rgba(0, 0, 0, .35); border: 1px solid var(--gold); cursor: pointer; }
+.mission-list .go-btn:hover { background: var(--gold); color: #1b1410; }
 .settings { display: flex; flex-direction: column; gap: 18px; max-width: 460px; font-size: 18px; }
 .settings label { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .settings select, .settings input[type=range] { width: 220px; accent-color: #c0170f; font: inherit; font-size: 16px; }

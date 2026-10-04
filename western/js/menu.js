@@ -210,6 +210,8 @@ export class Menu {
 
   drawStory() {
     const m = this.game.missions;
+    const t = m.travelTarget();
+    const travel = t ? `<button class="go-btn">${m.active ? 'Travel to objective' : 'Start this mission'} <kbd>J</kbd></button>` : '';
     const items = m.list.map((def, i) => {
       const done = m.isDone(def.id);
       const active = m.active && m.active.def.id === def.id;
@@ -217,9 +219,17 @@ export class Menu {
       const cls = done ? 'done' : active ? 'active' : avail ? '' : 'locked';
       const text = done || active || avail ? def.blurb : 'Locked.';
       const who = avail && !active ? `<p><i>Talk to ${def.giverName} (${def.where}).</i></p>` : '';
-      return `<li class="${cls}"><span class="num">${i + 1}</span><div><h3>${def.title}</h3><p>${text}</p>${who}</div></li>`;
+      const go = (avail && !m.active) || active ? travel : '';
+      return `<li class="${cls}"><span class="num">${i + 1}</span><div><h3>${def.title}</h3><p>${text}</p>${who}${go}</div></li>`;
     });
     $('story-body').innerHTML = `<ul class="mission-list">${items.join('')}</ul>`;
+    const btn = $('story-body').querySelector('.go-btn');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        this.game.resume();
+        this.game.quickTravel();
+      });
+    }
   }
 
   bindSettings() {

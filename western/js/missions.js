@@ -48,6 +48,7 @@ class Run {
     this.spawned = [];
     this.fires = [];
     this.markers = [];
+    this.travel = null;
     this.interactions = [];
     this.wait = null;
     this.pts = {};
@@ -118,6 +119,14 @@ class Run {
 
   marker(...pts) {
     this.markers = pts.map((p) => (p.isVector3 ? p : V(p)));
+    this.travel = null;
+  }
+
+  // A long trip the player can skip with J: head for `to`, arriving at `at`
+  // (default: a little short of it), or in front of `npc` on foot.
+  go(to, at = null, npc = null) {
+    this.marker(to);
+    this.travel = { to: this.markers[0], at: at && (at.isVector3 ? at : V(at)), npc };
   }
 
   near(pt, r) {
@@ -258,7 +267,7 @@ export class Missions {
       setTimeout(() => g.hud.titleCard('The End', 'Outlaw Frontier', 'The valley is yours to roam. Thanks for playing.', 7), 5000);
     } else {
       const next = this.available();
-      if (next) setTimeout(() => g.hud.toast(`Next: <b>${next.title}</b>. Talk to ${next.giverName} ${next.where}.`, 'Story'), 5200);
+      if (next) setTimeout(() => g.hud.toast(`Next: <b>${next.title}</b>. Talk to ${next.giverName} ${next.where}, or press <kbd>J</kbd> to start it now.`, 'Story'), 5200);
     }
   }
 
@@ -298,6 +307,22 @@ export class Missions {
       return { label: `Talk to ${next.giverName}: ${next.title}`, action: () => this.start(next) };
     }
     return null;
+  }
+
+  // Where J (quick travel) would take the player right now, if anywhere:
+  // to the next mission's giver (starting it), or along a long ride in one.
+  travelTarget() {
+    const g = this.game;
+    const p = g.player.pos;
+    if (this.active) {
+      const t = this.active.travel;
+      if (!t || Math.hypot(t.to.x - p.x, t.to.z - p.z) < 80) return null;
+      return { label: 'Travel to objective', ...t };
+    }
+    const next = this.available();
+    const giver = next && this.givers[next.giver];
+    if (!giver) return null;
+    return { label: `Start mission: ${next.title}`, to: giver.pos, npc: giver, start: next };
   }
 
   blips() {
@@ -352,7 +377,7 @@ function* morningRide(m) {
   }
   m.hint('Steer with the mouse and <kbd>W A S D</kbd>. Hold <kbd>Shift</kbd> to gallop, but watch the horse\'s stamina ring.');
   m.objective('Ride to the <b>lookout</b>');
-  m.marker(P.lookout);
+  m.go(P.lookout);
   yield m.until(() => m.near(P.lookout, 24));
   m.objective('');
   m.markers = [];
@@ -384,7 +409,7 @@ function* morningRide(m) {
   m.lock(false);
   m.setCheckpoint(1, P.lookout);
   m.objective('Return to <b>camp</b>');
-  m.marker(P.camp);
+  m.go(P.camp);
   yield m.until(() => m.near(P.camp, 16));
   if (g.player.mounted) {
     m.objective('Get off your horse and talk to <b>Gus</b>');
@@ -419,7 +444,7 @@ function* freshMeat(m) {
     yield m.until(() => g.player.weapon === 'rifle');
   }
   m.objective('Ride to the <b>deer meadow</b>');
-  m.marker(P.deer_meadow);
+  m.go(P.deer_meadow, P.deer_meadow.clone().add(new THREE.Vector3(120, 0, 30)));
   yield m.until(() => m.near(P.deer_meadow, 170));
   m.setCheckpoint(1, P.deer_meadow.clone().add(new THREE.Vector3(120, 0, 30)));
   const herd = [];
@@ -467,7 +492,7 @@ function* freshMeat(m) {
     yield m.delay(0.25);
   }
   m.objective('Bring the meat back to <b>camp</b>');
-  m.marker(P.camp);
+  m.go(P.camp);
   yield m.until(() => m.near(P.camp, 16));
   if (g.player.mounted) {
     m.objective('Get off your horse and talk to <b>Gus</b>');
@@ -495,7 +520,7 @@ function* bankJob(m) {
       ['Gus', 'Ride into Copper Bluff and find out what he knows about Lockhart.'],
     ]);
     m.objective('Ride to <b>Copper Bluff</b>');
-    m.marker(P.town);
+    m.go(P.town, new THREE.Vector3(318, 0, 112));
     yield m.until(() => m.near(P.town, 150));
     m.setCheckpoint(1, new THREE.Vector3(318, 0, 112));
   }
@@ -566,7 +591,7 @@ function* burningFarm(m) {
   m.fire(base.clone().add(new THREE.Vector3(2.8, 4.8, -7)), 1.8, { spread: 2.0 });
   m.fire(base.clone().add(new THREE.Vector3(3.6, 1.6, -2)), 1.1);
   m.objective('Ride to the <b>Hollis farm</b>');
-  m.marker(P.farm);
+  m.go(P.farm, new THREE.Vector3(232, 0, 620));
   yield m.until(() => m.near(P.farm, 110));
   m.setCheckpoint(1, new THREE.Vector3(232, 0, 620));
   g.env.hazeTarget = 1;
@@ -625,7 +650,7 @@ function* deadOrAlive(m) {
     ], sheriff);
     g.env.hazeTarget = 0;
     m.objective('Ride to the <b>Lockhart hideout</b>');
-    m.marker(P.hideout);
+    m.go(P.hideout, P.hideout.clone().add(new THREE.Vector3(30, 0, 160)));
     yield m.until(() => m.near(P.hideout, 150));
     m.setCheckpoint(1, P.hideout.clone().add(new THREE.Vector3(30, 0, 160)));
   }
@@ -655,7 +680,7 @@ function* deadOrAlive(m) {
   yield* m.say([['Cole', 'Dead it is.']]);
   m.setCheckpoint(3, P.hideout);
   m.objective('Collect the bounty from <b>Sheriff Dawes</b>');
-  m.markers = [sheriff.pos];
+  m.go(sheriff.pos, null, sheriff);
   yield m.until(() => m.near(sheriff.pos, 4) && !g.player.mounted);
   m.objective('');
   yield* m.talk([

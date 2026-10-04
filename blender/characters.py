@@ -33,11 +33,11 @@ J = {
     'neck': (0, 0, 1.46), 'head': (0, -0.012, 1.55), 'head_end': (0, -0.012, 1.785),
 }
 for s, k in SIDES:
-    J[f'shoulder.{s}'] = (k * 0.19, 0.005, 1.425)
-    J[f'elbow.{s}'] = (k * 0.285, 0.02, 1.135)
-    J[f'wrist.{s}'] = (k * 0.35, 0.0, 0.885)
-    J[f'fingers.{s}'] = (k * 0.377, -0.012, 0.787)
-    J[f'hip.{s}'] = (k * 0.095, 0, 0.95)
+    J[f'shoulder.{s}'] = (k * 0.205, 0.005, 1.428)
+    J[f'elbow.{s}'] = (k * 0.302, 0.02, 1.138)
+    J[f'wrist.{s}'] = (k * 0.368, 0.0, 0.888)
+    J[f'fingers.{s}'] = (k * 0.395, -0.012, 0.79)
+    J[f'hip.{s}'] = (k * 0.1, 0, 0.95)
     J[f'knee.{s}'] = (k * 0.10, -0.01, 0.52)
     J[f'ankle.{s}'] = (k * 0.105, 0.02, 0.09)
     J[f'toe.{s}'] = (k * 0.11, -0.12, 0.025)
@@ -237,11 +237,12 @@ def body_figure():
         R.append((rx, ry if ry is not None else rx))
         return len(P) - 1
 
-    torso = [add((0, 0.008, 0.945), 0.150, 0.108), add((0, 0.0, 1.03), 0.148, 0.102),
-             add((0, -0.004, 1.12), 0.138, 0.096), add((0, -0.006, 1.235), 0.150, 0.106),
-             add((0, -0.008, 1.335), 0.163, 0.113), add((0, 0.004, 1.425), 0.135, 0.096),
-             add((0, 0.01, 1.475), 0.067, 0.064), add((0, 0.006, 1.53), 0.059, 0.06),
-             add((0, -0.002, 1.585), 0.05, 0.05)]
+    # (radii are what the Skin modifier is given; the smoothed surface ends up ~20% inside them)
+    torso = [add((0, 0.008, 0.945), 0.18, 0.135), add((0, -0.002, 1.03), 0.178, 0.138),
+             add((0, -0.008, 1.12), 0.176, 0.14), add((0, -0.01, 1.235), 0.198, 0.148),
+             add((0, -0.01, 1.335), 0.22, 0.16), add((0, 0.006, 1.425), 0.186, 0.13),
+             add((0, 0.01, 1.478), 0.082, 0.076), add((0, 0.006, 1.53), 0.064, 0.064),
+             add((0, -0.002, 1.585), 0.053, 0.053)]
     tl = ['hips', 'hips', 'spine', 'spine', 'chest', 'chest', 'neck', 'neck']
     for i in range(len(torso) - 1):
         E.append((torso[i], torso[i + 1]))
@@ -250,11 +251,11 @@ def body_figure():
         sh = Vector(J[f'shoulder.{s}'])
         el = Vector(J[f'elbow.{s}'])
         wr = Vector(J[f'wrist.{s}'])
-        a0 = add(sh + Vector((-k * 0.006, 0.0, -0.008)), 0.064, 0.067)
-        a1 = add(sh.lerp(el, 0.5), 0.056, 0.058)
-        a2 = add(el, 0.045, 0.047)
-        a3 = add(el.lerp(wr, 0.38), 0.046, 0.041)
-        a4 = add(wr + (wr - el).normalized() * 0.01, 0.033, 0.027)
+        a0 = add(sh + Vector((-k * 0.006, 0.0, -0.008)), 0.086, 0.088)
+        a1 = add(sh.lerp(el, 0.5), 0.077, 0.079)
+        a2 = add(el, 0.058, 0.06)
+        a3 = add(el.lerp(wr, 0.38), 0.062, 0.055)
+        a4 = add(wr + (wr - el).normalized() * 0.01, 0.037, 0.031)
         E.append((torso[5], a0))
         LBL.append(('link', 'chest', f'upperarm.{s}'))
         for a, b, bone in ((a0, a1, 'upperarm'), (a1, a2, 'upperarm'), (a2, a3, 'forearm'), (a3, a4, 'forearm')):
@@ -263,11 +264,11 @@ def body_figure():
         hp = Vector(J[f'hip.{s}'])
         kn = Vector(J[f'knee.{s}'])
         an = Vector(J[f'ankle.{s}'])
-        l0 = add(hp + Vector((-k * 0.004, 0.006, -0.045)), 0.088, 0.092)
-        l1 = add(hp.lerp(kn, 0.48), 0.075, 0.078)
-        l2 = add(kn, 0.056, 0.058)
-        l3 = add(kn.lerp(an, 0.36) + Vector((0, 0.008, 0)), 0.056, 0.06)
-        l4 = add(an + Vector((0, 0, 0.03)), 0.041, 0.043)
+        l0 = add(hp + Vector((-k * 0.004, 0.006, -0.045)), 0.115, 0.12)
+        l1 = add(hp.lerp(kn, 0.48), 0.1, 0.104)
+        l2 = add(kn, 0.068, 0.07)
+        l3 = add(kn.lerp(an, 0.36) + Vector((0, 0.008, 0)), 0.07, 0.074)
+        l4 = add(an + Vector((0, 0, 0.03)), 0.045, 0.047)
         E.append((torso[0], l0))
         LBL.append(('link', 'hips', f'thigh.{s}'))
         for a, b, bone in ((l0, l1, 'thigh'), (l1, l2, 'thigh'), (l2, l3, 'shin'), (l3, l4, 'shin')):
@@ -385,6 +386,13 @@ class Body:
             p = hit[0] + hit[1] * off if hit[0] is not None else Vector((0, 0, zz)) + d * 0.16
             pts.append(p)
         return pts
+
+    def top(self, x, y, off=0.0):
+        """Point on top of the shoulders at (x, y), pushed up and out by `off`."""
+        hit = self.bvh.ray_cast(Vector((x, y, 2.2)), Vector((0, 0, -1)), 2.0)
+        if hit[0] is None:
+            return Vector((x, y, 1.48))
+        return hit[0] + hit[1] * off
 
     def around(self, ang, z, off=0.0, cy=0.004):
         """Point on the torso/neck at height z, `ang` radians round from the front toward the left."""
@@ -788,7 +796,7 @@ def build_shirt_details(b, M, body):
     for s, k in SIDES:
         el, wr = Vector(J[f'elbow.{s}']), Vector(J[f'wrist.{s}'])
         d = (wr - el).normalized()
-        b.tube([wr - d * 0.055, wr - d * 0.004], [(0.038, 0.034), (0.037, 0.033)], M['shirt'], W, seg=14,
+        b.tube([wr - d * 0.055, wr - d * 0.004], [(0.043, 0.038), (0.041, 0.036)], M['shirt'], W, seg=14,
                ref=Vector((0, -1, 0)))
     # Trouser belt with a buckle
     ring = body.ring(0.978, 28, 0.004)
@@ -819,9 +827,9 @@ def build_boots(b, M):
         x = k * 0.105
         # Shaft, flared at the top with a pull strap seam
         b.tube([(x, 0.012, 0.415), (x, 0.012, 0.395), (x, 0.014, 0.3), (x, 0.018, 0.18), (x, 0.022, 0.1)],
-               [(0.064, 0.068), (0.06, 0.064), (0.057, 0.061), (0.049, 0.053), (0.046, 0.05)], M['boots'],
+               [(0.072, 0.076), (0.068, 0.072), (0.064, 0.068), (0.055, 0.059), (0.05, 0.054)], M['boots'],
                lambda co, bw=bw, shin=shin: bw(co) if co.z < 0.16 else {shin: 1.0}, seg=18, caps=(False, False))
-        b.tube([(x, 0.012, 0.418), (x, 0.012, 0.402)], [(0.066, 0.07), (0.066, 0.07)], M['boots'], shin, seg=18)
+        b.tube([(x, 0.012, 0.418), (x, 0.012, 0.402)], [(0.074, 0.078), (0.074, 0.078)], M['boots'], shin, seg=18)
         # Foot: heel to a narrow toe
         path = [(x, 0.068, 0.052), (x, 0.045, 0.07), (x, 0.0, 0.072), (x, -0.06, 0.055), (x * 1.01, -0.11, 0.042),
                 (x * 1.02, -0.15, 0.033), (x * 1.03, -0.168, 0.03)]
@@ -1053,7 +1061,7 @@ def build_suspenders(M, body):
     b = Builder('Suspenders')
     for s, k in SIDES:
         front = [body.surface(k * 0.07, z, -1, 0.004)[0] for z in (0.99, 1.1, 1.2, 1.3, 1.38, 1.44)]
-        top = [Vector((k * 0.082, 0.004, 1.474))]
+        top = [body.top(k * 0.086, 0.004, 0.004)]
         back = [body.surface(k * (0.055 - 0.04 * (1.44 - z) / 0.45), z, 1, 0.004)[0] for z in (1.44, 1.38, 1.3, 1.2, 1.1, 0.99)]
         strap(b, body, front + top + back, 0.028, M['strap'])
         b.box((0.032, 0.01, 0.022), front[0] + Vector((0, -0.006, 0.012)), material=M['brass'], bone=body.weights_at)
@@ -1065,9 +1073,8 @@ def build_satchel(M, body):
     front = [body.surface(-0.11 + t * 0.28, 1.44 - t * 0.46, -1, 0.008)[0] for t in [i / 8 for i in range(9)]]
     back = [body.surface(-0.11 + t * 0.28, 1.44 - t * 0.46, 1, 0.008)[0] for t in [i / 8 for i in range(9)]]
     back.reverse()
-    strap(b, body, back + [Vector((-0.12, 0.004, 1.478))] + front, 0.032, M['strap'], 0.007)
-    side = body.surface(0.17, 0.88, -1, 0.0)[0]
-    x = max(0.19, side.x + 0.03) if side else 0.19
+    strap(b, body, back + [body.top(-0.12, 0.004, 0.008)] + front, 0.032, M['strap'], 0.007)
+    x = max(0.19, body.around(math.pi / 2, 0.9).x + 0.03)
     b.box((0.06, 0.2, 0.17), (x, 0.0, 0.875), (0, 0, 0), M['leather'], 'hips')
     b.box((0.066, 0.206, 0.075), (x + 0.002, 0.0, 0.93), (0, 0.06, 0), M['leather'], 'hips')
     b.box((0.012, 0.028, 0.018), (x + 0.036, 0.0, 0.905), material=M['brass'], bone='hips')
@@ -1197,7 +1204,7 @@ def build_weapon_builders(M, body, gunbelt):
     rifle_parts(rb, M, 'chest', mm)
     # Sling: up the back, over the left shoulder, across the chest to the right hip
     sling = [body.surface(0.13, 0.98, 1, 0.012)[0], body.surface(0.12, 1.2, 1, 0.012)[0],
-             body.surface(0.11, 1.42, 1, 0.012)[0], Vector((0.1, 0.004, 1.48)),
+             body.surface(0.11, 1.42, 1, 0.012)[0], body.top(0.1, 0.004, 0.012),
              body.surface(0.085, 1.38, -1, 0.014)[0], body.surface(0.0, 1.2, -1, 0.014)[0],
              body.surface(-0.13, 1.0, -1, 0.014)[0]]
     strap(rb, body, sling, 0.024, M['strap'], 0.008)
