@@ -25,6 +25,8 @@ export const CAR = {
   airSteer: 0.6,          // turn rate in the air
   gravity: 30,            // a bit heavier than real life so jumps feel snappy
   halfWidth: 1.05,        // for wall collisions
+  boostKick: 16,          // a boost pad adds this much over top speed...
+  boostMax: 1.35,         // ...up to this times top speed
 };
 
 export const CAMERA = {

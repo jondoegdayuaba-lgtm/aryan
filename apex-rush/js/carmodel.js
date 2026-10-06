@@ -51,6 +51,8 @@ export class CarModel {
     const carbon = lambert('#23262e'), tyre = lambert('#1b1d22'), rim = lambert('#c9ccd6');
     const helmet = lambert('#f4f4f6'), visor = lambert('#18203a'), chrome = lambert('#9aa0ab');
 
+    const flameMat = new THREE.MeshBasicMaterial({ color: '#ffb347', transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+    this.flames = [];
     this.root = new THREE.Group();
     this.body = new THREE.Group();          // leans and pitches inside root
     this.root.add(this.body);
@@ -93,6 +95,12 @@ export class CarModel {
       add(box(0.55, 0.05, 0.08, s * 0.66, 0.5, 1.35), carbon);          // wishbones
       add(box(0.55, 0.05, 0.08, s * 0.68, 0.52, -1.3), carbon);
       add(new THREE.CylinderGeometry(0.07, 0.08, 0.32, 6).rotateX(Math.PI / 2).translate(s * 0.16, 0.52, -2.08), chrome);
+      // Boost flame, hidden until a boost pad fires.
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1, 7).rotateX(-Math.PI / 2).translate(0, 0, -0.5), flameMat);
+      flame.position.set(s * 0.16, 0.52, -2.22);
+      flame.visible = false;
+      this.body.add(flame);
+      this.flames.push(flame);
     }
     add(box(2.08, 0.07, 0.56, 0, 0.26, 2.05), this.stripeMat);          // front wing
     add(box(2.0, 0.08, 0.6, 0, 1.3, -1.9), this.paintMat);              // rear wing
@@ -124,7 +132,11 @@ export class CarModel {
   }
 
   // Wheel spin and steering, plus a little body roll and pitch.
-  animate(dt, { speed, steer, roll, pitch }) {
+  animate(dt, { speed, steer, roll, pitch, boost = 0 }) {
+    for (const f of this.flames) {
+      f.visible = boost > 0.02;
+      f.scale.set(1, 1, boost * (1.6 + Math.random() * 0.8));
+    }
     this.spin = (this.spin + (speed / WHEEL_R) * dt) % (Math.PI * 2);
     for (const w of this.wheels) {
       w.wheel.rotation.x = this.spin;
@@ -140,6 +152,7 @@ export class CarModel {
     const mat = new THREE.MeshLambertMaterial({ color: '#cfeeff', transparent: true, opacity: 0.38, depthWrite: false });
     const ghost = this.root.clone(true);
     ghost.traverse((o) => {
+      if (o.isMesh && o.material.blending === THREE.AdditiveBlending) o.visible = false;
       if (o.isMesh) {
         o.material = mat;
         o.castShadow = false;

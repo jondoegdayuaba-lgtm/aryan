@@ -194,6 +194,7 @@ kbd {
 }
 .diff-tag.medium { background: var(--sun); }
 .diff-tag.hard { background: var(--kerb); color: var(--paper); }
+.diff-tag.expert { background: #b56cff; color: var(--paper); }
 
 .medal {
   display: inline-block;

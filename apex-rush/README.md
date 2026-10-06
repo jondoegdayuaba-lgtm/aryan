@@ -1,13 +1,28 @@
 # Apex Rush
 
-A low-poly time-trial racing game for the browser, with a track editor. Pick one of four tracks (or build your own), clear every checkpoint in order, cross the line, then race the see-through ghost of your best run. Each track has gold, silver and bronze medal times.
+A low-poly time-trial racing game for the browser, with a track editor. Pick one of eight tracks (or build your own), clear every checkpoint in order, cross the line, then race the see-through ghost of your best run. Each track has gold, silver and bronze medal times.
 
 | Track | Difficulty | What's on it |
 | --- | --- | --- |
 | Sunday Loop | Easy | 2 laps of rolling tarmac, a blue tunnel, a hilltop chicane |
+| Rollercoaster | Easy | 2 laps over humps that throw you into the air, banked turns, boost pads |
 | Kerb Sprint | Medium | 2 quick laps of esses and a walled kink |
 | Quarry Jumps | Medium | A to B: two gaps to jump, a walled high road, an underpass |
+| Booster Valley | Medium | A to B over three big gaps you can only clear with the boost pads |
 | Skyway Eight | Hard | A figure of eight over a bridge and back through the tunnel underneath, with a chicane and a jump |
+| Hammer Alley | Hard | 2 laps through swinging hammers, spinning sweepers, pistons and a bollard slalom |
+| Sky Gauntlet | Expert | A to B up in the air: three jumps in a row with no walls, obstacles on the high road, then a huge leap to the finish |
+
+## Obstacles and stunts
+
+- **Boost pads** (glowing blue arrows) kick you past top speed. The extra speed fades over a second or two, so hit them before a jump.
+- **Swinging hammers** sweep across the middle of the road. Time your run, or squeeze past along the kerb.
+- **Sweepers** spin a long bar low over the road around a post in the middle.
+- **Pistons** punch in and out from the sides, out of step, so the open lane switches sides.
+- **Bollard slaloms** block alternate halves of the road. Weave through.
+- **Hoops** mark the big jumps, and **humps** taken fast enough throw the car into the air.
+
+Hits knock you aside and slow you down, but they never stop the clock. Obstacles move with the race clock, so they're in the same place at the same time on every run, and your ghost stays in sync.
 
 Everything is plain HTML, CSS and JavaScript with [three.js](https://threejs.org) (shared with Missile Run in `../vendor/three`). There's no build step and there are no image or sound files: textures are drawn on canvases and sounds are synthesised with the Web Audio API.
 
@@ -48,7 +63,9 @@ Best times, their checkpoint splits and the ghost are kept in your browser's loc
 | --- | --- |
 | `js/tracks.js` | The tracks as lists of points, plus their medal times |
 | `js/path.js` | Turns the points into a smooth road and answers "what's under the car?" |
-| `js/physics.js` | Arcade car handling: engine, brakes, grip, drifting, jumps and walls |
+| `js/physics.js` | Arcade car handling: engine, brakes, grip, drifting, jumps, airtime, boost pads and walls |
+| `js/obstacles.js` | Hammers, sweepers, pistons and bollards: how they move and what they hit |
+| `js/obstaclemesh.js` | Draws the obstacles, boost pads and hoops |
 | `js/race.js` | Checkpoints, laps and the clock (counted in fixed 1/120 s physics steps) |
 | `js/ghost.js` | Records your run and plays it back |
 | `js/autopilot.js` | A robot driver for the menu's demo laps and the track checker |
@@ -67,10 +84,10 @@ Best times, their checkpoint splits and the ghost are kept in your browser's loc
 
 Press **Track editor** in the menu (or E). Build a track out of road pieces on a grid, the way you'd lay a toy race track, then press **Test drive** (T) to race it.
 
-- **Pieces:** Start, Straight, tight and wide turns left and right, Slope up and Slope down (one height step each), Jump ramp, Checkpoint and Finish. Keys 1 to 0 pick them.
+- **Pieces:** Start, Straight, tight and wide turns left and right, Slope up and Slope down (one height step each), Jump ramp, Checkpoint and Finish (keys 1 to 0 pick these), plus Boost pad, Hammer, Sweeper, Pistons and Bollards.
 - **Placing:** click a square to put the piece there; right-click (or the Erase tool, X) removes one. R rotates the piece, Q and E change the height, and Walls and Tunnel add barriers or a tunnel to the pieces you place next. After each piece the editor turns and lifts the next one to carry on from it.
 - **The road:** it runs from the Start piece, piece to piece, following the arrows. It ends at a Finish, or loops back into the Start to make a circuit (choose the laps at the top; a circuit needs at least one Checkpoint). Pieces that aren't on the road show red, and an orange square marks where the road wants to carry on.
-- **Jumps:** a Jump ramp can clear up to four empty squares and land up to six height steps lower. Leave the squares after it empty and carry on with the landing piece facing the same way.
+- **Jumps:** a Jump ramp can clear up to four empty squares and land up to six height steps lower. Leave the squares after it empty and carry on with the landing piece facing the same way. A hoop goes up over the gap, and a Boost pad before the ramp lets you clear longer gaps.
 - **Medals:** once the road is finished, a robot drives it in the background. Its time sets gold, silver and bronze, and if it can't finish, the editor tells you (usually a jump is too long).
 - **Moving around:** drag to move the view, right-drag to turn it, scroll to zoom; WASD and the arrow keys move too, and F frames the whole track. On a phone, drag, pinch and twist.
 - **Saving and sharing:** Save keeps the track in your browser and adds it to the menu's track list. Share gives you a code (`APEX1:…`) to send to a friend, who pastes it into Share to load your track. Ctrl+Z and Ctrl+Y undo and redo.
@@ -86,6 +103,8 @@ Built-in tracks are written as points instead. Add an entry to `js/tracks.js`. A
 - `gap: true` leaves the road out for a jump. Give the lip a `slope` (0.1 is a good start) so it launches you, and the landing a small negative `slope`.
 - `bank: 12` leans the road into the corner by that many degrees.
 - `w: 16` changes the road width there.
+- `boost: true` puts a boost pad there, and `hoop: true` on a jump's lip puts a hoop over the gap.
+- `obstacle: 'hammer'` (or `'sweeper'`, `'pistons'`, `'bollards'`) puts an obstacle there; keep them on straight road, and give neighbours different `phase` values (0 to 1) so they move out of step. `obstacles.js` holds their sizes and timings.
 
 Set `closed: true` and `laps` for a circuit; otherwise the track runs from the first point to the last. Then check it from the repository root:
 
@@ -95,7 +114,7 @@ npm run check:tracks                 # warnings, plus a robot's time round each 
 npm run check:tracks -- --svg maps   # also writes a top-down map of each track
 ```
 
-The checker warns about corners tighter than the road is wide, steep slopes and roads that cross without enough headroom. It also makes sure a robot driver can finish, which proves every jump can be cleared, and it checks the editor's example track too. Use the robot's times to set the medals. Rebuild the one-file version afterwards with `npm run build:desktop`.
+The checker warns about corners tighter than the road is wide, steep slopes and roads that cross without enough headroom. It also makes sure a robot driver can finish, which proves every jump can be cleared, and it checks the editor's example track too. On tracks with obstacles it also times the robot with the obstacles switched off, a best case that's handy for setting gold. Use the robot's times to set the medals. Rebuild the one-file version afterwards with `npm run build:desktop`.
 
 ## Tuning
 

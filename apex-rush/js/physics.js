@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { CAR } from './config.js';
 import { WALL_T } from './path.js';
+import { obstaclesFor } from './obstacles.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -19,6 +20,7 @@ export class CarBody {
     this.right = new THREE.Vector3(-1, 0, 0);
     this.probe = {};
     this.wallProbe = {};
+    this.obstacles = obstaclesFor(path);
     this.reset(new THREE.Vector3(), 0);
   }
 
@@ -39,6 +41,9 @@ export class CarBody {
     this.wallNx = 0;         // ...and the way that wall faces
     this.wallNz = 0;
     this.lost = false;       // no road anywhere near
+    this.pad = null;         // the boost pad under the car, if any
+    this.boostT = 0;         // seconds of boost glow left (for flames and sound)
+    this.boosted = 0;        // set when a pad fires (cleared by the game)
     this.path.probe(this.pos, this.probe);
     this.pos.y = this.probe.height;
     this.normal.set(this.probe.nx, this.probe.ny, this.probe.nz);
@@ -48,7 +53,8 @@ export class CarBody {
   }
 
   // ctl: { throttle 0..1, brake 0..1, steer -1..1 (positive = right), handbrake }
-  step(dt, ctl) {
+  // t is the race clock, which moves the obstacles.
+  step(dt, ctl, t = 0) {
     const c = CAR, pr = this.probe;
 
     // The steering wheel eases toward the input and centres faster than it turns.
@@ -61,7 +67,10 @@ export class CarBody {
     const gap = this.pos.y - pr.height;
     const vn = this.vel.dot(_n);
     // Stay glued over gentle crests; leave the ground off ramp lips and big drops.
-    const contact = gap <= 0.02 || (this.grounded && gap < 0.5 && vn < 5);
+    // Over a crest taken fast enough, the road falls away quicker than gravity
+    // can pull the car down after it: airtime.
+    const crest = this.grounded && pr.road && pr.ky < 0 && this.vel.lengthSq() * -pr.ky > c.gravity * 1.3;
+    const contact = !crest && (gap <= 0.02 || (this.grounded && gap < 0.5 && vn < 5));
 
     if (contact) {
       if (!this.grounded) this.landing = Math.max(this.landing, -vn);
@@ -72,6 +81,18 @@ export class CarBody {
       this.normal.copy(_n);
       this.onRoad = pr.onRoad;
       this.drive(dt, ctl, _n, pr.onRoad);
+      // Boost pads kick the car past its top speed; the extra fades away.
+      const pad = pr.road ? this.path.padAt(pr.s, pr.lat) : null;
+      if (pad && pad !== this.pad) {
+        const vF = this.vel.dot(this.forward);
+        if (vF > -1) {
+          const target = Math.min(c.topSpeed * c.boostMax, Math.max(vF, c.topSpeed) + c.boostKick);
+          this.vel.addScaledVector(this.forward, target - vF);
+          this.boostT = 1.2;
+          this.boosted = target - vF;
+        }
+      }
+      this.pad = pad;
     } else {
       this.grounded = false;
       this.air += dt;
@@ -81,10 +102,13 @@ export class CarBody {
       this.forward.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
       this.right.set(-this.forward.z, 0, this.forward.x);
       this.slip = 0;
+      this.pad = null;
     }
+    this.boostT = Math.max(0, this.boostT - dt);
 
     this.pos.addScaledVector(this.vel, dt);
     this.collideWalls();
+    if (this.obstacles) this.obstacles.collide(this, t);
 
     this.speed = this.vel.length();
     this.forwardSpeed = this.vel.dot(this.forward);

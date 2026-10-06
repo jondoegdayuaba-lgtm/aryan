@@ -13,7 +13,8 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const clamp = THREE.MathUtils.clamp;
-const PALETTE = ['start', 'road', 'turnL', 'turnR', 'wideL', 'wideR', 'up', 'down', 'jump', 'cp', 'finish'];
+const PALETTE = ['start', 'road', 'turnL', 'turnR', 'wideL', 'wideR', 'up', 'down', 'jump', 'cp', 'finish',
+  'boost', 'hammer', 'sweeper', 'pistons', 'bollards'];
 const DIGITS = ['road', 'turnL', 'turnR', 'wideL', 'wideR', 'up', 'down', 'jump', 'cp', 'finish'];   // keys 1..9, 0
 const C = {
   route: new THREE.Color('#e8f4ff'), loose: new THREE.Color('#ff5a4f'), start: new THREE.Color('#3ddc84'),
@@ -60,6 +61,11 @@ function icon(t) {
     up: straight + '<path d="M12 24L20 13L28 24Z" fill="#f3f5fa"/>',
     down: straight + '<path d="M12 16L20 27L28 16Z" fill="#f3f5fa"/>',
     jump: road('M20 40V22') + road('M20 9V0') + '<path d="M14 26L26 26L20 19Z" fill="#ffd21f"/>',
+    boost: straight + '<path d="M11 26L20 15L29 26L25 28L20 22L15 28Z" fill="#5ff3ff"/>',
+    hammer: straight + '<path d="M7 8H33" stroke="#2b2f3a" stroke-width="3"/><path d="M20 8L13 22" stroke="#9aa0ab" stroke-width="2"/><rect x="7" y="20" width="12" height="8" fill="#ffc21a" stroke="#15171c" stroke-width="1.5"/>',
+    sweeper: straight + '<path d="M8 30L32 10" stroke="#e2342d" stroke-width="3.5"/><circle cx="20" cy="20" r="4.5" fill="#ffc21a" stroke="#15171c" stroke-width="1.5"/>',
+    pistons: straight + '<rect x="2" y="9" width="14" height="7" fill="#ffc21a" stroke="#15171c" stroke-width="1.5"/><rect x="24" y="24" width="14" height="7" fill="#ffc21a" stroke="#15171c" stroke-width="1.5"/>',
+    bollards: straight + [[23, 13], [27, 13], [31, 13], [9, 27], [13, 27], [17, 27]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2" fill="#ff7a1a"/>`).join(''),
   }[t];
   return `<svg viewBox="0 0 40 40" aria-hidden="true">${body}</svg>`;
 }
@@ -628,6 +634,7 @@ export class Editor {
     this.camera.lookAt(target);
     this.grid.position.set(Math.round(target.x / CELL) * CELL + CELL / 2, this.level * LEVEL + 0.06, Math.round(target.z / CELL) * CELL + CELL / 2);
     this.openMat.opacity = 0.5 + 0.4 * Math.sin(performance.now() / 180);
+    if (this.road) this.road.update(performance.now() / 1000);    // obstacles swing in the preview too
     this.status();
   }
 

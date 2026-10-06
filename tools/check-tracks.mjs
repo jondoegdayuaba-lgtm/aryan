@@ -113,6 +113,10 @@ for (const def of [...TRACKS, traced.def]) {
   console.log(`  tightest corner radius ${info.minRadius.toFixed(0)} m, steepest grade ${(info.maxGrade * 100).toFixed(0)}%`);
   console.log(`  robot: ${run.done ? 'finished' : 'DID NOT FINISH'} in ${formatTime(run.time)}, top speed ${(run.top * 3.6).toFixed(0)} km/h, longest jump ${run.airMax.toFixed(2)} s, ${run.respawns} respawns`);
   console.log(`  bolder robot: ${fast.done ? formatTime(fast.time) : 'did not finish'}${fast.respawns ? `, ${fast.respawns} respawns` : ''}`);
+  if (path.obstacleDefs.length) {
+    const clean = drive(path, { margin: 1.05, obstacles: false });
+    console.log(`  bolder robot with obstacles switched off: ${clean.done ? formatTime(clean.time) : 'did not finish'}`);
+  }
   const m = def.medals;
   if (m.gold) console.log(`  medals: gold ${formatTime(m.gold)}, silver ${formatTime(m.silver)}, bronze ${formatTime(m.bronze)}`);
   for (const f of run.fails.slice(0, 6)) console.log(`  ! ${f.why} at s=${f.s.toFixed(0)} t=${f.t.toFixed(1)}`);

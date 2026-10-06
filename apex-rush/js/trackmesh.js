@@ -2,6 +2,7 @@
 // pillars, gates and corner signs.
 import * as THREE from 'three';
 import { KERB, WALL_GAP, WALL_T, WALL_H, deckDepth } from './path.js';
+import { buildFeatures } from './obstaclemesh.js';
 
 const RED = new THREE.Color('#e2342d'), WHITE = new THREE.Color('#f3f4f6');
 const WALL = new THREE.Color('#d5d8e0'), WALL_DARK = new THREE.Color('#9da2ae');
@@ -289,5 +290,9 @@ export function buildTrack(path, T, { finish = true } = {}) {
     group.add(sign);
   }
 
-  return { group, gates, roadMesh };
+  // Obstacles, boost pads and hoops; update(t) moves them with the race clock.
+  const features = buildFeatures(path, T);
+  group.add(features.group);
+
+  return { group, gates, roadMesh, update: features.update };
 }

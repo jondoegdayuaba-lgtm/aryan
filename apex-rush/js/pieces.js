@@ -13,7 +13,8 @@ export const MIN_GAP_LEVELS = 3; // pieces stacked closer than this replace each
 export const DIRS = [[0, 1], [1, 0], [0, -1], [-1, 0]];
 
 // The order here is part of the share-code format: only ever append.
-export const TYPES = ['road', 'turnL', 'turnR', 'wideL', 'wideR', 'up', 'down', 'jump', 'cp', 'start', 'finish'];
+export const TYPES = ['road', 'turnL', 'turnR', 'wideL', 'wideR', 'up', 'down', 'jump', 'cp', 'start', 'finish',
+  'boost', 'hammer', 'sweeper', 'pistons', 'bollards'];
 
 export const PIECES = {
   start: { label: 'Start' },
@@ -27,6 +28,11 @@ export const PIECES = {
   jump: { label: 'Jump ramp', rise: 1, jump: true },
   cp: { label: 'Checkpoint', cp: true },
   finish: { label: 'Finish', finish: true },
+  boost: { label: 'Boost pad', feature: { boost: true } },
+  hammer: { label: 'Hammer', feature: { obstacle: 'hammer' } },
+  sweeper: { label: 'Sweeper', feature: { obstacle: 'sweeper' } },
+  pistons: { label: 'Pistons', feature: { obstacle: 'pistons' }, walls: true },
+  bollards: { label: 'Bollards', feature: { obstacle: 'slalom' } },
 };
 
 const JUMP_REACH = 4;            // a jump can clear up to this many empty squares
@@ -79,7 +85,7 @@ export function centreLine(p) {
     return out;
   }
   if (def.rise) return [[-h, 0, 0], [0, 0, def.rise / 2]];
-  if (def.cp) return [[-h, 0, 0], [0, 0, 0]];
+  if (def.cp || def.feature) return [[-h, 0, 0], [0, 0, 0]];
   return [[-h, 0, 0]];
 }
 
@@ -187,16 +193,19 @@ function routePoints(route, gaps, closed) {
   const points = [];
   for (const q of route) {
     const at = frame(q);
-    const opts = { walls: !!q.w, tunnel: !!q.u };
+    const def = PIECES[q.t];
+    const opts = { walls: !!(q.w || def.walls), tunnel: !!q.u };
     centreLine(q).forEach(([f, l, dh], n) => {
       const [x, z] = at(f, l);
       const o = { ...opts };
-      if (PIECES[q.t].cp && n === 1) o.cp = true;
+      if (def.cp && n === 1) o.cp = true;
+      // Obstacles in neighbouring squares swing out of step with each other.
+      if (def.feature && n === 1) Object.assign(o, def.feature, { phase: ((q.i * 0.37 + q.j * 0.61) % 1 + 1) % 1 });
       points.push([x, z, (q.l + dh) * LEVEL, o]);
     });
     if (gaps.has(q)) {
       const [x, z] = at(CELL / 2, 0);
-      points.push([x, z, (q.l + 1) * LEVEL, { ...opts, gap: true, slope: LIP_SLOPE }]);
+      points.push([x, z, (q.l + 1) * LEVEL, { ...opts, gap: true, slope: LIP_SLOPE, hoop: true }]);
     }
   }
   if (!closed) {
@@ -258,16 +267,17 @@ function hash(s) {
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
-// A small circuit to start from: two wide hairpins, a checkpoint and a jump.
+// A small circuit to start from: two wide hairpins, a checkpoint, a hammer,
+// and a boost pad into a jump.
 export function exampleTrack() {
   const P = (t, i, j, r, l = 0) => ({ t, i, j, l, r, w: false, u: false });
   return {
     name: 'Example circuit',
     laps: 2,
     pieces: [
-      P('start', 0, 0, 0), P('road', 0, 1, 0), P('cp', 0, 2, 0), P('road', 0, 3, 0),
+      P('start', 0, 0, 0), P('road', 0, 1, 0), P('cp', 0, 2, 0), P('hammer', 0, 3, 0),
       P('wideL', 0, 4, 0), P('wideL', 2, 5, 1),
-      P('road', 3, 3, 2), P('jump', 3, 2, 2), P('road', 3, 0, 2), P('road', 3, -1, 2),
+      P('boost', 3, 3, 2), P('jump', 3, 2, 2), P('road', 3, 0, 2), P('road', 3, -1, 2),
       P('wideL', 3, -2, 2), P('wideL', 1, -3, 3), P('road', 0, -1, 0),
     ],
   };

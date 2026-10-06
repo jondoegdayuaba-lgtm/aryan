@@ -152,5 +152,26 @@ export class Sound {
   click() { this._blip([880], 'triangle', 0.05, 0.08); }
   wall(strength) { this._thud(0.15 + strength * 0.03, 900, 0.25); }
   land(strength) { this._thud(0.2 + strength * 0.03, 300, 0.35); }
+  // A rising whoosh when a boost pad fires.
+  boost() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.Q.value = 1.2;
+    f.frequency.setValueAtTime(400, t);
+    f.frequency.exponentialRampToValueAtTime(2600, t + 0.45);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.35, t + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t, Math.random());
+    src.stop(t + 0.75);
+    this._blip([660, 990], 'sawtooth', 0.12, 0.05, 0.05);
+  }
+
   respawn() { this._blip([523, 392], 'triangle', 0.1, 0.12, 0.06); }
 }

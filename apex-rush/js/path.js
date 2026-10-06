@@ -38,7 +38,10 @@ function parsePoint(raw, def) {
     gap: !!o.gap,
     tunnel: !!o.tunnel,
     walls: !!(o.walls || o.tunnel),
-    sign: o.sign,
+    boost: !!o.boost,
+    obstacle: o.obstacle || null,
+    phase: o.phase || 0,
+    hoop: !!o.hoop,
   };
 }
 
@@ -146,6 +149,15 @@ export class TrackPath {
       o.y = Math.max(o.y, (o.hw + KERB) * Math.abs(o.tanB));
     }
 
+    // Vertical curvature along the road (negative over a crest), smoothed:
+    // fast enough over a crest, the car takes off.
+    const rawKy = S.map((o, k) => (S[idx(k + 2)].y - 2 * o.y + S[idx(k - 2)].y) / (4 * step * step));
+    S.forEach((o, k) => {
+      let sum = 0;
+      for (let j = -2; j <= 2; j++) sum += rawKy[idx(k + j)];
+      o.ky = (k < 2 || k > N - 3) && !this.closed ? 0 : sum / 5;
+    });
+
     // 6. Spatial grid of segments for fast lookups.
     this.grid = new Map();
     this.segCount = this.closed ? N : N - 1;
@@ -178,6 +190,32 @@ export class TrackPath {
       this.finish = this.gate(total - 16, 'finish');
       this.spawnS = START_S - 8;
     }
+
+    // 8. Boost pads, obstacles (see obstacles.js) and hoops over jumps.
+    this.pads = [];
+    this.obstacleDefs = [];
+    this.hoops = [];
+    P.forEach((p, i) => {
+      const s = at(i);
+      if (p.boost) this.pads.push({ s0: s - 4, s1: s + 4, hl: 4.2, s });
+      if (p.obstacle) this.obstacleDefs.push({ kind: p.obstacle, s, phase: p.phase });
+      if (p.hoop && p.gap && i < segs) this.hoops.push({ s: (s + at(i + 1)) / 2, y: Math.max(p.y, P[(i + 1) % n].y) + 2.5 });
+    });
+  }
+
+  // Signed distance along the track from a to b, the short way round on circuits.
+  ahead(a, b) {
+    let d = b - a;
+    if (this.closed) d -= Math.round(d / this.length) * this.length;
+    return d;
+  }
+
+  // Is road position (s, lat) on a boost pad?
+  padAt(s, lat) {
+    for (const p of this.pads) {
+      if (Math.abs(lat) < p.hl && Math.abs(this.ahead(p.s, s)) < (p.s1 - p.s0) / 2) return p;
+    }
+    return null;
   }
 
   gate(s, kind) {
@@ -209,7 +247,7 @@ export class TrackPath {
   // ground at y = 0), the nearest stretch of road, and any wall close by.
   probe(p, out) {
     const S = this.samples, N = S.length;
-    out.road = false; out.onRoad = false; out.kerb = false;
+    out.road = false; out.onRoad = false; out.kerb = false; out.ky = 0;
     out.height = 0; out.nx = 0; out.ny = 1; out.nz = 0;
     out.index = -1; out.s = 0; out.lat = 0; out.hw = 0;
     out.nearIndex = -1; out.nearS = 0; out.nearLat = 0; out.nearY = 0;
@@ -269,6 +307,7 @@ export class TrackPath {
       out.road = true;
       out.onRoad = al <= hw + KERB;
       out.kerb = al > hw;
+      out.ky = a.ky + (b.ky - a.ky) * bt;
       out.height = bestH;
       out.index = best;
       out.s = a.s + bt * this.step;

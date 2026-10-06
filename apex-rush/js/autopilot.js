@@ -4,6 +4,7 @@
 import { CAR, PHYSICS_HZ } from './config.js';
 import { CarBody } from './physics.js';
 import { Race } from './race.js';
+import { obstaclesFor } from './obstacles.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -21,6 +22,7 @@ export class Autopilot {
     this.path = path;
     this.caution = caution;
     this.limit = path.samples.map((o) => cornerSpeed(Math.abs(o.curv), margin));
+    this.obstacles = obstaclesFor(path);
     this.pt = {};
   }
 
@@ -40,11 +42,13 @@ export class Autopilot {
       const d = Math.max(0, j * path.step - (s - k0 * path.step));
       allowed = Math.min(allowed, Math.sqrt(this.limit[k] ** 2 + 2 * decel * d));
     }
+    allowed = Math.min(allowed, this.obstacles.limitAhead(s, look * path.step, decel));
 
     // Steering: pure pursuit toward a point ahead on the centre line.
-    const L = 7 + v * 0.42;
+    const L = this.obstacles.tight(s) ? 8 : 7 + v * 0.42;   // look closer when weaving
     const p = path.at(s + L, this.pt);
-    const dx = p.x - body.pos.x, dz = p.z - body.pos.z;
+    const off = this.obstacles.lineOffset(s + L);       // round fixed obstacles
+    const dx = p.x + p.rx * off - body.pos.x, dz = p.z + p.rz * off - body.pos.z;
     const fx = Math.sin(body.yaw), fz = Math.cos(body.yaw);
     const ang = Math.atan2(dx * -fz + dz * fx, dx * fx + dz * fz);   // positive = target on the right
     const want = (2 * Math.max(v, 6) * Math.sin(ang)) / L;
@@ -70,10 +74,12 @@ export class Autopilot {
 // can spread it over several frames. Like a player, the robot goes back to
 // the last checkpoint if it falls off or gets stuck.
 export class RobotRun {
-  constructor(path, { margin, maxTime = 240, trace = false } = {}) {
+  // obstacles: false drives straight through them (a best case, for medals).
+  constructor(path, { margin, maxTime = 240, trace = false, obstacles = true } = {}) {
     this.path = path;
     this.maxTime = maxTime;
     this.body = new CarBody(path);
+    if (!obstacles) this.body.obstacles = null;
     this.race = new Race(path);
     this.bot = new Autopilot(path, margin ? { margin } : {});
     this.ctl = { throttle: 0, brake: 0, steer: 0, handbrake: false };
@@ -103,7 +109,7 @@ export class RobotRun {
     for (let n = 0; n < steps && !this.finished; n++) {
       this.bot.drive(body, this.ctl);
       this.prev.x = body.pos.x; this.prev.y = body.pos.y; this.prev.z = body.pos.z;
-      body.step(dt, this.ctl);
+      body.step(dt, this.ctl, race.time);
       race.step(dt, this.prev, body.pos);
       this.top = Math.max(this.top, body.speed);
       this.airMax = Math.max(this.airMax, body.air);

@@ -73,6 +73,7 @@ const S = {
   record: null, ghostPlayer: null, result: null,
   lastDiff: null, offT: 0, finishT: 0, orbit: 0,
   camYaw: 0, camY: 0, shake: 0, lastSpeed: 0, accel: 0,
+  clock: 0,               // drives the obstacles: the race clock while it runs
 };
 
 const model = new CarModel(PAINTS[S.paint]);
@@ -194,6 +195,7 @@ function resetGates() {
 
 // ---------- Run flow ----------
 function startRun() {
+  S.clock = 0;
   sound.init();
   sound.setMuted(S.muted);
   S.race.reset();
@@ -409,7 +411,8 @@ function physicsStep() {
   }
   stepFrom.copy(b.pos);
   prevPos.copy(b.pos);
-  b.step(DT, ctl);
+  S.clock = S.race.started && !S.race.done ? S.race.time : S.clock + DT;
+  b.step(DT, ctl, S.clock);
   const ev = S.race.step(DT, stepFrom, b.pos);
   if (ev) onRaceEvent(ev);
   if (S.mode === 'racing') recorder.push(S.race.time, b.pos, model.root.quaternion);
@@ -441,6 +444,7 @@ function updateCar(dt) {
     steer: b.steer,
     roll: b.grounded ? clamp(b.yawRate * sp * 0.0011, -0.07, 0.07) : 0,
     pitch: b.grounded ? clamp(-S.accel * 0.0018, -0.05, 0.05) : 0,
+    boost: Math.min(1, b.boostT),
   });
 }
 
@@ -457,6 +461,11 @@ function updateEffects(dt) {
     fx.mark(i, tmp.w, tmp.r, sliding && b.onRoad);
     if (sliding && Math.random() < dt * 30 * (0.5 + Math.min(1, Math.abs(b.slip) / 12))) fx.puff(tmp.w, b.vel);
     if (grass && Math.random() < dt * 14) fx.puff(tmp.w, b.vel, { color: '#c9c48e', alpha: 0.45, size: 0.9, life: 0.8 });
+  }
+  if (b.boosted > 0) {
+    if (S.mode !== 'menu') sound.boost();
+    S.shake = Math.max(S.shake, 0.15);
+    b.boosted = 0;
   }
   if (b.landing > 7) {
     for (const w of WHEELS) {
@@ -525,7 +534,7 @@ function updateCamera(dt) {
     S.shake *= Math.exp(-dt * 6);
   }
   const s = clamp(Math.abs(b.forwardSpeed) / CAR.topSpeed, 0, 1.2);
-  const fov = CAMERA.fov + CAMERA.fovSpeed * Math.pow(s, 1.5) + (mode.hood ? 6 : 0);
+  const fov = CAMERA.fov + CAMERA.fovSpeed * Math.pow(Math.min(s, 1), 1.5) + Math.min(1, b.boostT) * 9 + (mode.hood ? 6 : 0);
   if (Math.abs(camera.fov - fov) > 0.01) {
     camera.fov += (fov - camera.fov) * (1 - Math.exp(-dt * 4));
     camera.updateProjectionMatrix();
@@ -580,6 +589,7 @@ function update(dt) {
 
   updateCar(dt);
   updateEffects(dt);
+  S.built.update(S.clock);
   fx.update(dt);
   updateGhost();
   updateCamera(dt);
