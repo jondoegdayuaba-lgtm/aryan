@@ -1,7 +1,7 @@
 // Turns a TrackPath into meshes: tarmac, kerbs, deck sides, walls, tunnels,
 // pillars, gates and corner signs.
 import * as THREE from 'three';
-import { KERB, WALL_GAP, WALL_T, WALL_H } from './path.js';
+import { KERB, WALL_GAP, WALL_T, WALL_H, deckDepth } from './path.js';
 
 const RED = new THREE.Color('#e2342d'), WHITE = new THREE.Color('#f3f4f6');
 const WALL = new THREE.Color('#d5d8e0'), WALL_DARK = new THREE.Color('#9da2ae');
@@ -67,10 +67,6 @@ function sweep(B, a, b, pa, pb, colorAt, bank = true) {
 }
 const mirror = (profile) => profile.map(([l, h]) => [-l, h]).reverse();
 
-function deckDepth(o) {
-  return o.y <= 2.5 ? o.y + 0.06 : Math.max(1.1, 2.56 - (o.y - 2.5) * 1.5);
-}
-
 export function buildTrack(path, T) {
   const group = new THREE.Group();
   const S = path.samples, N = S.length;
@@ -103,21 +99,24 @@ export function buildTrack(path, T) {
     sweep(kerb, a, b, kr(a), kr(b), () => col);
     sweep(kerb, a, b, mirror(kr(a)), mirror(kr(b)), () => col);
 
-    // Deck sides and underside.
+    // Deck sides (each reaching down from its own edge, which differ on a
+    // banked road) and the underside.
     const W = (o) => o.hw + KERB;
-    const da = deckDepth(a), db = deckDepth(b);
-    const deckProfile = (o, d) => [[W(o), 0], [W(o), -d], [-W(o), -d], [-W(o), 0]];
+    const deckProfile = (o) => {
+      const dr = deckDepth(o.y + W(o) * o.tanB), dl = deckDepth(o.y - W(o) * o.tanB);
+      return [[W(o), 0], [W(o), -dr], [-W(o), -dl], [-W(o), 0]];
+    };
+    const pa = deckProfile(a), pb = deckProfile(b);
     if (a.y < 0.3) {
-      sweep(deck, a, b, deckProfile(a, da).slice(0, 2), deckProfile(b, db).slice(0, 2), () => DECK);
-      sweep(deck, a, b, deckProfile(a, da).slice(2), deckProfile(b, db).slice(2), () => DECK);
+      sweep(deck, a, b, pa.slice(0, 2), pb.slice(0, 2), () => DECK);
+      sweep(deck, a, b, pa.slice(2), pb.slice(2), () => DECK);
     } else {
-      sweep(deck, a, b, deckProfile(a, da), deckProfile(b, db), (j) => (j === 1 ? DECK_UNDER : DECK));
+      sweep(deck, a, b, pa, pb, (j) => (j === 1 ? DECK_UNDER : DECK));
     }
     // End caps where the road stops at a jump.
-    const cap = (o, d, dir) => deck.face([pt(o, -W(o), 0), pt(o, W(o), 0), pt(o, W(o), -d), pt(o, -W(o), -d)],
-      new THREE.Vector3(o.tx * dir, 0, o.tz * dir), DECK);
-    if (prevGap && a.y > 0.2) cap(a, da, -1);
-    if (nextGap && b.y > 0.2) cap(b, db, 1);
+    const cap = (o, p, dir) => deck.face(p.map(([l, h]) => pt(o, l, h)), new THREE.Vector3(o.tx * dir, 0, o.tz * dir), DECK);
+    if (prevGap && a.y > 0.2) cap(a, pa, -1);
+    if (nextGap && b.y > 0.2) cap(b, pb, 1);
 
     // Pillars under raised road, unless there's road underneath.
     if (a.y > 2.5 && Math.floor(a.s / 22) !== Math.floor(b.s / 22)) {
@@ -126,7 +125,8 @@ export function buildTrack(path, T) {
         const [x, , z] = pt(a, lat, 0);
         const clear = [[0, 0], [2.5, 0], [-2.5, 0], [0, 2.5], [0, -2.5]]
           .every(([dx, dz]) => path.deckBelow(x + dx, z + dz, a.y - 3) === -Infinity);
-        if (clear) pillars.push({ x, z, top: a.y + lat * a.tanB - deckDepth(a) + 0.05 });
+        const deckY = a.y + lat * a.tanB;
+        if (clear) pillars.push({ x, z, top: deckY - deckDepth(deckY) + 0.05 });
       }
     }
 
@@ -263,7 +263,7 @@ export function buildTrack(path, T) {
   for (let k = 3; k < N - 3; k++) {
     const o = S[k], c = Math.abs(o.curv);
     if (c < 1 / 85 || c < Math.abs(S[k - 1].curv) || c < Math.abs(S[k + 1].curv)) continue;
-    if (o.s - lastSign < 70 || o.walls || o.tunnel || o.gap || o.y > 0.4) continue;
+    if (o.s - lastSign < 70 || o.walls || o.tunnel || o.gap || o.y > 2.5) continue;
     lastSign = o.s;
     const before = path.at(o.s - 30, {});
     const side = o.curv > 0 ? 1 : -1;          // outside of a left turn is the right

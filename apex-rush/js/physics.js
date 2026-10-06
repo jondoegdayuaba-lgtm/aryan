@@ -35,7 +35,9 @@ export class CarBody {
     this.speed = 0;
     this.forwardSpeed = 0;
     this.landing = 0;        // impact speed of the last landing (cleared by the game)
-    this.wallHit = 0;        // strongest wall hit since last cleared
+    this.wallHit = 0;        // strongest wall hit since last cleared...
+    this.wallNx = 0;         // ...and the way that wall faces
+    this.wallNz = 0;
     this.lost = false;       // no road anywhere near
     this.path.probe(this.pos, this.probe);
     this.pos.y = this.probe.height;
@@ -136,20 +138,30 @@ export class CarBody {
   collideWalls() {
     const w = this.wallProbe;
     this.path.probe(this.pos, w);
-    if (!w.wall) return;
     const half = CAR.halfWidth;
-    const inner = w.wallIn - half;              // furthest the centre can go inside
-    const outer = w.wallIn + WALL_T + half;     // closest it can come from outside
-    const a = Math.abs(w.wallLat);
-    if (a <= inner || a >= outer) return;
-    const side = Math.sign(w.wallLat) || 1;
-    const inside = a < (inner + outer) / 2;
-    const push = inside ? inner - a : outer - a;
-    this.pos.x += w.wallRx * side * push;
-    this.pos.z += w.wallRz * side * push;
+    if (w.wall) {
+      const inner = w.wallIn - half;            // furthest the centre can go inside
+      const outer = w.wallIn + WALL_T + half;   // closest it can come from outside
+      const a = Math.abs(w.wallLat);
+      if (a > inner && a < outer) {
+        const side = Math.sign(w.wallLat) || 1;
+        const inside = a < (inner + outer) / 2;
+        this.pushOff(w.wallRx, w.wallRz, side, (inside ? inner : outer) - a, inside ? -1 : 1, w.wallTx, w.wallTz);
+      }
+    }
+    // The solid side of a raised stretch of road, hit from the grass beside it.
+    if (w.side) {
+      const a = Math.abs(w.sideLat), lim = w.sideW + half;
+      if (a < lim) this.pushOff(w.sideRx, w.sideRz, Math.sign(w.sideLat) || 1, lim - a, 1, w.sideTx, w.sideTz);
+    }
+  }
 
-    const s = side * (inside ? -1 : 1);         // wall normal, pointing away from the wall
-    const nx = w.wallRx * s, nz = w.wallRz * s;
+  // Move the car `push` metres along the road's right vector (r) times `side`,
+  // and bounce it off a surface facing r * side * facing.
+  pushOff(rx, rz, side, push, facing, tx, tz) {
+    this.pos.x += rx * side * push;
+    this.pos.z += rz * side * push;
+    const nx = rx * side * facing, nz = rz * side * facing;
     const into = this.vel.x * nx + this.vel.z * nz;
     if (into >= 0) return;
     this.vel.x -= nx * into * 1.3;
@@ -159,8 +171,10 @@ export class CarBody {
     this.vel.x *= keep;
     this.vel.z *= keep;
     this.wallHit = Math.max(this.wallHit, hit);
+    this.wallNx = nx;
+    this.wallNz = nz;
     // Glancing blows straighten the car up along the wall.
-    let along = Math.atan2(w.wallTx, w.wallTz);
+    let along = Math.atan2(tx, tz);
     if (Math.cos(angDiff(along, this.yaw)) < 0) along += Math.PI;
     this.yaw += angDiff(along, this.yaw) * Math.min(0.6, 0.15 + hit * 0.03);
     this.yawRate *= 0.5;

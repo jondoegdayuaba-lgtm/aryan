@@ -14,6 +14,12 @@ const SUB = 32;                 // fine steps per control segment when measuring
 const STEP_UP = 0.9;            // the car can climb onto a surface this far above it
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+// How far the sides of a raised stretch of road reach down from an edge at
+// height h: low road is solid to the ground, higher road is a deck on pillars.
+export function deckDepth(h) {
+  return h <= 2.5 ? h + 0.06 : Math.max(1.1, 2.56 - (h - 2.5) * 1.5);
+}
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (t) => t * t * (3 - 2 * t);
 const key = (cx, cz) => (cx + 2048) * 4096 + (cz + 2048);
@@ -136,6 +142,8 @@ export class TrackPath {
       const sb = lerp(pointBank[o.seg], pointBank[(o.seg + 1) % n], smooth(o.u));
       o.bank = sb;
       o.tanB = Math.tan(sb);
+      // Lift banked road so its low edge never dips into the ground.
+      o.y = Math.max(o.y, (o.hw + KERB) * Math.abs(o.tanB));
     }
 
     // 6. Spatial grid of segments for fast lookups.
@@ -206,12 +214,14 @@ export class TrackPath {
     out.index = -1; out.s = 0; out.lat = 0; out.hw = 0;
     out.nearIndex = -1; out.nearS = 0; out.nearLat = 0; out.nearY = 0;
     out.wall = false;
+    out.side = false;
     const list = this.grid.get(key(Math.floor(p.x / CELL), Math.floor(p.z / CELL)));
     if (!list) return out;
 
     let best = -1, bestH = -Infinity, bestAlong = Infinity, bt = 0, blat = 0;
     let near = -1, nearScore = Infinity, nt = 0, nlat = 0, ny = 0;
     let wall = -1, wallScore = Infinity, wt = 0, wlat = 0, wh = 0;
+    let side = -1, sideScore = Infinity, st = 0, slat = 0;
     for (let i = 0; i < list.length; i++) {
       const k = list[i];
       const a = S[k], b = S[(k + 1) % N];
@@ -240,6 +250,13 @@ export class TrackPath {
         const ws = along + Math.abs(dy);
         if (ws < wallScore) { wallScore = ws; wall = k; wt = tc; wlat = lat; wh = h; }
       }
+      // Beside road too high to climb onto: its side is solid if it reaches
+      // down past the car's roof.
+      const W = hw + KERB;
+      if (dy < -STEP_UP && al > W - 1.5 && al < W + 2) {
+        const edge = h + (Math.sign(lat) * W - lat) * (a.tanB + (b.tanB - a.tanB) * tc);
+        if (edge - deckDepth(edge) < p.y + 1.2 && along < sideScore) { sideScore = along; side = k; st = tc; slat = lat; }
+      }
     }
 
     if (near >= 0) {
@@ -264,6 +281,14 @@ export class TrackPath {
       const l = Math.hypot(nx, nyy, nz) || 1;
       if (nyy < 0) { nx = -nx; nyy = -nyy; nz = -nz; }
       out.nx = nx / l; out.ny = nyy / l; out.nz = nz / l;
+    }
+    if (side >= 0) {
+      const a = S[side], b = S[(side + 1) % N];
+      out.side = true;
+      out.sideLat = slat;
+      out.sideW = a.hw + (b.hw - a.hw) * st + KERB;
+      out.sideRx = a.rx; out.sideRz = a.rz;
+      out.sideTx = a.tx; out.sideTz = a.tz;
     }
     if (wall >= 0) {
       const a = S[wall], b = S[(wall + 1) % N];

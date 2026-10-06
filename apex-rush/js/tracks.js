@@ -96,7 +96,7 @@ export const TRACKS = [
       [225, 235, 4],
       [225, 175, 10, { walls: true }],
       [240, 105, 10, { walls: true, bank: 10 }],
-      [300, 65, 10, { cp: true }],
+      [300, 65, 10, { cp: true, walls: true }],
       [360, 75, 10],
       [405, 105, 10, { slope: 0.1, gap: true }],
       [430, 122, 8.5, { slope: -0.1 }],

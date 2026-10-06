@@ -417,11 +417,10 @@ function updateEffects(dt) {
   }
   b.landing = 0;
   if (b.wallHit > 2.5) {
-    const w = b.wallProbe, side = Math.sign(w.wallLat) || 1;
-    tmp.w.set(w.wallRx * side, 0, w.wallRz * side);
-    tmp.v.copy(root.position).addScaledVector(tmp.w, 1.1);
+    tmp.w.set(b.wallNx, 0, b.wallNz);
+    tmp.v.copy(root.position).addScaledVector(tmp.w, -1.1);
     tmp.v.y += 0.5;
-    fx.sparkBurst(tmp.v, tmp.w.negate(), Math.min(24, 6 + b.wallHit));
+    fx.sparkBurst(tmp.v, tmp.w, Math.min(24, 6 + b.wallHit));
     sound.wall(b.wallHit);
     S.shake = Math.max(S.shake, Math.min(0.4, b.wallHit * 0.02));
   }
@@ -482,23 +481,39 @@ function updateCamera(dt) {
   }
 }
 
+// Is the car on a stretch of road it shouldn't be on yet (or any more), say
+// after dropping off a bridge onto the road below? Fine anywhere between the
+// last gate passed and the next one.
+function offCourse(b) {
+  if (!b.probe.road) return false;
+  const r = S.race, L = S.path.length;
+  const from = r.respawn ? r.respawn.s : S.path.spawnS;
+  let to = r.next < r.cps.length ? r.cps[r.next].s : S.path.finish.s;
+  let s = b.trackS;
+  if (S.path.closed) {
+    if (to < from) to += L;
+    if (s < from - 40) s += L;
+  }
+  return s < from - 40 || s > to + 40;
+}
+
 function update(dt) {
   S.time += dt;
   input.read(player);
+  if (S.mode === 'paused') return;
 
-  if (S.mode !== 'paused') {
-    S.acc = Math.min(S.acc + dt, 0.25);
-    while (S.acc >= DT) {
-      physicsStep();
-      S.acc -= DT;
-    }
+  S.acc = Math.min(S.acc + dt, 0.25);
+  while (S.acc >= DT) {
+    physicsStep();
+    S.acc -= DT;
   }
 
   const b = S.body;
   if (S.mode === 'racing') {
-    // Fell off, or wandered far from the road: offer (then force) a respawn.
+    // Fell off, wandered far from the road or ended up on the wrong stretch:
+    // offer (then force) a trip back to the last checkpoint.
     const roadY = S.path.at(b.trackS, tmp.pt).y;
-    const fallen = b.lost || (b.grounded && !b.probe.road && roadY > 2);
+    const fallen = b.lost || (b.grounded && !b.probe.road && roadY > 2) || offCourse(b);
     S.offT = fallen ? S.offT + dt : 0;
     if (S.offT > 3) respawn();
   }
@@ -611,7 +626,15 @@ $('btn-cam').addEventListener('click', cycleCamera);
 $('btn-sound').addEventListener('click', () => { sound.init(); toggleMute(); });
 $('btn-ghost').addEventListener('click', toggleGhost);
 
-input.onKey = (code) => {
+// HUD buttons are for the mouse and fingers: don't let them keep keyboard
+// focus, or Space (handbrake) and Enter would press them again.
+for (const b of $('hud').querySelectorAll('button')) b.addEventListener('mousedown', (e) => e.preventDefault());
+
+input.onKey = (code, e) => {
+  if (e && (S.mode === 'ready' || S.mode === 'racing') && e.target.closest?.('#hud button')) {
+    e.preventDefault();
+    e.target.blur();
+  }
   const onButton = document.activeElement?.tagName === 'BUTTON';
   const confirm = (!onButton && (code === 'Enter' || code === 'Space')) || code === 'PadStart';
   if (code === 'KeyM') { sound.init(); toggleMute(); return; }
@@ -631,7 +654,9 @@ input.onKey = (code) => {
       if (code === 'KeyC' || code === 'PadRB') cycleCamera();
       break;
     case 'finished': case 'results':
-      if (confirm || code === 'KeyR' || code === 'PadBack') startRun();
+      // Not Space/Enter while the finish plays out: they're the handbrake and
+      // respawn keys, easy to still be pressing as you cross the line.
+      if ((confirm && S.mode === 'results') || code === 'KeyR' || code === 'PadBack') startRun();
       if (code === 'KeyN') nextTrack();
       if (code === 'Escape') toMenu();
       break;
