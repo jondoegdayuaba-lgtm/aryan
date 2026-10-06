@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Apex Rush</title>
+  <meta name="description" content="A low-poly time-trial racing game: four tracks, checkpoints, jumps, tunnels and a ghost of your best run.">
+  <meta name="theme-color" content="#121a3d">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23121a3d'/%3E%3Cpath d='M14 10h36v26H14z' fill='%23f3f5fa'/%3E%3Cpath d='M14 10h9v9h-9zm18 0h9v9h-9zm-9 9h9v8h-9zm18 0h9v8h-9zm-27 8h9v9h-9zm18 0h9v9h-9z' fill='%23121a3d'/%3E%3Cpath d='M12 8h4v48h-4z' fill='%23f3f5fa'/%3E%3Cpath d='M8 50h12v6H8zm24 0h12v6H32z' fill='%23e2342d'/%3E%3Cpath d='M20 50h12v6H20zm24 0h12v6H44z' fill='%23f3f5fa'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700&family=Exo+2:ital,wght@1,700;1,800;1,900&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js" } }</script>
+</head>
+<body>
+  <canvas id="game" aria-label="Game view"></canvas>
+
+  <div id="hud" hidden>
+    <div class="hud-top">
+      <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+      <div class="chip"><span class="label">Checkpoints</span><span id="hud-cp" class="num">0/0</span></div>
+      <div id="lap-chip" class="chip"><span class="label">Lap</span><span id="hud-lap" class="num">1/1</span></div>
+    </div>
+    <div class="hud-actions">
+      <button id="btn-respawn" class="pill-btn" type="button">Checkpoint <kbd>Enter</kbd></button>
+      <button id="btn-restart" class="pill-btn" type="button">Restart <kbd>R</kbd></button>
+      <button id="btn-cam" class="pill-btn" type="button">Camera <kbd>C</kbd></button>
+    </div>
+    <div id="banner" class="banner" aria-live="polite"></div>
+    <p id="hint" class="hint" hidden></p>
+    <div class="timers">
+      <div class="timer"><span class="label">Record</span><span id="t-record" class="num">--:--.---</span></div>
+      <div class="timer timer-main"><span class="label">Current</span><span id="t-current" class="num">00:00.000</span></div>
+      <div class="timer"><span class="label">Difference</span><span id="t-diff" class="num">---</span></div>
+    </div>
+    <div class="speedo"><span id="speed" class="num">0</span><span class="label">km/h</span></div>
+    <div id="touch-pad" class="touch-pad">
+      <div class="pad-group">
+        <button class="pad-btn" type="button" data-control="left" aria-label="Steer left">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4 7 12l8 8"/></svg>
+        </button>
+        <button class="pad-btn" type="button" data-control="right" aria-label="Steer right">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 4 8 8-8 8"/></svg>
+        </button>
+      </div>
+      <div class="pad-group">
+        <button class="pad-btn pad-brake" type="button" data-control="brake">Brake</button>
+        <button class="pad-btn pad-gas" type="button" data-control="gas">Gas</button>
+      </div>
+    </div>
+  </div>
+
+  <section id="menu" class="screen" aria-labelledby="title">
+    <h1 id="title" class="title"><span id="title-a"></span> <span id="title-b" class="accent"></span></h1>
+    <p id="tagline" class="tagline"></p>
+    <div id="track-list" class="track-list" role="radiogroup" aria-label="Track"></div>
+    <div class="paint-row">
+      <span class="label">Paint</span>
+      <div id="paints" class="paints" role="radiogroup" aria-label="Car colour"></div>
+      <span id="paint-name" class="paint-name"></span>
+    </div>
+    <button id="btn-race" class="big-btn" type="button">Race</button>
+    <dl class="controls controls-desktop">
+      <div><dt>W A S D / Arrows</dt><dd>Drive and steer</dd></div>
+      <div><dt>Space</dt><dd>Handbrake drift</dd></div>
+      <div><dt>Enter</dt><dd>Back to last checkpoint</dd></div>
+      <div><dt>R</dt><dd>Restart the run</dd></div>
+      <div><dt>C</dt><dd>Change camera</dd></div>
+      <div><dt>Esc</dt><dd>Pause</dd></div>
+    </dl>
+    <p class="controls-touch">Steer with the arrows on the left, Gas and Brake on the right. A gamepad works too.</p>
+    <div class="menu-foot">
+      <button id="btn-ghost" class="text-btn" type="button">Ghost on</button>
+      <button id="btn-sound" class="text-btn" type="button">Sound on</button>
+    </div>
+  </section>
+
+  <section id="paused" class="screen screen-center" hidden>
+    <h2 class="title small">Paused</h2>
+    <button id="btn-resume" class="big-btn" type="button">Resume</button>
+    <button id="btn-pause-restart" class="text-btn" type="button">Restart the run</button>
+    <button id="btn-quit" class="text-btn" type="button">Back to the menu</button>
+  </section>
+
+  <section id="results" class="screen screen-center" hidden>
+    <span id="result-track" class="label"></span>
+    <h2 id="result-title" class="title small">Finished</h2>
+    <div id="result-time" class="result-time num">00:00.000</div>
+    <p id="result-diff" class="result-diff"></p>
+    <ul id="medals" class="medals"></ul>
+    <button id="btn-again" class="big-btn" type="button">Race again</button>
+    <div class="result-links">
+      <button id="btn-next" class="text-btn" type="button">Next track</button>
+      <button id="btn-menu" class="text-btn" type="button">Menu</button>
+    </div>
+  </section>
+
+  <div id="loading" class="loading">Warming up the tyres…</div>
+  <noscript><p class="loading">This game needs JavaScript turned on.</p></noscript>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,3 +1,10 @@
+# Browser games
+
+Two games live in this repository, both plain HTML, CSS and JavaScript with three.js:
+
+- **Missile Run** (this folder): steer a guided missile through a test range and a brick town. Described below.
+- **[Apex Rush](apex-rush/README.md)** (`apex-rush/`): a low-poly time-trial racer with four tracks, checkpoints, jumps, tunnels, medals and a ghost of your best run. Play it from `desktop/apex-rush.html`, or serve the repository and open `/apex-rush/`.
+
 # Missile Run
 
 A browser game. You guide a missile out of a launch hangar, across a test range and a brick town. Fly through hazard gates and the insides of orange lattice towers, and take out tanks. Each round gives you five missiles.
@@ -15,7 +22,7 @@ Everything is plain HTML, CSS and JavaScript with [three.js](https://threejs.org
 
 `desktop/missile-run.html` is the whole game in one file. Save it to your desktop and double-click it; it opens in your browser and runs without a web server. It works offline, except the title fonts, which fall back to system fonts without internet.
 
-After changing the code, rebuild that file with:
+After changing the code, rebuild that file (and `desktop/apex-rush.html`) with:
 
 ```sh
 npm install
