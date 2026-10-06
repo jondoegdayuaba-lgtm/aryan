@@ -139,7 +139,15 @@ kbd {
 }
 
 /* Track picker */
-.track-list { display: flex; flex-direction: column; gap: 8px; }
+.track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  max-height: min(40vh, 400px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
 .track-card {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -505,4 +513,200 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   .screen, .screen-center, .banner-item, .hint { animation: none; }
+}
+
+/* Short screens: drop the tagline so Race stays in view. */
+@media (max-height: 800px) {
+  #menu .tagline { display: none; }
+  #menu .title { font-size: clamp(2.4rem, 7vw, 3.6rem); }
+}
+
+/* ---------- Menu: second action ---------- */
+.menu-actions { display: flex; flex-direction: column; gap: 10px; }
+.ghost-btn {
+  width: 100%;
+  padding: 9px 16px;
+  border: 2px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 800;
+  font-size: 1.1rem;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ghost-btn:hover { border-color: var(--sun); background: rgba(255, 210, 31, 0.08); }
+.diff-tag.custom { background: var(--sky); }
+
+/* ---------- Track editor ---------- */
+.editor { position: fixed; inset: 0; z-index: 8; pointer-events: none; }
+.editor button, .editor input, .editor select, .ed-palette, .ed-panel { pointer-events: auto; }
+
+.ed-top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: calc(var(--safe-top) + 10px) var(--gutter) 10px;
+  background: var(--glass);
+  pointer-events: auto;
+}
+.ed-top::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -4px;
+  height: 4px;
+  background: var(--kerb-tape);
+}
+.ed-spacer { flex: 1; }
+.ed-name {
+  width: min(220px, 40vw);
+  padding: 6px 10px;
+  border: 2px solid var(--line);
+  border-radius: 3px;
+  background: rgba(10, 15, 36, 0.6);
+  color: var(--paper);
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 800;
+  font-size: 1.05rem;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.ed-name:focus { outline: none; border-color: var(--sky); }
+.ed-laps { display: flex; align-items: center; gap: 6px; }
+.ed-laps select {
+  padding: 4px 6px;
+  border: 2px solid var(--line);
+  border-radius: 3px;
+  background: var(--navy);
+  color: var(--paper);
+  font: 600 0.95rem var(--ui);
+}
+.ed-test {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--good);
+  color: var(--ink);
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 900;
+  font-size: 1.05rem;
+  box-shadow: 0 3px 0 #1f9a57;
+}
+.ed-test kbd { color: var(--ink); border-color: rgba(10, 15, 36, 0.35); }
+.ed-test:active { transform: translateY(2px); box-shadow: 0 1px 0 #1f9a57; }
+.pill-btn.danger { color: var(--bad); }
+
+.ed-status {
+  position: absolute;
+  top: calc(var(--safe-top) + 72px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 2 * var(--gutter));
+  margin: 0;
+  padding: 7px 14px;
+  background: var(--glass);
+  border-left: 4px solid var(--good);
+  border-radius: 3px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.ed-status.warn { border-left-color: var(--sun); }
+
+.ed-bottom {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px var(--gutter) calc(var(--safe-bottom) + 10px);
+  background: linear-gradient(to top, rgba(10, 15, 36, 0.85), rgba(10, 15, 36, 0.55) 70%, transparent);
+}
+.ed-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tool-btn {
+  padding: 6px 10px;
+  border: 2px solid transparent;
+  border-radius: 3px;
+  background: var(--glass);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.tool-btn[aria-pressed="true"] { border-color: var(--sun); color: var(--sun); }
+.tool-btn:disabled { opacity: 0.4; cursor: default; }
+.ed-level {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.ed-level b { font-family: var(--display); font-style: italic; font-size: 1.1rem; color: var(--paper); }
+
+.ed-palette {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+.ed-piece {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 78px;
+  padding: 8px 4px 6px;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  background: var(--glass);
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.1;
+  text-align: center;
+}
+.ed-piece svg { width: 38px; height: 38px; border-radius: 3px; background: #5aae50; }
+.ed-piece kbd { position: absolute; top: 3px; right: 3px; margin: 0; font-size: 0.62rem; padding: 0 3px; }
+.ed-piece:hover { background: rgba(18, 26, 61, 0.95); }
+.ed-piece[aria-checked="true"] { border-color: var(--sun); }
+.ed-help { margin: 0; font-size: 0.82rem; color: var(--dim); }
+.ed-help-touch { display: none; }
+.touch .ed-help-mouse, .touch .ed-piece kbd, .touch .editor kbd { display: none; }
+.touch .ed-help-touch { display: block; }
+
+.ed-panel { z-index: 12; width: min(460px, calc(100% - 2 * var(--gutter))); gap: 12px; }
+.ed-panel-body { display: flex; flex-direction: column; gap: 10px; width: 100%; text-align: left; }
+.ed-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ed-row-name { flex: 1; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
+.ed-actions { margin-top: 6px; }
+.ed-note { margin: 0; font-size: 0.92rem; color: var(--dim); }
+.ed-code {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px;
+  border: 2px solid var(--line);
+  border-radius: 3px;
+  background: rgba(10, 15, 36, 0.6);
+  color: var(--paper);
+  font: 0.78rem/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+  user-select: text;
+  -webkit-user-select: text;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .ed-status { top: calc(var(--safe-top) + 108px); font-size: 0.88rem; }
+  .ed-piece { width: 64px; padding: 6px 3px 5px; font-size: 0.7rem; }
+  .ed-piece svg { width: 32px; height: 32px; }
+  .tool-btn { padding: 5px 8px; font-size: 0.82rem; }
+  .ed-bottom { gap: 6px; }
+  .ed-help { display: none !important; }
 }

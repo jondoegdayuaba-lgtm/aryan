@@ -3,7 +3,7 @@
 Two games live in this repository, both plain HTML, CSS and JavaScript with three.js:
 
 - **Missile Run** (this folder): steer a guided missile through a test range and a brick town. Described below.
-- **[Apex Rush](apex-rush/README.md)** (`apex-rush/`): a low-poly time-trial racer with four tracks, checkpoints, jumps, tunnels, medals and a ghost of your best run. Play it from `desktop/apex-rush.html`, or serve the repository and open `/apex-rush/`.
+- **[Apex Rush](apex-rush/README.md)** (`apex-rush/`): a low-poly time-trial racer with four tracks, a track editor, checkpoints, jumps, tunnels, medals and a ghost of your best run. Play it from `desktop/apex-rush.html`, or serve the repository and open `/apex-rush/`.
 
 # Missile Run
 

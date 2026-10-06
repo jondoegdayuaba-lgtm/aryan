@@ -229,7 +229,7 @@ export class TrackPath {
       const t = ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2;
       const tc = t < 0 ? 0 : t > 1 ? 1 : t;
       const along = Math.abs(t - tc) * Math.sqrt(len2);
-      if (along > 1.5) continue;
+      if (along > 2) continue;
       const cx = a.x + dx * tc, cz = a.z + dz * tc;
       const lat = (p.x - cx) * (a.rx + (b.rx - a.rx) * tc) + (p.z - cz) * (a.rz + (b.rz - a.rz) * tc);
       const hw = a.hw + (b.hw - a.hw) * tc;

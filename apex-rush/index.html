@@ -62,7 +62,10 @@
       <div id="paints" class="paints" role="radiogroup" aria-label="Car colour"></div>
       <span id="paint-name" class="paint-name"></span>
     </div>
-    <button id="btn-race" class="big-btn" type="button">Race</button>
+    <div class="menu-actions">
+      <button id="btn-race" class="big-btn" type="button">Race</button>
+      <button id="btn-editor" class="ghost-btn" type="button">Track editor</button>
+    </div>
     <dl class="controls controls-desktop">
       <div><dt>W A S D / Arrows</dt><dd>Drive and steer</dd></div>
       <div><dt>Space</dt><dd>Handbrake drift</dd></div>
@@ -70,11 +73,52 @@
       <div><dt>R</dt><dd>Restart the run</dd></div>
       <div><dt>C</dt><dd>Change camera</dd></div>
       <div><dt>Esc</dt><dd>Pause</dd></div>
+      <div><dt>E</dt><dd>Open the track editor</dd></div>
+      <div><dt>M</dt><dd>Sound on or off</dd></div>
     </dl>
     <p class="controls-touch">Steer with the arrows on the left, Gas and Brake on the right. A gamepad works too.</p>
     <div class="menu-foot">
       <button id="btn-ghost" class="text-btn" type="button">Ghost on</button>
       <button id="btn-sound" class="text-btn" type="button">Sound on</button>
+    </div>
+  </section>
+
+  <section id="editor" class="editor" hidden aria-label="Track editor">
+    <div class="ed-top">
+      <button id="ed-exit" class="pill-btn" type="button">Menu</button>
+      <input id="ed-name" class="ed-name" type="text" maxlength="32" aria-label="Track name" autocomplete="off" spellcheck="false">
+      <label class="ed-laps"><span class="label">Laps</span>
+        <select id="ed-laps"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+      </label>
+      <span class="ed-spacer"></span>
+      <button id="ed-tracks" class="pill-btn" type="button">My tracks</button>
+      <button id="ed-share" class="pill-btn" type="button">Share</button>
+      <button id="ed-save" class="pill-btn" type="button">Save</button>
+      <button id="ed-test" class="ed-test" type="button">Test drive <kbd>T</kbd></button>
+    </div>
+    <p id="ed-status" class="ed-status" aria-live="polite"></p>
+    <div class="ed-bottom">
+      <div class="ed-tools">
+        <button id="ed-erase" class="tool-btn" type="button" aria-pressed="false">Erase <kbd>X</kbd></button>
+        <button id="ed-rotate" class="tool-btn" type="button">Rotate <kbd>R</kbd></button>
+        <div class="ed-level">
+          <button id="ed-down" class="tool-btn" type="button" aria-label="Lower">&#9660;</button>
+          <span>Height <b id="ed-level" class="num">0</b> <kbd>Q</kbd><kbd>E</kbd></span>
+          <button id="ed-up" class="tool-btn" type="button" aria-label="Higher">&#9650;</button>
+        </div>
+        <button id="ed-walls" class="tool-btn" type="button" aria-pressed="false">Walls</button>
+        <button id="ed-tunnel" class="tool-btn" type="button" aria-pressed="false">Tunnel</button>
+        <button id="ed-undo" class="tool-btn" type="button">Undo</button>
+        <button id="ed-redo" class="tool-btn" type="button">Redo</button>
+      </div>
+      <div id="ed-palette" class="ed-palette" role="radiogroup" aria-label="Road pieces"></div>
+      <p class="ed-help ed-help-mouse">Click to place, right-click to erase. Drag to move the view, right-drag to turn it, scroll to zoom. WASD moves too.</p>
+      <p class="ed-help ed-help-touch">Tap to place. Drag to move the view, pinch to zoom and twist to turn it.</p>
+    </div>
+    <div id="ed-panel" class="screen screen-center ed-panel" hidden>
+      <h2 id="ed-panel-title" class="title small"></h2>
+      <div id="ed-panel-body" class="ed-panel-body"></div>
+      <button id="ed-panel-close" class="text-btn" type="button">Close</button>
     </div>
   </section>
 

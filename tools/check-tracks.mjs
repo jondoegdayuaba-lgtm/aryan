@@ -1,6 +1,7 @@
 // Checks every Apex Rush track and times a robot driver round it.
 //   npm run check:tracks              summary table
 //   npm run check:tracks -- --svg out writes a top-down map of each track to out/
+// It also checks the track editor's example track.
 // Reports tight corners, steep slopes, roads that overlap without enough
 // headroom, and whether the robot can finish (it has to clear every jump).
 import { build } from 'esbuild';
@@ -17,11 +18,10 @@ const result = await build({
   stdin: {
     contents: `
       export { TrackPath, KERB } from './js/path.js';
-      export { CarBody } from './js/physics.js';
-      export { Race, formatTime } from './js/race.js';
-      export { Autopilot } from './js/autopilot.js';
+      export { formatTime } from './js/race.js';
+      export { RobotRun } from './js/autopilot.js';
       export { TRACKS } from './js/tracks.js';
-      export { PHYSICS_HZ } from './js/config.js';`,
+      export { traceTrack, exampleTrack } from './js/pieces.js';`,
     resolveDir: game,
     loader: 'js',
   },
@@ -33,7 +33,7 @@ const result = await build({
   logLevel: 'warning',
 });
 const lib = await import('data:text/javascript;base64,' + Buffer.from(result.outputFiles[0].text).toString('base64'));
-const { TrackPath, KERB, CarBody, Race, formatTime, Autopilot, TRACKS, PHYSICS_HZ } = lib;
+const { TrackPath, KERB, formatTime, RobotRun, TRACKS, traceTrack, exampleTrack } = lib;
 
 function inspect(path) {
   const S = path.samples, issues = [];
@@ -67,43 +67,10 @@ function inspect(path) {
   return { minRadius: 1 / maxCurv, maxGrade, issues };
 }
 
-function drive(path, { maxTime = 240, margin } = {}) {
-  const dt = 1 / PHYSICS_HZ;
-  const body = new CarBody(path);
-  const race = new Race(path);
-  const bot = new Autopilot(path, margin ? { margin } : {});
-  const ctl = { throttle: 0, brake: 0, steer: 0, handbrake: false };
-  const spawn = (s) => {
-    const p = path.at(s, {});
-    body.reset({ x: p.x, y: p.y + 0.5, z: p.z }, p.yaw);
-  };
-  spawn(path.spawnS);
-  race.started = true;
-  const prev = { x: 0, y: 0, z: 0 };
-  let respawns = 0, top = 0, stuck = 0, low = 0, airMax = 0;
-  const trace = [];
-  const fails = [];
-  while (!race.done && race.time < maxTime) {
-    bot.drive(body, ctl);
-    prev.x = body.pos.x; prev.y = body.pos.y; prev.z = body.pos.z;
-    body.step(dt, ctl);
-    race.step(dt, prev, body.pos);
-    top = Math.max(top, body.speed);
-    airMax = Math.max(airMax, body.air);
-    if (Math.round(race.time * PHYSICS_HZ) % 12 === 0) trace.push([body.pos.x, body.pos.z, body.speed]);
-    // Fell off (on the grass while the road here is up in the air) or stuck.
-    const roadHere = path.at(body.trackS, {});
-    low = body.grounded && !body.probe.road && roadHere.y > 2 ? low + dt : 0;
-    stuck = body.speed < 2 ? stuck + dt : 0;
-    if (low > 0.5 || stuck > 3 || body.lost) {
-      respawns++;
-      fails.push(`${body.lost ? 'lost' : low > 0.5 ? 'fell' : 'stuck'} at s=${body.trackS.toFixed(0)} t=${race.time.toFixed(1)}`);
-      const g = race.respawn;
-      spawn(g ? g.s + 4 : path.spawnS);
-      low = stuck = 0;
-    }
-  }
-  return { done: race.done, time: race.done ? race.finalTime : race.time, respawns, fails, top, airMax, splits: race.splits, trace };
+function drive(path, opts = {}) {
+  const run = new RobotRun(path, { ...opts, trace: true });
+  while (!run.advance(5000));
+  return run.result;
 }
 
 function svg(path, run) {
@@ -128,8 +95,14 @@ function svg(path, run) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w.toFixed(0)} ${h.toFixed(0)}" width="${(w * 2).toFixed(0)}" height="${(h * 2).toFixed(0)}"><rect width="100%" height="100%" fill="#7cc576"/>${parts.join('')}</svg>`;
 }
 
+// The editor's example track is checked too, built from its pieces.
+const example = exampleTrack();
+const traced = traceTrack(example.pieces, example);
+if (!traced.ok) throw new Error(`Editor example track: ${traced.message}`);
+traced.def.name = 'Editor example';
+
 let failed = false;
-for (const def of TRACKS) {
+for (const def of [...TRACKS, traced.def]) {
   if (only && def.id !== only) continue;
   const path = new TrackPath(def);
   const info = inspect(path);
@@ -142,7 +115,7 @@ for (const def of TRACKS) {
   console.log(`  bolder robot: ${fast.done ? formatTime(fast.time) : 'did not finish'}${fast.respawns ? `, ${fast.respawns} respawns` : ''}`);
   const m = def.medals;
   if (m.gold) console.log(`  medals: gold ${formatTime(m.gold)}, silver ${formatTime(m.silver)}, bronze ${formatTime(m.bronze)}`);
-  for (const f of run.fails.slice(0, 6)) console.log(`  ! ${f}`);
+  for (const f of run.fails.slice(0, 6)) console.log(`  ! ${f.why} at s=${f.s.toFixed(0)} t=${f.t.toFixed(1)}`);
   for (const i of info.issues) console.log(`  ! ${i}`);
   if (!run.done || run.respawns || info.issues.length) failed = true;
   if (svgDir) {

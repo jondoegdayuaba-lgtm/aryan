@@ -107,12 +107,20 @@ export function buildScenery(scene, T, { mobile = false } = {}) {
       sunGlow.position.copy(p).addScaledVector(SUN_DIR, 2900);
     },
 
+    // Remove the trees and buildings (the editor works on an empty field).
+    clear() {
+      if (!decor) return;
+      scene.remove(decor);
+      decor.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) o.material.dispose();
+      });
+      decor = null;
+    },
+
     // Trees, stands, buildings and rocks for a track.
     populate(path, opts = {}) {
-      if (decor) {
-        scene.remove(decor);
-        decor.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
-      }
+      this.clear();
       decor = new THREE.Group();
       const rand = rng(opts.seed ?? 1);
       const b = path.bounds;

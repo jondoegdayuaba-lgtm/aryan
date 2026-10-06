@@ -13,6 +13,7 @@ import { CarModel, WHEELS } from './carmodel.js';
 import { Effects } from './effects.js';
 import { Sound } from './audio.js';
 import { Input } from './input.js';
+import { Editor, savedTracks, savedDef } from './editor.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = THREE.MathUtils.clamp;
@@ -57,11 +58,13 @@ const scenery = buildScenery(scene, T, { mobile: coarse });
 
 // ---------- Game state ----------
 const S = {
-  mode: 'menu',           // menu | ready | racing | finished | results | paused
+  mode: 'menu',           // menu | ready | racing | finished | results | paused | editor
   prevMode: null,
   time: 0,
   acc: 0,                 // physics time not yet simulated
-  trackIndex: clamp(store.get('track', 0) | 0, 0, TRACKS.length - 1),
+  menuId: String(store.get('track', TRACKS[0].id)),   // the track picked in the menu
+  def: null,              // the track loaded now (a test drive loads the editor's)
+  fromEditor: false,      // test-driving from the editor
   paint: clamp(store.get('paint', 0) | 0, 0, PAINTS.length - 1),
   ghostOn: store.get('ghost', true) !== false,
   muted: !!store.get('muted', false),
@@ -113,6 +116,7 @@ const text = (el, value) => { if (el.textContent !== value) el.textContent = val
 
 function setScreen(name) {
   $('menu').hidden = name !== 'menu';
+  $('editor').hidden = name !== 'editor';
   $('paused').hidden = name !== 'paused';
   $('results').hidden = name !== 'results';
   $('hud').hidden = !(name === 'hud' || name === 'paused');
@@ -134,7 +138,16 @@ function showSplit(main, label, diff) {
 }
 
 // ---------- Tracks ----------
-const lengths = TRACKS.map((def) => new TrackPath(def).length);
+// The built-in tracks, then any finished tracks saved from the editor.
+function allTracks() {
+  return [...TRACKS, ...savedTracks(store).map(savedDef).filter(Boolean)];
+}
+
+const lengths = new Map();
+function trackLength(def) {
+  if (!lengths.has(def.id)) lengths.set(def.id, new TrackPath(def).length);
+  return lengths.get(def.id);
+}
 
 function disposeGroup(group) {
   group.traverse((o) => {
@@ -143,9 +156,8 @@ function disposeGroup(group) {
   });
 }
 
-function loadTrack(i) {
-  S.trackIndex = i;
-  const def = TRACKS[i];
+function loadTrack(def) {
+  S.def = def;
   if (S.built) {
     scene.remove(S.built.group);
     disposeGroup(S.built.group);
@@ -234,7 +246,7 @@ function finish(t) {
   S.mode = 'finished';
   S.finishT = 0;
   S.orbit = 0;
-  const def = TRACKS[S.trackIndex];
+  const def = S.def;
   const prev = S.record;
   const isRecord = !prev || t < prev.time;
   S.result = { time: t, prev: prev ? prev.time : null, isRecord };
@@ -248,7 +260,7 @@ function finish(t) {
 }
 
 function showResults() {
-  const def = TRACKS[S.trackIndex], r = S.result;
+  const def = S.def, r = S.result;
   S.mode = 'results';
   text($('result-track'), def.name);
   text($('result-title'), r.prev === null ? 'First finish!' : r.isRecord ? 'New record!' : 'Finished');
@@ -266,13 +278,18 @@ function showResults() {
     const won = r.time <= m[k];
     return `<li class="${won ? 'won' : ''}"><span class="medal ${k}"></span>${k[0].toUpperCase() + k.slice(1)} ${formatTime(m[k])}</li>`;
   }).join('') : '';
-  $('btn-next').hidden = TRACKS.length < 2;
+  text($('btn-next'), S.fromEditor ? 'Edit track' : 'Next track');
+  $('btn-next').hidden = !S.fromEditor && allTracks().length < 2;
   setScreen('results');
   $('btn-again').focus({ preventScroll: true });
 }
 
 function toMenu() {
   S.mode = 'menu';
+  S.fromEditor = false;
+  model.root.visible = true;
+  // Reload unless the menu's track is still loaded and showing.
+  if (!S.def || S.def.id !== S.menuId || !S.built.group.visible) loadTrack(allTracks().find((d) => d.id === S.menuId) || TRACKS[0]);
   startDemo();
   renderTracks();
   setScreen('menu');
@@ -290,6 +307,7 @@ function pause() {
   if (S.mode !== 'racing' && S.mode !== 'ready') return;
   S.prevMode = S.mode;
   S.mode = 'paused';
+  text($('btn-quit'), S.fromEditor ? 'Back to the editor' : 'Back to the menu');
   sound.drive({ speed: 0, throttle: 0, slip: 0, grounded: true, grass: false, active: false });
   setScreen('paused');
   $('btn-resume').focus({ preventScroll: true });
@@ -303,16 +321,49 @@ function resume() {
   document.activeElement?.blur();
 }
 
-function selectTrack(i) {
-  if (i === S.trackIndex && S.path) return;
-  store.set('track', i);
-  loadTrack(i);
+function selectTrack(id) {
+  S.menuId = id;
+  store.set('track', id);
+  if (S.def && S.def.id === id) return;
+  loadTrack(allTracks().find((d) => d.id === id) || TRACKS[0]);
   if (S.mode === 'menu') startDemo();
   renderTracks();
 }
 
 function nextTrack() {
-  selectTrack((S.trackIndex + 1) % TRACKS.length);
+  if (S.fromEditor) { openEditor(); return; }
+  const list = allTracks();
+  const i = list.findIndex((d) => d.id === S.def.id);
+  selectTrack(list[(i + 1) % list.length].id);
+  startRun();
+}
+
+// ---------- Track editor ----------
+const editor = new Editor({
+  scene, camera, canvas, T, input, sound, store,
+  onTest: testDrive,
+  onExit: toMenu,
+  onSaved: renderTracks,
+});
+
+function openEditor() {
+  sound.init();
+  sound.setMuted(S.muted);
+  sound.drive({ speed: 0, throttle: 0, slip: 0, grounded: true, grass: false, active: false });
+  S.mode = 'editor';
+  S.fromEditor = true;
+  if (S.built) S.built.group.visible = false;
+  model.root.visible = false;
+  ghost.visible = false;
+  fx.clear();
+  scenery.clear();
+  setScreen('editor');
+  editor.open();
+}
+
+function testDrive(def) {
+  model.root.visible = true;
+  loadTrack(def);
   startRun();
 }
 
@@ -501,6 +552,11 @@ function update(dt) {
   S.time += dt;
   input.read(player);
   if (S.mode === 'paused') return;
+  if (S.mode === 'editor') {
+    editor.update(dt);
+    scenery.follow(editor.cam.target);
+    return;
+  }
 
   S.acc = Math.min(S.acc + dt, 0.25);
   while (S.acc >= DT) {
@@ -569,23 +625,23 @@ function updateHud() {
 // ---------- Menu ----------
 function renderTracks() {
   const list = $('track-list');
-  list.replaceChildren(...TRACKS.map((def, i) => {
+  list.replaceChildren(...allTracks().map((def) => {
     const rec = loadRecord(def.id);
     const medal = rec ? medalFor(def, rec.time) : null;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'track-card';
     btn.setAttribute('role', 'radio');
-    btn.setAttribute('aria-checked', String(i === S.trackIndex));
+    btn.setAttribute('aria-checked', String(def.id === S.menuId));
     const laps = def.closed && def.laps > 1 ? ` · ${def.laps} laps` : def.closed ? ' · 1 lap' : ' · A to B';
     btn.innerHTML = `
       <span class="track-name">${def.name}</span>
-      <span class="track-meta"><span class="diff-tag ${def.difficulty.toLowerCase()}">${def.difficulty}</span>${(lengths[i] / 1000).toFixed(2)} km${laps}</span>
+      <span class="track-meta"><span class="diff-tag ${def.difficulty.toLowerCase()}">${def.difficulty}</span>${(trackLength(def) / 1000).toFixed(2)} km${laps}</span>
       <span class="track-best"><span class="label">Best</span>
         <span class="time num">${medal ? `<span class="medal ${medal}" title="${medal} medal"></span> ` : ''}${rec ? formatTime(rec.time) : '--:--.---'}</span>
       </span>`;
     btn.title = def.blurb;
-    btn.addEventListener('click', () => { sound.init(); sound.click(); selectTrack(i); });
+    btn.addEventListener('click', () => { sound.init(); sound.click(); selectTrack(def.id); });
     return btn;
   }));
 }
@@ -618,7 +674,8 @@ $('btn-next').addEventListener('click', nextTrack);
 $('btn-menu').addEventListener('click', toMenu);
 $('btn-resume').addEventListener('click', resume);
 $('btn-pause-restart').addEventListener('click', startRun);
-$('btn-quit').addEventListener('click', toMenu);
+$('btn-quit').addEventListener('click', () => (S.fromEditor ? openEditor() : toMenu()));
+$('btn-editor').addEventListener('click', openEditor);
 $('btn-pause').addEventListener('click', pause);
 $('btn-respawn').addEventListener('click', respawn);
 $('btn-restart').addEventListener('click', () => { if (S.mode === 'racing' || S.mode === 'ready') startRun(); });
@@ -638,12 +695,19 @@ input.onKey = (code, e) => {
   const onButton = document.activeElement?.tagName === 'BUTTON';
   const confirm = (!onButton && (code === 'Enter' || code === 'Space')) || code === 'PadStart';
   if (code === 'KeyM') { sound.init(); toggleMute(); return; }
-  if (code === 'KeyG') { toggleGhost(); return; }
+  if (code === 'KeyG' && S.mode !== 'editor') { toggleGhost(); return; }
   switch (S.mode) {
+    case 'editor':
+      editor.onKey(code, e);
+      break;
     case 'menu':
       if (confirm) startRun();
-      if (code === 'ArrowUp' || code === 'PadUp') selectTrack((S.trackIndex - 1 + TRACKS.length) % TRACKS.length);
-      if (code === 'ArrowDown' || code === 'PadDown') selectTrack((S.trackIndex + 1) % TRACKS.length);
+      if (code === 'ArrowUp' || code === 'PadUp' || code === 'ArrowDown' || code === 'PadDown') {
+        const list = allTracks(), i = list.findIndex((d) => d.id === S.menuId);
+        const d = code === 'ArrowUp' || code === 'PadUp' ? -1 : 1;
+        selectTrack(list[(i + d + list.length) % list.length].id);
+      }
+      if (code === 'KeyE') openEditor();
       if (code === 'ArrowLeft') setPaint(S.paint - 1);
       if (code === 'ArrowRight' || code === 'PadRB') setPaint(S.paint + 1);
       break;
@@ -658,7 +722,7 @@ input.onKey = (code, e) => {
       // respawn keys, easy to still be pressing as you cross the line.
       if ((confirm && S.mode === 'results') || code === 'KeyR' || code === 'PadBack') startRun();
       if (code === 'KeyN') nextTrack();
-      if (code === 'Escape') toMenu();
+      if (code === 'Escape') (S.fromEditor ? openEditor() : toMenu());
       break;
     case 'paused':
       if (confirm || code === 'Escape' || code === 'KeyP') resume();
@@ -689,7 +753,7 @@ function applyViewOffset() {
 }
 
 // ---------- Main loop ----------
-loadTrack(S.trackIndex);
+loadTrack(allTracks().find((d) => d.id === S.menuId) || TRACKS[0]);
 startDemo();
 renderTracks();
 renderPaints();
@@ -709,4 +773,4 @@ $('loading').hidden = true;
 requestAnimationFrame(frame);
 
 // Handy for debugging from the console.
-window.__game = { S, model, camera, scene, renderer, input, startRun, selectTrack, spawnAt };
+window.__game = { S, model, camera, scene, renderer, input, editor, startRun, selectTrack, spawnAt, openEditor };

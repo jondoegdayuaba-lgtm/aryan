@@ -67,7 +67,8 @@ function sweep(B, a, b, pa, pb, colorAt, bank = true) {
 }
 const mirror = (profile) => profile.map(([l, h]) => [-l, h]).reverse();
 
-export function buildTrack(path, T) {
+// finish: false leaves the finish gate off (the editor's unfinished road).
+export function buildTrack(path, T, { finish = true } = {}) {
   const group = new THREE.Group();
   const S = path.samples, N = S.length;
   const next = (k) => S[(k + 1) % N];
@@ -251,7 +252,7 @@ export function buildTrack(path, T) {
   };
   path.checkpoints.forEach((g) => gates.push(makeGate(g, 'checkpoint')));
   if (!path.closed) makeGate(path.start, 'start');
-  makeGate(path.finish, 'finish');
+  if (finish || path.closed) makeGate(path.finish, 'finish');
 
   // Chevron boards on the outside of tight corners at ground level.
   const chevronL = T.chevron, chevronR = T.chevron.clone();

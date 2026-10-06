@@ -1,6 +1,6 @@
 # Apex Rush
 
-A low-poly time-trial racing game for the browser. Pick one of four tracks, clear every checkpoint in order, cross the line, then race the see-through ghost of your best run. Each track has gold, silver and bronze medal times.
+A low-poly time-trial racing game for the browser, with a track editor. Pick one of four tracks (or build your own), clear every checkpoint in order, cross the line, then race the see-through ghost of your best run. Each track has gold, silver and bronze medal times.
 
 | Track | Difficulty | What's on it |
 | --- | --- | --- |
@@ -36,6 +36,7 @@ Everything is plain HTML, CSS and JavaScript with [three.js](https://threejs.org
 | C | Camera | RB | Chase, far or hood camera |
 | Esc or P | Pause button | Start | Pause |
 | G, M | | | Ghost on/off, sound on/off |
+| E (in the menu) | Track editor button | | Open the track editor |
 
 The clock starts when you first press the gas, and keeps running when you go back to a checkpoint. If you fall off the road it puts you back by itself after 3 seconds.
 
@@ -57,12 +58,28 @@ Best times, their checkpoint splits and the ghost are kept in your browser's loc
 | `js/effects.js` | Tyre smoke, skid marks and sparks |
 | `js/audio.js` | Engine, tyres, wind and chimes |
 | `js/input.js` | Keyboard, touch buttons and gamepads |
+| `js/pieces.js` | Track editor pieces, following the road, share codes |
+| `js/editor.js` | The track editor |
 | `js/main.js` | Game states, camera, HUD and menus |
 | `js/config.js` | Name, handling, camera and paint colours |
 
-## Make your own track
+## Track editor
 
-Add an entry to `js/tracks.js`. A track is a list of points the road curves through: `[x, z]`, `[x, z, height]` or `[x, z, height, options]`, in metres. The options apply to the stretch from that point to the next:
+Press **Track editor** in the menu (or E). Build a track out of road pieces on a grid, the way you'd lay a toy race track, then press **Test drive** (T) to race it.
+
+- **Pieces:** Start, Straight, tight and wide turns left and right, Slope up and Slope down (one height step each), Jump ramp, Checkpoint and Finish. Keys 1 to 0 pick them.
+- **Placing:** click a square to put the piece there; right-click (or the Erase tool, X) removes one. R rotates the piece, Q and E change the height, and Walls and Tunnel add barriers or a tunnel to the pieces you place next. After each piece the editor turns and lifts the next one to carry on from it.
+- **The road:** it runs from the Start piece, piece to piece, following the arrows. It ends at a Finish, or loops back into the Start to make a circuit (choose the laps at the top; a circuit needs at least one Checkpoint). Pieces that aren't on the road show red, and an orange square marks where the road wants to carry on.
+- **Jumps:** a Jump ramp can clear up to four empty squares and land up to six height steps lower. Leave the squares after it empty and carry on with the landing piece facing the same way.
+- **Medals:** once the road is finished, a robot drives it in the background. Its time sets gold, silver and bronze, and if it can't finish, the editor tells you (usually a jump is too long).
+- **Moving around:** drag to move the view, right-drag to turn it, scroll to zoom; WASD and the arrow keys move too, and F frames the whole track. On a phone, drag, pinch and twist.
+- **Saving and sharing:** Save keeps the track in your browser and adds it to the menu's track list. Share gives you a code (`APEX1:…`) to send to a friend, who pastes it into Share to load your track. Ctrl+Z and Ctrl+Y undo and redo.
+
+The pieces are defined in `js/pieces.js` (each piece's shape, where it leads and how it turns into road points) and the editor itself is `js/editor.js`.
+
+## Add a track to the game
+
+Built-in tracks are written as points instead. Add an entry to `js/tracks.js`. A track is a list of points the road curves through: `[x, z]`, `[x, z, height]` or `[x, z, height, options]`, in metres. The options apply to the stretch from that point to the next:
 
 - `cp: true` puts a checkpoint gate there.
 - `walls: true` adds barriers on both sides, and `tunnel: true` adds a tunnel.
@@ -78,7 +95,7 @@ npm run check:tracks                 # warnings, plus a robot's time round each 
 npm run check:tracks -- --svg maps   # also writes a top-down map of each track
 ```
 
-The checker warns about corners tighter than the road is wide, steep slopes and roads that cross without enough headroom. It also makes sure a robot driver can finish, which proves every jump can be cleared. Use the robot's times to set the medals. Rebuild the one-file version afterwards with `npm run build:desktop`.
+The checker warns about corners tighter than the road is wide, steep slopes and roads that cross without enough headroom. It also makes sure a robot driver can finish, which proves every jump can be cleared, and it checks the editor's example track too. Use the robot's times to set the medals. Rebuild the one-file version afterwards with `npm run build:desktop`.
 
 ## Tuning
 

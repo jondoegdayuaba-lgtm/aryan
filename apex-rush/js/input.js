@@ -10,7 +10,7 @@ export class Input {
     this.padPrev = [];
 
     addEventListener('keydown', (e) => {
-      if (e.repeat) return;
+      if (e.repeat || e.target.closest?.('input, textarea, select')) return;   // typing a track name
       this.keys.add(e.code);
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace'].includes(e.code) && e.target === document.body) e.preventDefault();
       this.onKey?.(e.code, e);
