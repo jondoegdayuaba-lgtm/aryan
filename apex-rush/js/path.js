@@ -2,6 +2,7 @@
 // needs to know about the surface under the car: height, banking, width, walls
 // and gaps. No rendering here, so it also runs headless (see tools/check-tracks.mjs).
 import * as THREE from 'three';
+import { Loop } from './loops.js';
 
 export const KERB = 1.1;        // red-and-white kerb outside the tarmac, each side
 export const WALL_GAP = 0.3;    // between the kerb and a wall
@@ -35,12 +36,12 @@ function parsePoint(raw, def) {
     bank: (o.bank ?? 0) * Math.PI / 180,
     slope: o.slope,
     cp: !!o.cp,
-    gap: !!o.gap,
+    loop: o.loop === true ? 13 : o.loop || 0,      // radius, or 0
+    gap: !!(o.gap || o.loop),                        // a loop leaves the ground like a jump
     tunnel: !!o.tunnel,
     walls: !!(o.walls || o.tunnel),
     boost: !!o.boost,
-    obstacle: o.obstacle || null,
-    phase: o.phase || 0,
+    launch: !!o.launch,
     hoop: !!o.hoop,
   };
 }
@@ -54,13 +55,54 @@ export class TrackPath {
     const n = P.length;
     const segs = this.closed ? n : n - 1;
 
-    // 1. Measure the curve finely in the ground plane.
-    const curve = new THREE.CatmullRomCurve3(P.map((p) => new THREE.Vector3(p.x, 0, p.z)), this.closed, 'centripetal');
-    const fine = [];
+    // 1. Measure the curve finely in the ground plane. A loop breaks the
+    // smooth curve: the road runs straight into it, and straight on out of it
+    // further ahead and off to the side.
+    const loopSeg = (i) => P[i].loop > 0 && (this.closed || i < n - 1);
+    const V = (p) => new THREE.Vector3(p.x, 0, p.z);
+    const segRun = [];
+    const loopDir = [];
+    if (!P.some((_, i) => loopSeg(i))) {
+      const curve = new THREE.CatmullRomCurve3(P.map(V), this.closed, 'centripetal');
+      for (let i = 0; i < segs; i++) segRun[i] = { curve, r: i, m: this.closed ? n + 1 : n };
+    } else {
+      const starts = P.map((_, i) => i).filter((i) => loopSeg(i)).map((i) => (i + 1) % n);
+      if (!this.closed && !loopSeg(0)) starts.unshift(0);
+      for (const st of starts) {
+        const run = [st];
+        for (let k = st; !loopSeg(k) && (this.closed || k < n - 1);) {
+          k = (k + 1) % n;
+          run.push(k);
+          if (k === st) break;
+        }
+        if (run.length < 2) continue;
+        const curve = new THREE.CatmullRomCurve3(run.map((i) => V(P[i])), false, 'centripetal');
+        run.slice(0, -1).forEach((i, r) => { segRun[i] = { curve, r, m: run.length }; });
+      }
+      // Each loop's road direction comes from the straight leading into it.
+      P.forEach((p, i) => {
+        if (!loopSeg(i)) return;
+        const q = P[(i - 1 + n) % n], dx = p.x - q.x, dz = p.z - q.z, l = Math.hypot(dx, dz) || 1;
+        loopDir[i] = { x: dx / l, z: dz / l };
+      });
+    }
     const v = new THREE.Vector3();
+    const pointOn = (seg, f) => {
+      if (loopSeg(seg)) {
+        // An S-bend from the entry to the exit, straight at both ends.
+        const a = P[seg], b = P[(seg + 1) % n], F = loopDir[seg];
+        const dx = b.x - a.x, dz = b.z - a.z;
+        const fw = dx * F.x + dz * F.z, sd = -dx * F.z + dz * F.x, sm = smooth(f);
+        return v.set(a.x + F.x * fw * f - F.z * sd * sm, 0, a.z + F.z * fw * f + F.x * sd * sm);
+      }
+      const { curve, r, m } = segRun[seg];
+      return curve.getPoint(this.closed && m === n + 1 ? (r + f) / n : (r + f) / (m - 1), v);
+    };
+    const fine = [];
     let d = 0, px = 0, pz = 0;
     for (let j = 0; j <= segs * SUB; j++) {
-      curve.getPoint(j / (segs * SUB), v);
+      const seg = Math.min(Math.floor(j / SUB), segs - 1);
+      pointOn(seg, j / SUB - seg);
       if (j) d += Math.hypot(v.x - px, v.z - pz);
       fine.push({ x: v.x, z: v.z, segf: j / SUB, d });
       px = v.x; pz = v.z;
@@ -73,6 +115,7 @@ export class TrackPath {
     // ramps don't overshoot. A point's `slope` overrides (ramp lips, landings).
     const m = P.map((p, i) => {
       if (p.slope !== undefined) return p.slope;
+      if (loopSeg(i) || loopSeg((i - 1 + n) % n)) return 0;   // level into and out of loops
       const hasPrev = this.closed || i > 0, hasNext = this.closed || i < n - 1;
       const ip = (i - 1 + n) % n, inx = (i + 1) % n;
       const d0 = hasPrev ? (p.y - P[ip].y) / segLen(ip) : null;
@@ -107,7 +150,7 @@ export class TrackPath {
       S.push({
         x: lerp(a.x, b.x, t), y: Math.max(0, y), z: lerp(a.z, b.z, t), s,
         seg, u, hw: lerp(p0.w, p1.w, smooth(u)) / 2,
-        gap: p0.gap, walls: p0.walls, tunnel: p0.tunnel,
+        gap: p0.gap, loop: p0.loop > 0, walls: p0.walls, tunnel: p0.tunnel,
         tx: 0, ty: 0, tz: 1, rx: -1, rz: 0, yaw: 0, curv: 0, bank: 0, tanB: 0,
       });
     }
@@ -123,16 +166,22 @@ export class TrackPath {
       o.rx = -o.tz / h; o.rz = o.tx / h;              // right = tangent x up
       o.yaw = Math.atan2(o.tx, o.tz);
     }
+    // (A loop's S-bend across the map isn't a corner: keep it from bleeding
+    // into the road either side.)
+    const apart = (k, j) => S[idx(k + j)].loop !== S[k].loop;
     const raw = S.map((o, k) => {
-      const a = S[idx(k - 2)], b = S[idx(k + 2)];
-      let dyaw = b.yaw - a.yaw;
+      let ja = -2, jb = 2;
+      while (ja < 0 && apart(k, ja)) ja++;
+      while (jb > 0 && apart(k, jb)) jb--;
+      if (ja === jb) return 0;
+      let dyaw = S[idx(k + jb)].yaw - S[idx(k + ja)].yaw;
       dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
-      return dyaw / (step * 4);
+      return dyaw / (step * (jb - ja));
     });
     S.forEach((o, k) => {
-      let sum = 0;
-      for (let j = -3; j <= 3; j++) sum += raw[idx(k + j)];
-      o.curv = sum / 7;
+      let sum = 0, cnt = 0;
+      for (let j = -3; j <= 3; j++) if (!apart(k, j)) { sum += raw[idx(k + j)]; cnt++; }
+      o.curv = sum / cnt;
     });
 
     // 5. Banking leans into the corner, so its sign comes from the turn direction.
@@ -191,14 +240,19 @@ export class TrackPath {
       this.spawnS = START_S - 8;
     }
 
-    // 8. Boost pads, obstacles (see obstacles.js) and hoops over jumps.
+    // 8. Boost pads, jump pads, hoops over jumps, and loops.
     this.pads = [];
-    this.obstacleDefs = [];
     this.hoops = [];
+    this.loops = [];
     P.forEach((p, i) => {
       const s = at(i);
-      if (p.boost) this.pads.push({ s0: s - 4, s1: s + 4, hl: 4.2, s });
-      if (p.obstacle) this.obstacleDefs.push({ kind: p.obstacle, s, phase: p.phase });
+      if (loopSeg(i)) {
+        const e = this.at(s, {}), x = P[(i + 1) % n];
+        this.loops.push(new Loop({ E: { x: p.x, y: e.y, z: p.z }, F: loopDir[i], X: x, R: p.loop, hw: e.hw, s0: s, s1: at(i + 1) }));
+        return;
+      }
+      if (p.boost) this.pads.push({ kind: 'boost', s0: s - 4, s1: s + 4, hl: 4.2, s });
+      if (p.launch) this.pads.push({ kind: 'launch', s0: s - 3.5, s1: s + 3.5, hl: 4.6, s });
       if (p.hoop && p.gap && i < segs) this.hoops.push({ s: (s + at(i + 1)) / 2, y: Math.max(p.y, P[(i + 1) % n].y) + 2.5 });
     });
   }
@@ -210,7 +264,7 @@ export class TrackPath {
     return d;
   }
 
-  // Is road position (s, lat) on a boost pad?
+  // Is road position (s, lat) on a boost pad or jump pad?
   padAt(s, lat) {
     for (const p of this.pads) {
       if (Math.abs(lat) < p.hl && Math.abs(this.ahead(p.s, s)) < (p.s1 - p.s0) / 2) return p;

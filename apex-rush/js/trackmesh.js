@@ -2,7 +2,8 @@
 // pillars, gates and corner signs.
 import * as THREE from 'three';
 import { KERB, WALL_GAP, WALL_T, WALL_H, deckDepth } from './path.js';
-import { buildFeatures } from './obstaclemesh.js';
+import { buildFeatures } from './featuremesh.js';
+import { TAU } from './loops.js';
 
 const RED = new THREE.Color('#e2342d'), WHITE = new THREE.Color('#f3f4f6');
 const WALL = new THREE.Color('#d5d8e0'), WALL_DARK = new THREE.Color('#9da2ae');
@@ -84,11 +85,22 @@ export function buildTrack(path, T, { finish = true } = {}) {
   const lights = [];
   const pillars = [];
 
+  // The ends of a loop as stand-in samples, so the road runs right up to the
+  // loop and carries on from exactly where it comes out.
+  const loopEnd = (s, exit) => {
+    const L = path.loops.find((q) => s >= q.s0 - 0.01 && s <= q.s1 + 0.01);
+    const p = exit ? L.X : L.E;
+    return { x: p.x, y: p.y, z: p.z, s: exit ? L.s1 : L.s0, hw: L.hw, rx: L.Rt.x, rz: L.Rt.z, tx: L.F.x, tz: L.F.z, tanB: 0 };
+  };
+
   for (let k = 0; k < path.segCount; k++) {
-    const a = S[k], b = next(k);
-    if (a.gap) continue;
-    const prevGap = path.closed || k > 0 ? S[(k - 1 + N) % N].gap || (!path.closed && k === 0) : true;
-    const nextGap = (!path.closed && k === path.segCount - 1) || b.gap;
+    let a = S[k], b = next(k);
+    const fromLoop = a.loop && !b.gap, toLoop = b.loop && !a.gap;
+    if (fromLoop) a = loopEnd(a.s, true);
+    else if (a.gap) continue;
+    if (toLoop) b = loopEnd(b.s, false);
+    const prevGap = !fromLoop && (path.closed || k > 0 ? S[(k - 1 + N) % N].gap || (!path.closed && k === 0) : true);
+    const nextGap = !toLoop && ((!path.closed && k === path.segCount - 1) || b.gap);
 
     // Tarmac.
     const va = a.s / 12, vb = va + path.step / 12;
@@ -178,6 +190,45 @@ export function buildTrack(path, T, { finish = true } = {}) {
       if (!prevT) portal(a, -1);
       if (!b.tunnel || nextGap) portal(b, 1);
       if (Math.floor(a.s / 8) !== Math.floor(b.s / 8)) lights.push(pt(a, 0, TUNNEL_H - 0.08, false).concat(a.yaw));
+    }
+  }
+
+  // Loops: the same road, kerbs and deck swept round the loop's curve, with
+  // the road surface facing the middle of the loop.
+  for (const L of path.loops) {
+    const K = 160, W = L.hw;
+    const frames = [];
+    let arc = 0;
+    for (let k = 0; k <= K; k++) {
+      const F = L.frame((TAU * k) / K, {});
+      if (k) arc += Math.hypot(F.x - frames[k - 1].x, F.y - frames[k - 1].y, F.z - frames[k - 1].z);
+      F.arc = arc;
+      frames.push(F);
+    }
+    const at = (F, l, h) => [F.x + F.bx * l + F.nx * h, F.y + F.by * l + F.ny * h, F.z + F.bz * l + F.nz * h];
+    const loopSweep = (B, A, C, pa, pc, colorAt) => {
+      for (let j = 0; j < pa.length - 1; j++) {
+        B.quad(at(A, pa[j][0], pa[j][1]), at(A, pa[j + 1][0], pa[j + 1][1]), at(C, pc[j + 1][0], pc[j + 1][1]), at(C, pc[j][0], pc[j][1]), colorAt(j));
+      }
+    };
+    const kr = [[W, 0], [W + 0.15, 0.07], [W + KERB - 0.2, 0.07], [W + KERB, 0]];
+    const deckP = [[W + KERB, 0], [W + KERB, -0.9], [-W - KERB, -0.9], [-W - KERB, 0]];
+    for (let k = 0; k < K; k++) {
+      const A = frames[k], C = frames[k + 1];
+      const va = A.arc / 12, vc = C.arc / 12;
+      road.quad(at(A, -W, 0.01), at(A, W, 0.01), at(C, W, 0.01), at(C, -W, 0.01), null, [0, va], [1, va], [1, vc], [0, vc]);
+      const col = Math.floor(A.arc / 3) % 2 ? RED : WHITE;
+      loopSweep(kerb, A, C, kr, kr, () => col);
+      loopSweep(kerb, A, C, mirror(kr), mirror(kr), () => col);
+      loopSweep(deck, A, C, deckP, deckP, (j) => (j === 1 ? DECK_UNDER : DECK));
+    }
+    // Legs down to the ground from each side of the loop.
+    for (const th of [Math.PI * 0.5, Math.PI * 1.5]) {
+      const F = L.frame(th, {});
+      for (const l of [-W + 1, W - 1]) {
+        const [x, y, z] = at(F, l, -0.9);
+        pillars.push({ x, z, top: y });
+      }
     }
   }
 
@@ -290,7 +341,7 @@ export function buildTrack(path, T, { finish = true } = {}) {
     group.add(sign);
   }
 
-  // Obstacles, boost pads and hoops; update(t) moves them with the race clock.
+  // Boost pads, jump pads and hoops; update(t) animates the pads.
   const features = buildFeatures(path, T);
   group.add(features.group);
 

@@ -2,8 +2,8 @@
 // drive it headless. Positions are the point where the car meets the road.
 import * as THREE from 'three';
 import { CAR } from './config.js';
-import { WALL_T } from './path.js';
-import { obstaclesFor } from './obstacles.js';
+import { WALL_T, KERB } from './path.js';
+import { TAU } from './loops.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -20,7 +20,6 @@ export class CarBody {
     this.right = new THREE.Vector3(-1, 0, 0);
     this.probe = {};
     this.wallProbe = {};
-    this.obstacles = obstaclesFor(path);
     this.reset(new THREE.Vector3(), 0);
   }
 
@@ -41,9 +40,11 @@ export class CarBody {
     this.wallNx = 0;         // ...and the way that wall faces
     this.wallNz = 0;
     this.lost = false;       // no road anywhere near
-    this.pad = null;         // the boost pad under the car, if any
+    this.pad = null;         // the boost or jump pad under the car, if any
     this.boostT = 0;         // seconds of boost glow left (for flames and sound)
-    this.boosted = 0;        // set when a pad fires (cleared by the game)
+    this.boosted = 0;        // set when a boost pad fires (cleared by the game)
+    this.launched = 0;       // set when a jump pad fires (cleared by the game)
+    this.loop = null;        // riding a loop: { L, th, v, q }
     this.path.probe(this.pos, this.probe);
     this.pos.y = this.probe.height;
     this.normal.set(this.probe.nx, this.probe.ny, this.probe.nz);
@@ -53,14 +54,19 @@ export class CarBody {
   }
 
   // ctl: { throttle 0..1, brake 0..1, steer -1..1 (positive = right), handbrake }
-  // t is the race clock, which moves the obstacles.
-  step(dt, ctl, t = 0) {
+  step(dt, ctl) {
     const c = CAR, pr = this.probe;
 
     // The steering wheel eases toward the input and centres faster than it turns.
     const want = clamp(ctl.steer, -1, 1);
     const ease = Math.abs(want) < Math.abs(this.steer) || want * this.steer < 0 ? c.steerReturn : c.steerSpeed;
     this.steer += clamp(want - this.steer, -ease * dt, ease * dt);
+
+    if (this.loop) {
+      this.rideLoop(dt, ctl);
+      return;
+    }
+    const px = this.pos.x, pz = this.pos.z;
 
     this.path.probe(this.pos, pr);
     _n.set(pr.nx, pr.ny, pr.nz);
@@ -81,11 +87,17 @@ export class CarBody {
       this.normal.copy(_n);
       this.onRoad = pr.onRoad;
       this.drive(dt, ctl, _n, pr.onRoad);
-      // Boost pads kick the car past its top speed; the extra fades away.
+      // Boost pads kick the car past its top speed (the extra fades away);
+      // jump pads throw it into the air.
       const pad = pr.road ? this.path.padAt(pr.s, pr.lat) : null;
       if (pad && pad !== this.pad) {
         const vF = this.vel.dot(this.forward);
-        if (vF > -1) {
+        if (pad.kind === 'launch') {
+          this.vel.y += c.launch;
+          this.pos.y += 0.05;
+          this.grounded = false;
+          this.launched = c.launch;
+        } else if (vF > -1) {
           const target = Math.min(c.topSpeed * c.boostMax, Math.max(vF, c.topSpeed) + c.boostKick);
           this.vel.addScaledVector(this.forward, target - vF);
           this.boostT = 1.2;
@@ -108,13 +120,88 @@ export class CarBody {
 
     this.pos.addScaledVector(this.vel, dt);
     this.collideWalls();
-    if (this.obstacles) this.obstacles.collide(this, t);
+    if (this.grounded && this.enterLoop(px, pz)) return;
 
     this.speed = this.vel.length();
     this.forwardSpeed = this.vel.dot(this.forward);
     if (pr.road) this.trackS = pr.s;
     else if (pr.nearIndex >= 0) this.trackS = pr.nearS;
     this.lost = pr.nearIndex < 0;
+  }
+
+  // Did the car just drive into the foot of a loop?
+  enterLoop(px, pz) {
+    for (const L of this.path.loops) {
+      const before = (px - L.E.x) * L.F.x + (pz - L.E.z) * L.F.z;
+      const after = (this.pos.x - L.E.x) * L.F.x + (this.pos.z - L.E.z) * L.F.z;
+      if (!(before < 0 && after >= 0)) continue;
+      const lat = (this.pos.x - L.E.x) * L.Rt.x + (this.pos.z - L.E.z) * L.Rt.z;
+      const v = this.vel.x * L.F.x + this.vel.z * L.F.z;
+      if (Math.abs(lat) > L.hw + KERB || Math.abs(this.pos.y - L.E.y) > 1.5 || v < 1) continue;
+      const room = L.hw + KERB - 1;
+      this.loop = { L, th: 0, v, q: clamp(lat, -room, room), f: {} };
+      this.placeOnLoop();
+      return true;
+    }
+    return false;
+  }
+
+  // On a loop the car runs along it like a train on a track: the engine and
+  // gravity speed it up or slow it down, and if it's too slow to be pressed
+  // into the loop near the top, it falls off.
+  rideLoop(dt, ctl) {
+    const c = CAR, st = this.loop, L = st.L, F = L.frame(st.th, st.f);
+    let v = st.v;
+    const gas = ctl.throttle, brk = ctl.brake;
+    if (brk > 0 && v > 0.5) v = Math.max(0, v - c.brake * brk * dt);
+    else if (gas > 0 && v < c.topSpeed) v += c.accel * Math.pow(1 - Math.max(0, v) / c.topSpeed, c.accelCurve) * gas * dt;
+    v -= v * 0.015 * dt + c.gravity * F.ty * dt;
+    this.boostT = Math.max(0, this.boostT - dt);
+    if (st.th > 0.25 && st.th < TAU - 0.25 && L.grip(st.th, v, c.gravity) < 0) {
+      this.loop = null;
+      this.vel.set(F.tx * v, F.ty * v, F.tz * v);
+      this.grounded = false;
+      this.air = 0;
+      if (Math.hypot(F.tx, F.tz) > 0.2) this.yaw = Math.atan2(F.tx * Math.sign(v || 1), F.tz * Math.sign(v || 1));
+      this.yawRate = 0;
+      return;
+    }
+    st.v = v;
+    st.th += (v * dt) / F.rate;
+    const room = L.hw + KERB - 1;
+    st.q = clamp(st.q + this.steer * 6 * dt, -room, room);
+    if (st.th >= TAU || st.th < 0) {
+      // Back on the road: on out of the exit, or rolled back out of the entry.
+      const base = st.th >= TAU ? L.X : L.E;
+      this.pos.set(base.x + L.Rt.x * st.q, base.y, base.z + L.Rt.z * st.q);
+      this.vel.set(L.F.x * v, 0, L.F.z * v);
+      this.yaw = Math.atan2(L.F.x, L.F.z);
+      this.yawRate = 0;
+      this.normal.set(0, 1, 0);
+      this.forward.set(L.F.x, 0, L.F.z);
+      this.right.set(-L.F.z, 0, L.F.x);
+      this.loop = null;
+      return;
+    }
+    this.placeOnLoop();
+  }
+
+  placeOnLoop() {
+    const st = this.loop, L = st.L, F = L.frame(st.th, st.f);
+    this.pos.set(F.x + F.bx * st.q, F.y + F.by * st.q, F.z + F.bz * st.q);
+    this.vel.set(F.tx * st.v, F.ty * st.v, F.tz * st.v);
+    this.forward.set(F.tx, F.ty, F.tz);
+    this.normal.set(F.nx, F.ny, F.nz);
+    this.right.set(F.bx, F.by, F.bz);
+    this.speed = Math.abs(st.v);
+    this.forwardSpeed = st.v;
+    this.grounded = true;
+    this.air = 0;
+    this.slip = 0;
+    this.onRoad = true;
+    this.lost = false;
+    this.pad = null;
+    this.trackS = L.s0 + (L.s1 - L.s0) * clamp(st.th / TAU, 0, 1);
   }
 
   drive(dt, ctl, n, road) {

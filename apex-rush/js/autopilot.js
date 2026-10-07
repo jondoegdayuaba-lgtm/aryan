@@ -4,7 +4,7 @@
 import { CAR, PHYSICS_HZ } from './config.js';
 import { CarBody } from './physics.js';
 import { Race } from './race.js';
-import { obstaclesFor } from './obstacles.js';
+import { TAU } from './loops.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -21,8 +21,8 @@ export class Autopilot {
   constructor(path, { margin = 1.25, caution = 1 } = {}) {
     this.path = path;
     this.caution = caution;
-    this.limit = path.samples.map((o) => cornerSpeed(Math.abs(o.curv), margin));
-    this.obstacles = obstaclesFor(path);
+    // (A loop's samples wiggle across the map, but the car rides the loop itself.)
+    this.limit = path.samples.map((o) => (o.loop ? CAR.topSpeed : cornerSpeed(Math.abs(o.curv), margin)));
     this.pt = {};
   }
 
@@ -32,30 +32,35 @@ export class Autopilot {
     const s = body.trackS;
 
     // Speed: brake now if any corner ahead can't be reached slowly enough.
+    // In a loop, look from its exit, plus the rest of the way round.
     const decel = CAR.brake * 0.75 / this.caution;
     let allowed = CAR.topSpeed;
-    const k0 = Math.floor(s / path.step);
+    const lp = body.loop;
+    const from = lp ? lp.L.s1 : s;
+    const extra = lp ? Math.max(0, TAU - lp.th) * (lp.L.R + lp.L.a) : 0;
+    const k0 = Math.floor(from / path.step);
     const look = Math.ceil((v * v / (2 * decel) + 30) / path.step);
     for (let j = 0; j <= look; j++) {
       let k = k0 + j;
       if (path.closed) k %= S.length; else if (k >= S.length) break;
-      const d = Math.max(0, j * path.step - (s - k0 * path.step));
+      const d = extra + Math.max(0, j * path.step - (from - k0 * path.step));
       allowed = Math.min(allowed, Math.sqrt(this.limit[k] ** 2 + 2 * decel * d));
     }
-    allowed = Math.min(allowed, this.obstacles.limitAhead(s, look * path.step, decel));
 
     // Steering: pure pursuit toward a point ahead on the centre line.
-    const L = this.obstacles.tight(s) ? 8 : 7 + v * 0.42;   // look closer when weaving
+    const L = 7 + v * 0.42;
     const p = path.at(s + L, this.pt);
-    const off = this.obstacles.lineOffset(s + L);       // round fixed obstacles
-    const dx = p.x + p.rx * off - body.pos.x, dz = p.z + p.rz * off - body.pos.z;
+    const dx = p.x - body.pos.x, dz = p.z - body.pos.z;
     const fx = Math.sin(body.yaw), fz = Math.cos(body.yaw);
     const ang = Math.atan2(dx * -fz + dz * fx, dx * fx + dz * fz);   // positive = target on the right
     const want = (2 * Math.max(v, 6) * Math.sin(ang)) / L;
     ctl.steer = clamp(want / (turnRate(Math.max(v, 6)) * Math.min(1, Math.max(v, 6) / 6)), -1, 1);
     ctl.handbrake = false;
 
-    if (!body.grounded) {
+    // Flat out in the air and round loops, but on the way down out of a loop
+    // it can brake for a corner straight after it.
+    const loopDown = body.loop && body.loop.th > Math.PI * 1.5;
+    if (!body.grounded || (body.loop && !loopDown)) {
       ctl.throttle = 1;
       ctl.brake = 0;
       ctl.steer = 0;
@@ -66,6 +71,7 @@ export class Autopilot {
       ctl.throttle = v > allowed - 1 ? 0.4 : 1;
       ctl.brake = 0;
     }
+    if (body.loop) ctl.steer = 0;
     return ctl;
   }
 }
@@ -74,12 +80,10 @@ export class Autopilot {
 // can spread it over several frames. Like a player, the robot goes back to
 // the last checkpoint if it falls off or gets stuck.
 export class RobotRun {
-  // obstacles: false drives straight through them (a best case, for medals).
-  constructor(path, { margin, maxTime = 240, trace = false, obstacles = true } = {}) {
+  constructor(path, { margin, maxTime = 240, trace = false } = {}) {
     this.path = path;
     this.maxTime = maxTime;
     this.body = new CarBody(path);
-    if (!obstacles) this.body.obstacles = null;
     this.race = new Race(path);
     this.bot = new Autopilot(path, margin ? { margin } : {});
     this.ctl = { throttle: 0, brake: 0, steer: 0, handbrake: false };
@@ -87,6 +91,8 @@ export class RobotRun {
     this.at = {};
     this.respawns = 0;
     this.fails = [];
+    this.loopsRidden = 0;
+    this.inLoop = false;
     this.top = 0;
     this.airMax = 0;
     this.trace = trace ? [] : null;
@@ -109,9 +115,11 @@ export class RobotRun {
     for (let n = 0; n < steps && !this.finished; n++) {
       this.bot.drive(body, this.ctl);
       this.prev.x = body.pos.x; this.prev.y = body.pos.y; this.prev.z = body.pos.z;
-      body.step(dt, this.ctl, race.time);
+      body.step(dt, this.ctl);
       race.step(dt, this.prev, body.pos);
       this.top = Math.max(this.top, body.speed);
+      if (body.loop && !this.inLoop) this.loopsRidden++;
+      this.inLoop = !!body.loop;
       this.airMax = Math.max(this.airMax, body.air);
       if (this.trace && Math.round(race.time * PHYSICS_HZ) % 12 === 0) this.trace.push([body.pos.x, body.pos.z, body.speed]);
       // Fell off (on the grass while the road here is up in the air) or stuck.
@@ -133,7 +141,7 @@ export class RobotRun {
     const race = this.race;
     return {
       done: race.done, time: race.done ? race.finalTime : race.time, respawns: this.respawns, fails: this.fails,
-      top: this.top, airMax: this.airMax, splits: race.splits, trace: this.trace,
+      top: this.top, airMax: this.airMax, splits: race.splits, trace: this.trace, loopsRidden: this.loopsRidden,
     };
   }
 }

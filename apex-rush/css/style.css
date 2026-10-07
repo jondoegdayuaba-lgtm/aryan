@@ -656,6 +656,10 @@ kbd {
   padding-bottom: 2px;
   scrollbar-width: thin;
 }
+.ed-palette.more {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent);
+}
 .ed-piece {
   position: relative;
   flex: 0 0 auto;

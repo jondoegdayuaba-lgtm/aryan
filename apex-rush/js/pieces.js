@@ -14,7 +14,9 @@ export const DIRS = [[0, 1], [1, 0], [0, -1], [-1, 0]];
 
 // The order here is part of the share-code format: only ever append.
 export const TYPES = ['road', 'turnL', 'turnR', 'wideL', 'wideR', 'up', 'down', 'jump', 'cp', 'start', 'finish',
-  'boost', 'hammer', 'sweeper', 'pistons', 'bollards'];
+  'boost', 'hammer', 'sweeper', 'pistons', 'bollards', 'pad', 'kicker', 'bumps', 'mega', 'loopL', 'loopR'];
+// Pieces that were taken out of the game load as plain straights.
+const RETIRED = { hammer: 'road', sweeper: 'road', pistons: 'road', bollards: 'road' };
 
 export const PIECES = {
   start: { label: 'Start' },
@@ -29,10 +31,12 @@ export const PIECES = {
   cp: { label: 'Checkpoint', cp: true },
   finish: { label: 'Finish', finish: true },
   boost: { label: 'Boost pad', feature: { boost: true } },
-  hammer: { label: 'Hammer', feature: { obstacle: 'hammer' } },
-  sweeper: { label: 'Sweeper', feature: { obstacle: 'sweeper' } },
-  pistons: { label: 'Pistons', feature: { obstacle: 'pistons' }, walls: true },
-  bollards: { label: 'Bollards', feature: { obstacle: 'slalom' } },
+  pad: { label: 'Jump pad', feature: { launch: true } },
+  kicker: { label: 'Kicker' },
+  bumps: { label: 'Bumps' },
+  mega: { label: 'Big ramp', rise: 2, jump: true, lip: 0.2 },
+  loopL: { label: 'Loop left', loop: 13, side: 1 },
+  loopR: { label: 'Loop right', loop: 13, side: -1 },
 };
 
 const JUMP_REACH = 4;            // a jump can clear up to this many empty squares
@@ -51,6 +55,7 @@ export function footprint(p) {
   const def = PIECES[p.t];
   const F = DIRS[p.r], L = DIRS[(p.r + 1) % 4];
   const cells = [[p.i, p.j]];
+  if (def.loop) cells.push([p.i + L[0] * def.side, p.j + L[1] * def.side]);
   if (def.radius === 1.5) {
     const s = def.turn;
     cells.push([p.i + F[0], p.j + F[1]], [p.i + F[0] + L[0] * s, p.j + F[1] + L[1] * s]);
@@ -63,6 +68,7 @@ export function exitOf(p) {
   const def = PIECES[p.t];
   const F = DIRS[p.r], L = DIRS[(p.r + 1) % 4];
   const level = p.l + (def.rise || 0);
+  if (def.loop) return { i: p.i + F[0] + L[0] * def.side, j: p.j + F[1] + L[1] * def.side, r: p.r, l: level };
   if (!def.turn) return { i: p.i + F[0], j: p.j + F[1], r: p.r, l: level };
   const s = def.turn;
   const r = (p.r + (s > 0 ? 1 : 3)) % 4;
@@ -70,11 +76,24 @@ export function exitOf(p) {
   return { i: p.i + F[0] + L[0] * 2 * s, j: p.j + F[1] + L[1] * 2 * s, r, l: level };
 }
 
+// Where the road leaves a piece, as [f, l] in its frame.
+export function exitPoint(p) {
+  const def = PIECES[p.t];
+  if (def.turn) return [-CELL / 2 + def.radius * CELL, def.turn * def.radius * CELL];
+  if (def.loop) return [CELL / 2, def.side * CELL];
+  return [CELL / 2, 0];
+}
+
 // The road's centre line through a piece, from its entry edge up to (not
-// including) its exit edge: [f, l, height in levels] in the piece's frame.
+// including) its exit edge: [f, l, height in levels, options?] in its frame.
 export function centreLine(p) {
   const def = PIECES[p.t];
   const h = CELL / 2;
+  // A loop: a short straight in, the loop itself, and a short straight out,
+  // so it lines up with the road whatever comes before and after it.
+  if (def.loop) return [[-h, 0, 0], [-h + 4, 0, 0, { loop: def.loop }], [h - 4, def.side * CELL, 0]];
+  if (p.t === 'kicker') return [[-h, 0, 0], [2, 0, 0.75, { slope: 0.32 }]];      // sharp crest: you fly off it
+  if (p.t === 'bumps') return [[-h, 0, 0], [-6, 0, 0.35], [0, 0, 0], [6, 0, 0.35]];
   if (def.turn) {
     const R = def.radius * CELL, n = def.radius === 0.5 ? 3 : 5;
     const out = [];
@@ -84,7 +103,7 @@ export function centreLine(p) {
     }
     return out;
   }
-  if (def.rise) return [[-h, 0, 0], [0, 0, def.rise / 2]];
+  if (def.rise) return [[-h, 0, 0], [0, 0, def.rise * (def.jump ? 0.4 : 0.5)]];
   if (def.cp || def.feature) return [[-h, 0, 0], [0, 0, 0]];
   return [[-h, 0, 0]];
 }
@@ -195,24 +214,21 @@ function routePoints(route, gaps, closed) {
     const at = frame(q);
     const def = PIECES[q.t];
     const opts = { walls: !!(q.w || def.walls), tunnel: !!q.u };
-    centreLine(q).forEach(([f, l, dh], n) => {
+    centreLine(q).forEach(([f, l, dh, extra], n) => {
       const [x, z] = at(f, l);
-      const o = { ...opts };
+      const o = { ...opts, ...extra };
       if (def.cp && n === 1) o.cp = true;
-      // Obstacles in neighbouring squares swing out of step with each other.
-      if (def.feature && n === 1) Object.assign(o, def.feature, { phase: ((q.i * 0.37 + q.j * 0.61) % 1 + 1) % 1 });
+      if (def.feature && n === 1) Object.assign(o, def.feature);
       points.push([x, z, (q.l + dh) * LEVEL, o]);
     });
     if (gaps.has(q)) {
       const [x, z] = at(CELL / 2, 0);
-      points.push([x, z, (q.l + 1) * LEVEL, { ...opts, gap: true, slope: LIP_SLOPE, hoop: true }]);
+      points.push([x, z, (q.l + def.rise) * LEVEL, { ...opts, gap: true, slope: def.lip || LIP_SLOPE, hoop: true }]);
     }
   }
   if (!closed) {
-    const last = route[route.length - 1], def = PIECES[last.t];
-    const [x, z] = def.turn
-      ? frame(last)(-CELL / 2 + def.radius * CELL, def.turn * def.radius * CELL)
-      : frame(last)(CELL / 2, 0);
+    const last = route[route.length - 1];
+    const [x, z] = frame(last)(...exitPoint(last));
     points.push([x, z, exitOf(last).l * LEVEL, {}]);
   }
   return points;
@@ -250,7 +266,7 @@ export function decodeTrack(code) {
   const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
   const pieces = data.p.filter((a) => Array.isArray(a) && int(a[0], 0, TYPES.length - 1) && int(a[1], -500, 500) && int(a[2], -500, 500)
     && int(a[3], 0, MAX_LEVEL) && int(a[4], 0, 3)).slice(0, 2000)
-    .map(([t, i, j, l, r, f]) => ({ t: TYPES[t], i, j, l, r, w: !!(f & 1), u: !!(f & 2) }));
+    .map(([t, i, j, l, r, f]) => ({ t: RETIRED[TYPES[t]] || TYPES[t], i, j, l, r, w: !!(f & 1), u: !!(f & 2) }));
   return {
     name: String(data.n || 'Shared track').slice(0, 32),
     laps: int(data.l, 1, 5) ? data.l : 1,
@@ -267,18 +283,19 @@ function hash(s) {
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
-// A small circuit to start from: two wide hairpins, a checkpoint, a hammer,
-// and a boost pad into a jump.
+// A small circuit to start from: a kicker, bumps, two wide hairpins, a
+// checkpoint, and a boost pad into a jump.
 export function exampleTrack() {
   const P = (t, i, j, r, l = 0) => ({ t, i, j, l, r, w: false, u: false });
   return {
     name: 'Example circuit',
     laps: 2,
     pieces: [
-      P('start', 0, 0, 0), P('road', 0, 1, 0), P('cp', 0, 2, 0), P('hammer', 0, 3, 0),
-      P('wideL', 0, 4, 0), P('wideL', 2, 5, 1),
-      P('boost', 3, 3, 2), P('jump', 3, 2, 2), P('road', 3, 0, 2), P('road', 3, -1, 2),
-      P('wideL', 3, -2, 2), P('wideL', 1, -3, 3), P('road', 0, -1, 0),
+      P('start', 1, 0, 0), P('bumps', 1, 1, 0), P('cp', 1, 2, 0), P('road', 1, 3, 0),
+      P('wideL', 1, 4, 0), P('wideL', 3, 5, 1),
+      P('boost', 4, 3, 2), P('jump', 4, 2, 2), P('road', 4, 0, 2), P('road', 4, -1, 2), P('loopL', 4, -2, 2),
+      P('road', 3, -3, 2), P('wideL', 3, -4, 2), P('wideL', 1, -5, 3),
+      P('loopL', 0, -3, 0), P('road', 1, -2, 0), P('road', 1, -1, 0),
     ],
   };
 }

@@ -173,5 +173,23 @@ export class Sound {
     this._blip([660, 990], 'sawtooth', 0.12, 0.05, 0.05);
   }
 
+  // A springy boing when a jump pad fires.
+  launch() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(160, t);
+    o.frequency.exponentialRampToValueAtTime(720, t + 0.25);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.45);
+    this._thud(0.4, 500, 0.25);
+  }
+
   respawn() { this._blip([523, 392], 'triangle', 0.1, 0.12, 0.06); }
 }

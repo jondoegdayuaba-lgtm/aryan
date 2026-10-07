@@ -27,6 +27,7 @@ export const CAR = {
   halfWidth: 1.05,        // for wall collisions
   boostKick: 16,          // a boost pad adds this much over top speed...
   boostMax: 1.35,         // ...up to this times top speed
+  launch: 14,             // upward kick from a jump pad (m/s)
 };
 
 export const CAMERA = {

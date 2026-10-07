@@ -73,7 +73,8 @@ const S = {
   record: null, ghostPlayer: null, result: null,
   lastDiff: null, offT: 0, finishT: 0, orbit: 0,
   camYaw: 0, camY: 0, shake: 0, lastSpeed: 0, accel: 0,
-  clock: 0,               // drives the obstacles: the race clock while it runs
+  camUp: new THREE.Vector3(0, 1, 0),   // rolls with the car through loops
+  clock: 0,               // animates the pads: the race clock while it runs
 };
 
 const model = new CarModel(PAINTS[S.paint]);
@@ -94,7 +95,7 @@ const tmp = {
   v: new THREE.Vector3(), pos: new THREE.Vector3(), f: new THREE.Vector3(), u: new THREE.Vector3(), l: new THREE.Vector3(),
   w: new THREE.Vector3(), r: new THREE.Vector3(), look: new THREE.Vector3(), want: new THREE.Vector3(),
   q: new THREE.Quaternion(), qa: new THREE.Quaternion(), qb: new THREE.Quaternion(), m: new THREE.Matrix4(),
-  pt: {}, probe: {},
+  pt: {}, probe: {}, lc: {}, lf: {},
 };
 const MENU_CAM = { distance: 11, height: 3.4, look: 1.2 };
 
@@ -412,7 +413,7 @@ function physicsStep() {
   stepFrom.copy(b.pos);
   prevPos.copy(b.pos);
   S.clock = S.race.started && !S.race.done ? S.race.time : S.clock + DT;
-  b.step(DT, ctl, S.clock);
+  b.step(DT, ctl);
   const ev = S.race.step(DT, stepFrom, b.pos);
   if (ev) onRaceEvent(ev);
   if (S.mode === 'racing') recorder.push(S.race.time, b.pos, model.root.quaternion);
@@ -434,8 +435,12 @@ function updateCar(dt) {
   const b = S.body;
   const alpha = S.mode === 'ready' ? 1 : clamp(S.acc / DT, 0, 1);
   model.root.position.lerpVectors(prevPos, b.pos, alpha);
-  if (b.grounded) b.pose(tmp.q); else airPose(tmp.q);
-  model.root.quaternion.slerp(tmp.q, 1 - Math.exp(-dt * (b.grounded ? 16 : 4)));
+  if (b.loop) {
+    // Upside down and all: face along the loop with the roof to its middle.
+    tmp.l.crossVectors(b.normal, b.forward);
+    tmp.q.setFromRotationMatrix(tmp.m.makeBasis(tmp.l, b.normal, b.forward));
+  } else if (b.grounded) b.pose(tmp.q); else airPose(tmp.q);
+  model.root.quaternion.slerp(tmp.q, 1 - Math.exp(-dt * (b.loop ? 24 : b.grounded ? 16 : 4)));
   const sp = b.forwardSpeed;
   S.accel += ((sp - S.lastSpeed) / Math.max(dt, 1e-3) - S.accel) * (1 - Math.exp(-dt * 6));
   S.lastSpeed = sp;
@@ -453,8 +458,8 @@ function updateEffects(dt) {
   const root = model.root;
   root.updateMatrixWorld();
   const hard = ctl().brake > 0 && b.forwardSpeed > 22;
-  const sliding = b.grounded && b.speed > 6 && (Math.abs(b.slip) > 4.5 || (ctl().handbrake && Math.abs(b.forwardSpeed) > 8) || hard);
-  const grass = b.grounded && !b.onRoad && b.speed > 6;
+  const sliding = b.grounded && !b.loop && b.speed > 6 && (Math.abs(b.slip) > 4.5 || (ctl().handbrake && Math.abs(b.forwardSpeed) > 8) || hard);
+  const grass = b.grounded && !b.loop && !b.onRoad && b.speed > 6;
   tmp.r.set(-1, 0, 0).applyQuaternion(root.quaternion);
   for (let i = 2; i < 4; i++) {
     tmp.w.set(WHEELS[i].x, 0, WHEELS[i].z).applyMatrix4(root.matrixWorld);
@@ -466,6 +471,11 @@ function updateEffects(dt) {
     if (S.mode !== 'menu') sound.boost();
     S.shake = Math.max(S.shake, 0.15);
     b.boosted = 0;
+  }
+  if (b.launched > 0) {
+    if (S.mode !== 'menu') sound.launch();
+    S.shake = Math.max(S.shake, 0.25);
+    b.launched = 0;
   }
   if (b.landing > 7) {
     for (const w of WHEELS) {
@@ -507,8 +517,26 @@ function updateCamera(dt) {
   if (mode.hood && S.mode !== 'finished' && S.mode !== 'results') {
     camera.position.set(0, 1.32, 0.05).applyQuaternion(model.root.quaternion).add(pos);
     tmp.look.set(0, 1.0, 12).applyQuaternion(model.root.quaternion).add(pos);
-    camera.up.set(0, 1, 0);
+    camera.up.set(0, 1, 0).applyQuaternion(model.root.quaternion);
     camera.lookAt(tmp.look);
+  } else if (b.loop) {
+    // Ride round the loop behind the car, rolling with it. The camera keeps
+    // to the loop's curve: a straight line back would leave the loop near the top.
+    const m = mode.hood ? CAMERA.modes[0] : mode;
+    const st = b.loop, L = st.L;
+    const thc = st.th - m.distance / L.frame(st.th, tmp.lf).rate;
+    const C = L.frame(Math.max(0, thc), tmp.lc);
+    const back = Math.max(0, -thc) * tmp.lf.rate;          // still on the road in front of the loop
+    S.camUp.lerp(b.normal, 1 - Math.exp(-dt * 10)).normalize();
+    camera.position.set(
+      C.x + C.bx * st.q + C.nx * m.height - L.F.x * back,
+      C.y + C.by * st.q + C.ny * m.height,
+      C.z + C.bz * st.q + C.nz * m.height - L.F.z * back);
+    tmp.look.copy(pos).addScaledVector(S.camUp, m.look).addScaledVector(b.forward, 3);
+    camera.up.copy(S.camUp);
+    camera.lookAt(tmp.look);
+    S.camYaw = b.yaw;
+    S.camY = camera.position.y;
   } else {
     const m = mode.hood ? CAMERA.modes[0] : mode;
     let target = b.yaw;
@@ -524,7 +552,8 @@ function updateCamera(dt) {
     if (want.y < under + 0.9) want.y = under + 0.9;
     camera.position.copy(want);
     tmp.look.set(pos.x + fx_ * 3, pos.y + m.look, pos.z + fz * 3);
-    camera.up.set(0, 1, 0);
+    S.camUp.lerp(UP, 1 - Math.exp(-dt * 6)).normalize();
+    camera.up.copy(S.camUp);
     camera.lookAt(tmp.look);
   }
 
@@ -578,7 +607,7 @@ function update(dt) {
     // Fell off, wandered far from the road or ended up on the wrong stretch:
     // offer (then force) a trip back to the last checkpoint.
     const roadY = S.path.at(b.trackS, tmp.pt).y;
-    const fallen = b.lost || (b.grounded && !b.probe.road && roadY > 2) || offCourse(b);
+    const fallen = !b.loop && (b.lost || (b.grounded && !b.probe.road && roadY > 2) || offCourse(b));
     S.offT = fallen ? S.offT + dt : 0;
     if (S.offT > 3) respawn();
   }

@@ -7,14 +7,14 @@ import { buildTrack } from './trackmesh.js';
 import { RobotRun } from './autopilot.js';
 import { formatTime } from './race.js';
 import {
-  CELL, LEVEL, MAX_LEVEL, DIRS, PIECES, footprint, exitOf, centreLine, clash,
+  CELL, LEVEL, MAX_LEVEL, DIRS, PIECES, footprint, exitOf, exitPoint, centreLine, clash,
   traceTrack, encodeTrack, decodeTrack, exampleTrack, robotMedals,
 } from './pieces.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = THREE.MathUtils.clamp;
 const PALETTE = ['start', 'road', 'turnL', 'turnR', 'wideL', 'wideR', 'up', 'down', 'jump', 'cp', 'finish',
-  'boost', 'hammer', 'sweeper', 'pistons', 'bollards'];
+  'boost', 'pad', 'kicker', 'bumps', 'mega', 'loopL', 'loopR'];
 const DIGITS = ['road', 'turnL', 'turnR', 'wideL', 'wideR', 'up', 'down', 'jump', 'cp', 'finish'];   // keys 1..9, 0
 const C = {
   route: new THREE.Color('#e8f4ff'), loose: new THREE.Color('#ff5a4f'), start: new THREE.Color('#3ddc84'),
@@ -49,6 +49,14 @@ function icon(t) {
   const road = (d) => `<path d="${d}" fill="none" stroke="#80848e" stroke-width="11"/><path d="${d}" fill="none" stroke="#eef0f4" stroke-width="1.4" stroke-dasharray="3 3"/>`;
   const straight = road('M20 40V0');
   const bar = (color) => `<path d="M7 20H33" stroke="${color}" stroke-width="5"/>`;
+  // A loop: in at the bottom, round, and out at the top off to one side (the arrow).
+  const loopIcon = (side) => {
+    const a = 20 + 8 * side, b = 20 - 8 * side;
+    return `<path d="M${a} 40V29M${b} 11V3" stroke="#80848e" stroke-width="7"/>`
+      + `<circle cx="20" cy="20" r="10" fill="none" stroke="#80848e" stroke-width="6"/>`
+      + `<circle cx="20" cy="20" r="10" fill="none" stroke="#e2342d" stroke-width="1.5" stroke-dasharray="3 3"/>`
+      + `<path d="M${b - 5} 6L${b} 0L${b + 5} 6Z" fill="#f3f5fa"/>`;
+  };
   const body = {
     road: straight,
     start: straight + bar('#3ddc84'),
@@ -62,10 +70,12 @@ function icon(t) {
     down: straight + '<path d="M12 16L20 27L28 16Z" fill="#f3f5fa"/>',
     jump: road('M20 40V22') + road('M20 9V0') + '<path d="M14 26L26 26L20 19Z" fill="#ffd21f"/>',
     boost: straight + '<path d="M11 26L20 15L29 26L25 28L20 22L15 28Z" fill="#5ff3ff"/>',
-    hammer: straight + '<path d="M7 8H33" stroke="#2b2f3a" stroke-width="3"/><path d="M20 8L13 22" stroke="#9aa0ab" stroke-width="2"/><rect x="7" y="20" width="12" height="8" fill="#ffc21a" stroke="#15171c" stroke-width="1.5"/>',
-    sweeper: straight + '<path d="M8 30L32 10" stroke="#e2342d" stroke-width="3.5"/><circle cx="20" cy="20" r="4.5" fill="#ffc21a" stroke="#15171c" stroke-width="1.5"/>',
-    pistons: straight + '<rect x="2" y="9" width="14" height="7" fill="#ffc21a" stroke="#15171c" stroke-width="1.5"/><rect x="24" y="24" width="14" height="7" fill="#ffc21a" stroke="#15171c" stroke-width="1.5"/>',
-    bollards: straight + [[23, 13], [27, 13], [31, 13], [9, 27], [13, 27], [17, 27]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2" fill="#ff7a1a"/>`).join(''),
+    pad: straight + '<rect x="9" y="10" width="22" height="20" fill="#123d2a" stroke="#3ddc84" stroke-width="2"/><path d="M20 12L28 21H23V28H17V21H12Z" fill="#7dff9e"/>',
+    kicker: straight + '<path d="M9 30L31 30L31 16Z" fill="#c9ccd6" stroke="#15171c" stroke-width="1.5"/>',
+    bumps: straight + '<path d="M9 31Q20 22 31 31M9 17Q20 8 31 17" fill="none" stroke="#f3f5fa" stroke-width="2.5"/>',
+    mega: road('M20 40V24') + '<path d="M8 24L32 24L32 6Z" fill="#ffd21f" stroke="#15171c" stroke-width="1.5"/>',
+    loopL: loopIcon(1),
+    loopR: loopIcon(-1),
   }[t];
   return `<svg viewBox="0 0 40 40" aria-hidden="true">${body}</svg>`;
 }
@@ -112,10 +122,17 @@ class Lines {
 function pieceLine(p, lift) {
   const F = DIRS[p.r], L = DIRS[(p.r + 1) % 4];
   const at = (f, l, h) => [p.i * CELL + F[0] * f + L[0] * l, (p.l + h) * LEVEL + lift, p.j * CELL + F[1] * f + L[1] * l];
-  const pts = centreLine(p).map(([f, l, h]) => at(f, l, h));
   const def = PIECES[p.t];
-  if (def.turn) pts.push(at(-CELL / 2 + def.radius * CELL, def.turn * def.radius * CELL, 0));
-  else pts.push(at(CELL / 2, 0, def.rise || 0));
+  const pts = centreLine(p).map(([f, l, h]) => at(f, l, h));
+  const [ef, el] = exitPoint(p);
+  if (def.loop) {
+    // Show a loop's way round as a ring standing on the road.
+    for (let k = 1; k < 16; k++) {
+      const th = (k / 16) * Math.PI * 2, R = def.loop * 0.9, u = k / 16;
+      pts.push(at(-CELL / 2 + (CELL / (Math.PI * 2)) * th + R * Math.sin(th), el * u * u * (3 - 2 * u), (R * (1 - Math.cos(th))) / LEVEL));
+    }
+  }
+  pts.push(at(ef, el, def.rise || 0));
   return pts;
 }
 
@@ -199,6 +216,16 @@ export class Editor {
       b.addEventListener('click', () => this.setTool(t));
       return b;
     }));
+    // More pieces than fit across a laptop screen: the mouse wheel scrolls
+    // them sideways, and the right edge fades while some are out of sight.
+    const more = () => pal.classList.toggle('more', pal.scrollLeft + pal.clientWidth < pal.scrollWidth - 2);
+    pal.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || pal.scrollWidth <= pal.clientWidth) return;
+      pal.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+    pal.addEventListener('scroll', more, { passive: true });
+    if (window.ResizeObserver) new ResizeObserver(more).observe(pal);
     $('ed-erase').addEventListener('click', () => this.setTool(this.tool === 'erase' ? 'road' : 'erase'));
     $('ed-rotate').addEventListener('click', () => this.rotate(1));
     $('ed-up').addEventListener('click', () => this.setLevel(this.level + 1));
@@ -634,7 +661,7 @@ export class Editor {
     this.camera.lookAt(target);
     this.grid.position.set(Math.round(target.x / CELL) * CELL + CELL / 2, this.level * LEVEL + 0.06, Math.round(target.z / CELL) * CELL + CELL / 2);
     this.openMat.opacity = 0.5 + 0.4 * Math.sin(performance.now() / 180);
-    if (this.road) this.road.update(performance.now() / 1000);    // obstacles swing in the preview too
+    if (this.road) this.road.update(performance.now() / 1000);    // pads animate in the preview too
     this.status();
   }
 

@@ -155,22 +155,7 @@ export function makeTextures() {
     T.chevron.wrapS = T.chevron.wrapT = THREE.ClampToEdgeWrapping;
   }
 
-  // Hazard stripes for obstacles.
-  {
-    const [c, g] = canvas(128);
-    g.fillStyle = '#15171c';
-    g.fillRect(0, 0, 128, 128);
-    g.fillStyle = '#ffc21a';
-    for (let i = -2; i < 4; i++) {
-      g.beginPath();
-      g.moveTo(i * 64, 0); g.lineTo(i * 64 + 32, 0); g.lineTo(i * 64 + 160, 128); g.lineTo(i * 64 + 128, 128);
-      g.closePath();
-      g.fill();
-    }
-    T.hazard = toTexture(c, 1, 1);
-  }
-
-  // Red and white bands (sweeper bars, hoops).
+  // Red and white bands (hoops).
   {
     const [c, g] = canvas(128, 16);
     for (let i = 0; i < 8; i++) {
@@ -198,6 +183,25 @@ export function makeTextures() {
       g.fill();
     }
     T.boost = toTexture(c, 1, 1);
+  }
+
+  // Jump pad: green up-arrows on dark, pointing up the texture (forward).
+  {
+    const [c, g] = canvas(128, 128);
+    g.fillStyle = '#123d2a';
+    g.fillRect(0, 0, 128, 128);
+    g.fillStyle = '#1d6b45';
+    for (let i = 0; i < 8; i++) g.fillRect(0, i * 16, 128, 6);
+    g.fillStyle = '#7dff9e';
+    for (let i = 0; i < 2; i++) {
+      const y = 8 + i * 64;
+      g.beginPath();
+      g.moveTo(64, y); g.lineTo(108, y + 30); g.lineTo(80, y + 30); g.lineTo(80, y + 52);
+      g.lineTo(48, y + 52); g.lineTo(48, y + 30); g.lineTo(20, y + 30);
+      g.closePath();
+      g.fill();
+    }
+    T.launch = toTexture(c, 1, 1);
   }
 
   // Soft round puff for tyre smoke.
